@@ -16,16 +16,16 @@
 | Persistent data layer | Supabase Postgres, one main table named incidents |
 | Input flow | Streamlit single-file upload; exactly one file per processing run |
 | Processing mode | Synchronous processing inside the Streamlit app |
-| Integration strategy | Extractor output is passed as a pandas DataFrame to Student 6 integration logic |
-| LLM summary strategy | Separate src/llm_summarizer/ module. Student 6 calls its function after integration and before Supabase insert. Local/free LLM when available, rule-based fallback always required. |
+| Integration strategy | Extractor output is passed as a pandas DataFrame to Integration logic |
+| LLM summary strategy | Separate `src/llm_summarizer/` module. The platform calls it after Integration and before Supabase insert. Local/free LLM when available, rule-based fallback always required. |
 | Cloud/data scope | Supabase stores structured incident rows only; raw files are not uploaded to Supabase Storage in the MVP |
 | Final submission date | June 26, 2026 |
 
 ## 2. Product Definition
 
-The product is a class prototype that converts one uploaded multimodal evidence file into one or more structured incident rows. The app supports audio, PDF, image, video, text, CSV, and JSON inputs. Streamlit handles the upload and UI. The selected extractor processes the file synchronously and returns a normalized intermediate pandas DataFrame. Student 6 integration receives that DataFrame, cleans and standardizes the extracted information, and returns zero, one, or many incident rows.
+The product is a class prototype that converts one uploaded multimodal evidence file into one or more structured incident rows. The app supports audio, PDF, image, video, text, CSV, and JSON inputs. Streamlit handles the upload and UI. The selected extractor processes the file synchronously and returns a normalized intermediate pandas DataFrame. Integration receives that DataFrame, cleans and standardizes the extracted information, and returns zero, one, or many incident rows.
 
-After Student 6 integration, Student 6 must call the separate LLM summarizer function from `src/llm_summarizer/`. The summarizer adds a short `incident_summary` and summary metadata to each integrated row. The app then generates synthetic incident IDs using the abbreviated `INC_TYPE_NUMBER` format and automatically inserts the rows into the Supabase `incidents` table.
+After Integration, the platform must call the separate LLM summarizer function from `src/llm_summarizer/`. The summarizer adds a short `incident_summary` and summary metadata to each integrated row. The app then generates synthetic incident IDs using the abbreviated `INC_TYPE_NUMBER` format and automatically inserts the rows into the Supabase `incidents` table.
 
 After insertion, the application treats Supabase as the source of truth. Dashboard filtering, selected-incident summary display, and final CSV export must read from Supabase, not from local intermediate files.
 
@@ -40,8 +40,8 @@ Incident evidence can arrive as emergency calls, PDF reports, scene photos, surv
 | G1 | Process supported evidence modalities | Audio, PDF, image, video, text, CSV, and JSON upload paths exist |
 | G2 | Use a simple Streamlit upload workflow | The app accepts exactly one uploaded file per processing run |
 | G3 | Support one file producing multiple incidents | A single uploaded file can insert zero, one, or many incident rows |
-| G4 | Standardize through Student 6 integration | Extractor DataFrame is passed to Student 6 integration before summary and Supabase insert |
-| G5 | Generate incident summaries | Student 6 calls the separate LLM summarizer folder/function to add `incident_summary` before insert |
+| G4 | Standardize through Integration | Extractor DataFrame is passed to Integration before summary and Supabase insert |
+| G5 | Generate incident summaries | The platform calls the separate LLM summarizer function to add `incident_summary` before insert |
 | G6 | Generate stable synthetic IDs | Incident IDs use abbreviated `INC_TYPE_NUMBER`, such as `INC_VID_001` |
 | G7 | Persist cleaned rows in Supabase | Rows are automatically inserted into the Supabase `incidents` table |
 | G8 | Provide dashboard review and export | Streamlit can filter Supabase rows, show summaries, and export the approved six-column CSV |
@@ -66,7 +66,7 @@ Incident evidence can arrive as emergency calls, PDF reports, scene photos, surv
 | **User** | **Need** |
 | --- | --- |
 | Student Developer | Clear ownership, input contracts, output contracts, and testable tasks |
-| Student 6 / Integration Lead | Stable extractor DataFrame contract, Student 6 integration contract, separate LLM summary function contract, ID rules, Supabase schema, and final export contract |
+| Integration Lead | Stable extractor DataFrame contract, Integration contract, separate LLM summary function contract, ID rules, Supabase schema, and final export contract |
 | Modality Developers | A clear DataFrame output contract for audio, PDF, image, video, text, CSV, and JSON processors |
 | LLM Module Developer | A separate folder and function contract for incident summary generation with safe fallback behavior |
 | Instructor / Evaluator | A clear end-to-end demo from upload to extractor to integration to LLM summary to Supabase table to final CSV export |
@@ -93,9 +93,9 @@ Detect file type and route to one extractor
         ↓
 Extractor returns normalized intermediate pandas DataFrame
         ↓
-Student 6 integration receives DataFrame and returns cleaned incident rows
+Integration receives DataFrame and returns cleaned incident rows
         ↓
-Student 6 calls src/llm_summarizer.summarize_incident(...) for each row
+The platform calls src/llm_summarizer.summarize_incident(...) for each row
         ↓
 App adds incident_summary, summary_method, and summary_model to rows
         ↓
@@ -122,7 +122,7 @@ Missing text fields must be filled with `Unknown`. Severity must always be `Low`
 
 ## 10. LLM Summarizer Requirement
 
-The LLM summary feature is a required module, but it is not part of the core extraction logic and must not be hidden inside Student 6 integration code. It must live in a separate folder:
+The LLM summary feature is a required module, but it is not part of the core extraction logic and must not be hidden inside Integration code. It must live in a separate folder:
 
 ```text
 src/llm_summarizer/
@@ -133,7 +133,7 @@ src/llm_summarizer/
 └── schemas.py
 ```
 
-Student 6 integration calls the summarizer after rows are standardized and before rows are inserted into Supabase. The summarizer should add a short human-readable incident summary to the main table. If the local/free LLM is unavailable, slow, or returns invalid output, the fallback summary must still produce a safe deterministic summary from the integrated row.
+Integration calls the summarizer after rows are standardized and before rows are inserted into Supabase. The summarizer should add a short human-readable incident summary to the main table. If the local/free LLM is unavailable, slow, or returns invalid output, the fallback summary must still produce a safe deterministic summary from the integrated row.
 
 ## 11. Success Metrics
 
@@ -142,8 +142,8 @@ Student 6 integration calls the summarizer after rows are standardized and befor
 | Modality coverage | 7/7 supported input types have a route or graceful fallback: audio, PDF, image, video, text, CSV, JSON |
 | Upload behavior | Exactly one file is processed per Streamlit run |
 | One-file-many-incidents behavior | A single uploaded file can produce zero, one, or many Supabase incident rows |
-| DataFrame contract validity | Extractor output and Student 6 integration output match the documented schemas |
-| LLM module separation | LLM summary code lives under `src/llm_summarizer/` and is called by Student 6; it is not mixed into extractor code |
+| DataFrame contract validity | Extractor output and Integration output match the documented schemas |
+| LLM module separation | LLM summary code lives under `src/llm_summarizer/` and is called by the platform; it is not mixed into extractor code |
 | Summary availability | Every inserted row has `incident_summary`; fallback is used if LLM fails |
 | ID validity | 100% of inserted rows use `INC_TYPE_NUMBER` with approved type abbreviations |
 | Supabase insert success | Processed rows are inserted into the `incidents` table automatically |

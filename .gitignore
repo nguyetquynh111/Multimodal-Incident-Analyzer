@@ -8,6 +8,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+.DS_Store
 build/
 develop-eggs/
 dist/
@@ -216,3 +217,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# macOS metadata
+.DS_Store
+
+# Local raw/sample datasets and archives
+audio/911_first6sec/
+audio/*.zip
+
+# Local model caches
+.cache/huggingface/

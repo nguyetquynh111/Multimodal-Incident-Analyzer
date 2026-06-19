@@ -18,7 +18,7 @@ Streamlit App
   │     ├── text processor
   │     ├── csv processor
   │     └── json processor
-  ├── Student 6 integration
+  ├── Integration
   ├── Separate LLM summarizer folder/function
   ├── INC_TYPE_NUMBER ID generator
   ├── Supabase insert/query wrapper
@@ -63,7 +63,7 @@ multimodal-incident-analyzer/
 │   │   └── json_processor.py
 │   ├── integration/
 │   │   ├── __init__.py
-│   │   ├── student6_integration.py
+│   │   ├── integration.py
 │   │   ├── severity.py
 │   │   └── validators.py
 │   ├── llm_summarizer/
@@ -82,7 +82,7 @@ multimodal-incident-analyzer/
 └── tests/
     ├── test_file_type_detector.py
     ├── test_extractor_schema.py
-    ├── test_student6_integration_schema.py
+    ├── test_integration_schema.py
     ├── test_llm_summarizer.py
     ├── test_id_generator.py
     ├── test_supabase_mapping.py
@@ -105,10 +105,10 @@ multimodal-incident-analyzer/
 | src/extractors/text_processor.py | Clean text and extract incident signals |
 | src/extractors/csv_processor.py | Parse CSV and map incident-like rows/fields to extractor schema |
 | src/extractors/json_processor.py | Parse JSON and map incident-like objects/fields to extractor schema |
-| src/integration/student6_integration.py | Accept extractor DataFrame and return cleaned incident rows |
+| src/integration/integration.py | Accept extractor DataFrame and return cleaned incident rows |
 | src/integration/severity.py | Apply severity rules and normalize severity values |
 | src/integration/validators.py | Validate extractor, integration, LLM summary, Supabase payload, and final export schemas |
-| src/llm_summarizer/summarizer.py | Public `summarize_incident(row)` function called by Student 6 before Supabase insert |
+| src/llm_summarizer/summarizer.py | Public `summarize_incident(row)` function called by the platform before Supabase insert |
 | src/llm_summarizer/prompts.py | Prompt template for local/free LLM summary generation |
 | src/llm_summarizer/fallback.py | Rule-based deterministic summary when LLM fails or is disabled |
 | src/llm_summarizer/schemas.py | Input/output schema constants for summary function |
@@ -116,7 +116,7 @@ multimodal-incident-analyzer/
 
 ## 4. LLM Summarizer Technical Contract
 
-The LLM summarizer must be a separate folder and must not be embedded inside the Student 6 integration module. Student 6 imports it and calls it after integration has produced cleaned rows.
+The LLM summarizer must be a separate folder and must not be embedded inside the Integration module. The platform imports it and calls it after integration has produced cleaned rows.
 
 Public function:
 
@@ -220,7 +220,7 @@ streamlit run app.py
 # 5. Upload one supported file
 
 # 6. App processes synchronously:
-#    extractor -> Student 6 integration -> LLM summarizer -> ID generation -> Supabase insert
+#    extractor -> Integration -> LLM summarizer -> ID generation -> Supabase insert
 
 # 7. Use dashboard filters, selected incident summaries, and final CSV export from Supabase
 
@@ -236,7 +236,7 @@ pytest
 | LLM model unavailable | Use deterministic rule-based summary fallback from `src/llm_summarizer/fallback.py` |
 | LLM hallucinates details | Constrain prompt, validate output, and never allow LLM to override normalized fields |
 | Supabase credentials missing or wrong | Show setup guidance and do not crash |
-| Student 6 integration schema mismatch | Add strict validator tests before summary and Supabase insert |
+| Integration schema mismatch | Add strict validator tests before summary and Supabase insert |
 | ID collision if multiple users insert at the same time | For class demo, query current max per type before insert; document single-user assumption |
 | OCR setup is difficult | Use text-based PDF for main demo and keep OCR fallback optional |
 | Video processing is slow | Reject long videos and reduce frame sampling |

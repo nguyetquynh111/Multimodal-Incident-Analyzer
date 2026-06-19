@@ -16,8 +16,8 @@ This document defines product behavior and data contracts for the Multimodal Cri
 3. App detects the file type and source abbreviation.
 4. App runs the correct extractor synchronously.
 5. Extractor returns a pandas DataFrame using the extractor schema.
-6. Student 6 integration receives that DataFrame and returns cleaned incident rows.
-7. Student 6 calls the separate LLM summarizer function for each cleaned row.
+6. Integration receives that DataFrame and returns cleaned incident rows.
+7. The platform calls the separate LLM summarizer function for each cleaned row.
 8. App adds summary columns to each row.
 9. App generates INC_TYPE_NUMBER IDs.
 10. App automatically inserts rows into the Supabase incidents table.
@@ -94,9 +94,9 @@ The CSV processor must parse one uploaded CSV file. If the file already has inci
 
 The JSON processor must parse one uploaded JSON file. If the JSON contains a list of incident-like objects, each object may become one extractor row. Nested values should be flattened only as needed for the extractor schema.
 
-## 6. Student 6 Integration Contract
+## 6. Integration Contract
 
-Student 6 integration receives the extractor DataFrame directly in memory. It does not receive a local CSV file path as the primary contract.
+Integration receives the extractor DataFrame directly in memory. It does not receive a local CSV file path as the primary contract.
 
 Required function:
 
@@ -119,7 +119,7 @@ Integration responsibilities:
 - Preserve enough raw text/context for the LLM summarizer.
 - Return zero, one, or many cleaned incident rows.
 
-Student 6 integration must not call Supabase insert until ID generation and LLM summary enrichment are complete.
+Integration must not call Supabase insert until ID generation and LLM summary enrichment are complete.
 
 ## 7. LLM Summarizer Contract
 
@@ -134,7 +134,7 @@ src/llm_summarizer/
 └── schemas.py
 ```
 
-Student 6 calls the public function from this folder after integration and before Supabase insertion:
+The platform calls the public function from this folder after Integration and before Supabase insertion:
 
 ```text
 from src.llm_summarizer.summarizer import summarize_incident
@@ -227,7 +227,7 @@ The Streamlit dashboard must:
 | AC-004 | Image processor runs | Image OCR/object signals map to extractor schema |
 | AC-005 | Video processor runs | Short video is sampled and can produce multiple incident rows |
 | AC-006 | Text/CSV/JSON processor runs | Structured or text content maps to extractor schema |
-| AC-007 | Student 6 integration runs | Cleaned DataFrame has required integration columns |
+| AC-007 | Integration runs | Cleaned DataFrame has required integration columns |
 | AC-008 | LLM summary module runs | Each row receives `incident_summary`, with fallback if needed |
 | AC-009 | ID generation runs | Each row receives valid `INC_TYPE_NUMBER` ID |
 | AC-010 | Supabase insert runs | Rows appear in Supabase `incidents` table automatically |
@@ -244,6 +244,6 @@ The Streamlit dashboard must:
 | Video exceeds 5 minutes | Reject with clear message and no insert |
 | Text has no location | Set Location = Unknown |
 | CSV/JSON contains many rows | One file may produce multiple incident rows |
-| Student 6 returns empty DataFrame | Insert nothing and show no incidents found |
+| Integration returns empty DataFrame | Insert nothing and show no incidents found |
 | LLM unavailable | Use rule-based summary and mark `summary_method = rule_based` |
 | Supabase insert fails | Show error and do not pretend rows were saved |

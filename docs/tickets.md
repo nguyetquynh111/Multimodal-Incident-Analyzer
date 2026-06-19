@@ -6,48 +6,48 @@
 
 ## 1. Sprint Goal
 
-Build a working class prototype that uploads one evidence file at a time through Streamlit, processes it synchronously, standardizes extractor output through Student 6 integration, enriches each incident row with a summary from the separate LLM summarizer folder/function, inserts one or more incident rows into a Supabase `incidents` table, and displays/filters/exports the approved six-column incident CSV by June 26, 2026.
+Build a working class prototype that uploads one evidence file at a time through Streamlit, processes it synchronously, standardizes extractor output through integration, enriches each incident row with a summary from the separate LLM summarizer folder/function, inserts one or more incident rows into a Supabase `incidents` table, and displays/filters/exports the approved six-column incident CSV by June 26, 2026.
 
 ## 2. Ticket Board
 
 | **ID** | **Task** | **Owner** | **Priority** | **Done When** |
 | --- | --- | --- | --- | --- |
-| T-001 | Create updated repo structure | Student 06 | High | Folders match updated tech.md, including `src/llm_summarizer/` |
-| T-002 | Add README setup instructions | Student 06 | High | Fresh user can install, configure Supabase, and run Streamlit |
-| T-003 | Add requirements.txt and .env.example | Student 06 | High | Dependencies install and env variables are documented |
-| T-004 | Create Supabase incidents table SQL | Student 06 | High | SQL creates one main table with summary columns |
-| T-005 | Build Streamlit single-file upload UI | Student 06 | High | User can upload exactly one supported file |
-| T-006 | Build file type detector | Student 06 | High | Extensions map to AUD, PDF, IMG, VID, TXT, CSV, JSON |
-| T-007 | Build audio processor | Student 01 | High | Returns required extractor DataFrame schema |
-| T-008 | Extract audio event/location/urgency | Student 01 | Medium | Audio fields are populated or Unknown |
-| T-009 | Build PDF processor | Student 02 | High | Returns required extractor DataFrame schema |
-| T-010 | Add PDF OCR fallback | Student 02 | Medium | Empty PDFs attempt OCR or return Unknown |
-| T-011 | Build image processor | Student 03 | High | Returns required extractor DataFrame schema |
-| T-012 | Add image OCR/object mapping | Student 03 | Medium | Objects/text map to event signals or Unknown |
-| T-013 | Build video processor | Student 04 | High | Rejects long clips and samples frames from short videos |
-| T-014 | Extract video event signals | Student 04 | Medium | Returns one or more extractor rows when signals exist |
-| T-015 | Build text processor | Student 05 | High | Returns required extractor DataFrame schema |
-| T-016 | Extract text entities/sentiment/topic | Student 05 | Medium | Text fields are populated or Unknown |
-| T-017 | Build CSV processor | Student 05 / Student 06 | Medium | CSV content maps to extractor schema or Unknown fallback |
-| T-018 | Build JSON processor | Student 05 / Student 06 | Medium | JSON content maps to extractor schema or Unknown fallback |
-| T-019 | Build Student 6 integration function | Student 06 | High | `integrate_records(DataFrame)` returns cleaned incident DataFrame |
-| T-020 | Build severity classifier | Student 06 | High | Severity is always Low, Medium, or High |
-| T-021 | Build schema validators | Student 06 | High | Extractor, integration, LLM summary, Supabase payload, and export schemas are validated |
-| T-022 | Create separate LLM summarizer folder | Student 06 / LLM owner | High | `src/llm_summarizer/` exists with summarizer, prompts, fallback, and schemas files |
-| T-023 | Build LLM summarizer public function | Student 06 / LLM owner | High | `summarize_incident(row: dict)` returns incident_summary, summary_method, summary_model |
-| T-024 | Build rule-based summary fallback | Student 06 / LLM owner | High | Fallback summary works when LLM is unavailable, disabled, or invalid |
-| T-025 | Connect Student 6 integration to LLM summarizer | Student 06 | High | Student 6 calls summary function after integration and before Supabase insert |
-| T-026 | Build INC_TYPE_NUMBER ID generator | Student 06 | High | Generates INC_AUD_001 style IDs based on Supabase existing rows |
-| T-027 | Build Supabase client wrapper | Student 06 | High | App can insert and query `incidents` table |
-| T-028 | Auto insert after processing | Student 06 | High | Processed integrated summarized rows insert without manual preview/save step |
-| T-029 | Build dashboard table and filters | Student 06 | High | Dashboard shows Supabase rows and filters |
-| T-030 | Show selected incident summary in dashboard | Student 06 | Medium | Dashboard displays `incident_summary` from Supabase |
-| T-031 | Build final CSV export | Student 06 | High | Download contains exactly Incident_ID, Source, Event, Location, Time, Severity |
-| T-032 | Add unit tests | All | High | Core pytest tests pass |
-| T-033 | Create architecture diagram | Student 06 | Medium | Diagram shows Streamlit -> extractor -> Student 6 integration -> LLM summarizer -> Supabase -> dashboard/export |
-| T-034 | Write project report | All | High | Report explains datasets, models, flow, Supabase table, LLM summary module, and results |
-| T-035 | Record demo | Group 2 | High | Demo shows upload to Supabase insert to dashboard/export with summary |
-| T-036 | Fresh setup test | Group 2 | High | Another laptop/account can run documented demo |
+| T-001 | Create updated repo structure | Group 2 | High | Folders match updated tech.md, including `src/llm_summarizer/` |
+| T-002 | Add README setup instructions | Group 2 | High | Fresh user can install, configure Supabase, and run Streamlit |
+| T-003 | Add requirements.txt and .env.example | Group 2 | High | Dependencies install and env variables are documented |
+| T-004 | Create Supabase incidents table SQL | Quynh | High | SQL creates one main table with summary columns |
+| T-005 | Build Streamlit single-file upload UI | JN | High | User can upload exactly one supported file |
+| T-006 | Build file type detector | JN | High | Extensions map to AUD, PDF, IMG, VID, TXT, CSV, JSON |
+| T-007 | Build audio processor | Quynh | High | Returns required extractor DataFrame schema |
+| T-008 | Extract audio event/location/urgency | Quynh | Medium | Audio fields are populated or Unknown |
+| T-009 | Build PDF processor | Rodney | High | Returns required extractor DataFrame schema |
+| T-010 | Add PDF OCR fallback | Rodney | Medium | Empty PDFs attempt OCR or return Unknown |
+| T-011 | Build image processor | Zainab | High | Returns required extractor DataFrame schema |
+| T-012 | Add image OCR/object mapping | Zainab | Medium | Objects/text map to event signals or Unknown |
+| T-013 | Build video processor | Alex | High | Rejects long clips and samples frames from short videos |
+| T-014 | Extract video event signals | Alex | Medium | Returns one or more extractor rows when signals exist |
+| T-015 | Build text processor | Anh | High | Returns required extractor DataFrame schema |
+| T-016 | Extract text entities/sentiment/topic | Anh | Medium | Text fields are populated or Unknown |
+| T-017 | Build CSV processor | Group 2 | Medium | CSV content maps to extractor schema or Unknown fallback |
+| T-018 | Build JSON processor | JN | Medium | JSON content maps to extractor schema or Unknown fallback |
+| T-019 | Build integration function | JN | High | `integrate_records(DataFrame)` returns cleaned incident DataFrame |
+| T-020 | Build severity classifier | JN | High | Severity is always Low, Medium, or High |
+| T-021 | Build schema validators | JN | High | Extractor, integration, LLM summary, Supabase payload, and export schemas are validated |
+| T-022 | Create separate LLM summarizer folder | Rodney | High | `src/llm_summarizer/` exists with summarizer, prompts, fallback, and schemas files |
+| T-023 | Build LLM summarizer public function | Rodney | High | `summarize_incident(row: dict)` returns incident_summary, summary_method, summary_model |
+| T-024 | Build rule-based summary fallback | Rodney | High | Fallback summary works when LLM is unavailable, disabled, or invalid |
+| T-025 | Connect integration to LLM summarizer | JN | High | calls summary function after integration and before Supabase insert |
+| T-026 | Build INC_TYPE_NUMBER ID generator | JN | High | Generates INC_AUD_001 style IDs based on Supabase existing rows |
+| T-027 | Build Supabase client wrapper | JN | High | App can insert and query `incidents` table |
+| T-028 | Auto insert after processing | JN | High | Processed integrated summarized rows insert without manual preview/save step |
+| T-029 | Build dashboard table and filters | JN | High | Dashboard shows Supabase rows and filters |
+| T-030 | Show selected incident summary in dashboard | JN | Medium | Dashboard displays `incident_summary` from Supabase |
+| T-031 | Build final CSV export | JN | High | Download contains exactly Incident_ID, Source, Event, Location, Time, Severity |
+| T-032 | Add unit tests | Group 2 | High | Core pytest tests pass |
+| T-033 | Create architecture diagram | Zainab | Medium | Diagram shows Streamlit -> extractor -> integration -> LLM summarizer -> Supabase -> dashboard/export |
+| T-034 | Write project report | Alex | High | Report explains datasets, models, flow, Supabase table, LLM summary module, and results |
+| T-035 | Record demo | Anh | High | Demo shows upload to Supabase insert to dashboard/export with summary |
+| T-036 | Fresh setup test | Quynh | High | Another laptop/account can run documented demo |
 | T-037 | Freeze final submission | Group 2 | High | Repo, docs, report, diagram, Supabase SQL, CSV export, and demo are ready |
 
 ## 3. Recommended Work Order
@@ -57,9 +57,9 @@ Build a working class prototype that uploads one evidence file at a time through
 | 1 | Create repo skeleton, requirements, .env.example, and Supabase SQL |
 | 2 | Build Streamlit upload UI and file type detector |
 | 3 | Build each modality processor independently with the extractor DataFrame schema |
-| 4 | Build Student 6 integration and severity normalization |
+| 4 | Build integration and severity normalization |
 | 5 | Build separate `src/llm_summarizer/` folder with fallback summary first |
-| 6 | Connect Student 6 integration output to the LLM summary function |
+| 6 | Connect integration output to the LLM summary function |
 | 7 | Build schema validators and ID generator |
 | 8 | Build Supabase insert/query wrapper |
 | 9 | Connect full upload -> process -> integrate -> summarize -> ID -> insert flow |
@@ -74,7 +74,7 @@ Build a working class prototype that uploads one evidence file at a time through
 | Folder | `src/llm_summarizer/` |
 | Public function | `summarize_incident(incident_row: dict) -> dict` |
 | Required output | `incident_summary`, `summary_method`, `summary_model` |
-| Caller | Student 6 integration flow calls it after `integrate_records(...)` |
+| Caller | Integration flow calls it after `integrate_records(...)` |
 | Timing | Before ID generation/Supabase insert is acceptable; before Supabase insert is required |
 | Fallback | Rule-based fallback must work without any LLM model |
 | Database update | Summary fields are included in the payload inserted into the `incidents` table |
@@ -90,4 +90,4 @@ Build a working class prototype that uploads one evidence file at a time through
 | Build merge script that writes local `data/final/final_incidents.csv` as source of truth | Replaced by Supabase table and export from Supabase |
 | Add upload or watch-folder flow | Replaced by required Streamlit upload only |
 | Prepare AWS no-billing plan | Removed from MVP; Supabase is the selected persistence layer |
-| Put summary code inside integration only | Removed; LLM summary must be a separate folder/function called by Student 6 |
+| Put summary code inside integration only | Removed; LLM summary must be a separate folder/function called after Integration |

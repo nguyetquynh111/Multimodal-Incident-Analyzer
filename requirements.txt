@@ -1,2 +1,31 @@
+# Core application
 pandas
+numpy
 streamlit
+python-dotenv
+supabase
+
+# Audio
+librosa
+# Keep librosa's JIT dependencies on versions that publish Python 3.10 wheels
+# for Intel macOS. Newer llvmlite releases otherwise require a local LLVM build.
+numba==0.62.1
+llvmlite==0.45.1
+soundfile
+torch
+transformers
+
+# PDF and OCR
+PyMuPDF
+pdfplumber
+pytesseract
+
+# Image and video
+# 4.10 is the newest release with an Intel macOS wheel.
+opencv-python==4.10.0.84
+moviepy
+imageio
+Pillow
+
+# Testing
+pytest

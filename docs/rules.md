@@ -16,7 +16,7 @@
 | Synchronous processing | Processing occurs inside the Streamlit session and inserts automatically when complete |
 | Supabase source of truth | After insert, dashboard and export must read from Supabase `incidents` table |
 | One main table | Use one Supabase table named `incidents` for structured incident rows and summary columns |
-| LLM summary is separate | LLM summary code must live in `src/llm_summarizer/`, not inside extractors or hidden inside Student 6 integration |
+| LLM summary is separate | LLM summary code must live in `src/llm_summarizer/`, not inside extractors or hidden inside Integration |
 | No raw Supabase Storage in MVP | Do not upload raw evidence files to Supabase Storage as a required MVP feature |
 | No watch-folder flow | Do not implement local watch-folder monitoring as the main pipeline |
 | No SQLite source of truth | Do not use SQLite or local CSV files as the persistent source of truth |
@@ -29,7 +29,7 @@ Synthetic incident IDs must use this format:
 INC_TYPE_NUMBER
 ```
 
-`TYPE` must be an approved abbreviation. `NUMBER` must be zero-padded to three digits within each type. The app generates IDs after Student 6 integration, after summary fields are produced, and before Supabase insertion.
+`TYPE` must be an approved abbreviation. `NUMBER` must be zero-padded to three digits within each type. The app generates IDs after Integration, after summary fields are produced, and before Supabase insertion.
 
 ### 2.1 Approved Type Abbreviations
 
@@ -75,7 +75,7 @@ Incident_ID, Source, Event, Location, Time, Severity
 
 ## 4. Extractor DataFrame Rules
 
-Every modality extractor must return a pandas DataFrame with exactly these required columns before Student 6 integration:
+Every modality extractor must return a pandas DataFrame with exactly these required columns before Integration:
 
 ```text
 source_filename, source_type, raw_event, raw_location, raw_time, raw_severity, confidence, raw_text
@@ -85,19 +85,19 @@ Rules:
 - A DataFrame can contain zero, one, or many rows.
 - One uploaded file can produce many raw candidate incident rows.
 - Do not write intermediate CSV files as the primary pipeline contract.
-- Extra debug columns are allowed only if Student 6 integration ignores or explicitly handles them.
+- Extra debug columns are allowed only if Integration ignores or explicitly handles them.
 - Missing values must be converted to `Unknown` or safe defaults before Supabase insertion.
 
-## 5. Student 6 Integration Rules
+## 5. Integration Rules
 
-Student 6 integration must accept a pandas DataFrame, not a CSV path. The required function contract is:
+Integration must accept a pandas DataFrame, not a CSV path. The required function contract is:
 
 ```text
 def integrate_records(extractor_df: pandas.DataFrame) -> pandas.DataFrame:
     """Return cleaned incident rows before ID assignment and before Supabase insert."""
 ```
 
-Student 6 integration output must include:
+Integration output must include:
 
 ```text
 event, location, time, severity, confidence, raw_text
@@ -118,7 +118,7 @@ src/llm_summarizer/
 └── schemas.py
 ```
 
-Student 6 must call this module after `integrate_records(...)` returns cleaned rows and before Supabase insertion. The required public function is:
+Platform must call this module after `integrate_records(...)` returns cleaned rows and before Supabase insertion. The required public function is:
 
 ```text
 from src.llm_summarizer.summarizer import summarize_incident
@@ -135,7 +135,7 @@ LLM summary rules:
 
 | **Rule** | **Requirement** |
 | --- | --- |
-| Separate responsibility | The summarizer only creates a readable summary; it must not compute final severity, rewrite IDs, insert database rows, or override Student 6 normalized fields |
+| Separate responsibility | The summarizer only creates a readable summary; it must not compute final severity, rewrite IDs, insert database rows, or override platform's normalized fields |
 | Use integrated fields | The prompt/function must summarize from `event`, `location`, `time`, `severity`, `source`, and `raw_text` when available |
 | No hallucination | If a detail is missing, write `Unknown` or omit that detail; do not invent people, places, weapons, dates, or outcomes |
 | Length | Keep `incident_summary` short: one to three sentences, preferably under 80 words |
@@ -175,7 +175,7 @@ When multiple signals disagree, choose the highest severity. Severity must alway
 | PDF text extraction empty | Try OCR fallback when enabled |
 | OCR unavailable or failed | Use Unknown fields and continue |
 | Image/video model detects nothing | Use OCR or Unknown fields |
-| Student 6 integration schema mismatch | Stop before Supabase insert and show validation error |
+| Integration schema mismatch | Stop before Supabase insert and show validation error |
 | Local/free LLM fails | Use rule-based summary from `src/llm_summarizer/fallback.py` |
 | Supabase credentials missing | Show setup guidance and do not crash |
 
@@ -199,7 +199,7 @@ Minimum required tests:
 | --- | --- |
 | test_file_type_detector.py | Extensions map to AUD/PDF/IMG/VID/TXT/CSV/JSON |
 | test_extractor_schema.py | Each processor returns required extractor DataFrame columns |
-| test_student6_integration_schema.py | Student 6 integration returns required cleaned incident columns |
+| test_integration_schema.py | Integration returns required cleaned incident columns |
 | test_llm_summarizer.py | LLM summarizer returns required keys and fallback works |
 | test_id_generator.py | IDs follow `INC_TYPE_NUMBER` and increment by source type |
 | test_supabase_mapping.py | Supabase payload maps all required table columns |
@@ -208,4 +208,4 @@ Minimum required tests:
 
 ## 12. Demo Rules
 
-Keep sample data small. Use `FAST_DEMO_MODE=True` for presentation safety. The demo should show: one raw uploaded file, extracted DataFrame count, Student 6 integration result, LLM/fallback summary, Supabase insertion, dashboard filtering, and final six-column CSV export.
+Keep sample data small. Use `FAST_DEMO_MODE=True` for presentation safety. The demo should show: one raw uploaded file, extracted DataFrame count, Integration result, LLM/fallback summary, Supabase insertion, dashboard filtering, and final six-column CSV export.
