@@ -1,92 +1,152 @@
-# PRD: Multimodal Crime / Incident Report Analyzer
+# Product Requirements Document: Multimodal Crime / Incident Report Analyzer
+
+| **Owner** | **Project Type** | **Date** | **Submission** |
+| --- | --- | --- | --- |
+| Group 2 | Class prototype only | June 19, 2026 | June 26, 2026 |
 
 ## 1. Project Summary
 
-**Project name:** Multimodal Crime / Incident Report Analyzer  
-**Owner:** Group 2  
-**Project type:** Class prototype only  
-**Primary language:** Python  
-**Dashboard:** Streamlit  
-**LLM strategy:** Local HuggingFace model with rule-based fallback  
-**Cloud scope:** AWS deployment plan only, with no paid billing  
-**Final submission date:** June 26, 2026
+| **Field** | **Decision** |
+| --- | --- |
+| Project name | Multimodal Crime / Incident Report Analyzer |
+| Owner | Group 2 |
+| Project type | Class prototype only |
+| Primary language | Python |
+| Dashboard | Streamlit |
+| Persistent data layer | Supabase Postgres, one main table named incidents |
+| Input flow | Streamlit single-file upload; exactly one file per processing run |
+| Processing mode | Synchronous processing inside the Streamlit app |
+| Integration strategy | Extractor output is passed as a pandas DataFrame to Student 6 integration logic |
+| LLM summary strategy | Separate src/llm_summarizer/ module. Student 6 calls its function after integration and before Supabase insert. Local/free LLM when available, rule-based fallback always required. |
+| Cloud/data scope | Supabase stores structured incident rows only; raw files are not uploaded to Supabase Storage in the MVP |
+| Final submission date | June 26, 2026 |
 
-The product is a class prototype that converts multimodal incident evidence into a single structured incident dataset. The system processes audio, PDF, image, video, and text evidence, assigns synthetic incident IDs, extracts key signals, computes severity, and displays results in a Streamlit dashboard.
+## 2. Product Definition
 
-## 2. Problem
+The product is a class prototype that converts one uploaded multimodal evidence file into one or more structured incident rows. The app supports audio, PDF, image, video, text, CSV, and JSON inputs. Streamlit handles the upload and UI. The selected extractor processes the file synchronously and returns a normalized intermediate pandas DataFrame. Student 6 integration receives that DataFrame, cleans and standardizes the extracted information, and returns zero, one, or many incident rows.
 
-Incident evidence can arrive in many formats: emergency calls, PDF reports, scene photos, surveillance videos, and written text reports. Reviewing each source manually is slow and inconsistent. For a class demo, the project must show that multimodal AI can turn messy unstructured evidence into a consistent structured report.
+After Student 6 integration, Student 6 must call the separate LLM summarizer function from `src/llm_summarizer/`. The summarizer adds a short `incident_summary` and summary metadata to each integrated row. The app then generates synthetic incident IDs using the abbreviated `INC_TYPE_NUMBER` format and automatically inserts the rows into the Supabase `incidents` table.
 
-## 3. Goals
+After insertion, the application treats Supabase as the source of truth. Dashboard filtering, selected-incident summary display, and final CSV export must read from Supabase, not from local intermediate files.
 
-| ID | Goal | Success Target |
-|---|---|---|
-| G1 | Process five evidence modalities | Audio, PDF, image, video, and text processors exist |
-| G2 | Generate synthetic incident cases | Each case receives an `Incident_ID` like `INC_001` |
-| G3 | Produce a final incident dataset | Final CSV has exactly six required columns |
-| G4 | Classify severity | Severity is always `Low`, `Medium`, or `High` |
-| G5 | Provide dashboard review | Streamlit can filter and display incidents |
-| G6 | Generate incident summaries | Local HuggingFace summary or fallback summary works |
-| G7 | Support demo safety | Fast demo mode and cached outputs reduce risk |
-| G8 | Provide cloud plan | AWS no-billing deployment plan is documented |
+## 3. Problem
 
-## 4. Non-Goals
+Incident evidence can arrive as emergency calls, PDF reports, scene photos, surveillance video, typed reports, CSV records, or JSON records. Reviewing these sources manually is slow and inconsistent. For a class demo, the project must show that multimodal AI, integration logic, rule-based fallback logic, and a local/free LLM summary module can turn messy unstructured or semi-structured evidence into consistent structured incident records.
 
-| ID | Non-Goal | Reason |
-|---|---|---|
-| NG1 | Production emergency deployment | This is only a class prototype |
-| NG2 | Paid APIs | Project must avoid paid API usage |
-| NG3 | Paid AWS resources | AWS is only documented as a no-billing plan |
-| NG4 | Legal-grade crime classification | Output is educational, not investigative evidence |
-| NG5 | Perfect cross-dataset matching | Source datasets are unrelated |
-| NG6 | Large-scale batch processing | MVP is small, local, and demo-focused |
+## 4. Goals
 
-## 5. MVP Scope
+| **ID** | **Goal** | **Success Target** |
+| --- | --- | --- |
+| G1 | Process supported evidence modalities | Audio, PDF, image, video, text, CSV, and JSON upload paths exist |
+| G2 | Use a simple Streamlit upload workflow | The app accepts exactly one uploaded file per processing run |
+| G3 | Support one file producing multiple incidents | A single uploaded file can insert zero, one, or many incident rows |
+| G4 | Standardize through Student 6 integration | Extractor DataFrame is passed to Student 6 integration before summary and Supabase insert |
+| G5 | Generate incident summaries | Student 6 calls the separate LLM summarizer folder/function to add `incident_summary` before insert |
+| G6 | Generate stable synthetic IDs | Incident IDs use abbreviated `INC_TYPE_NUMBER`, such as `INC_VID_001` |
+| G7 | Persist cleaned rows in Supabase | Rows are automatically inserted into the Supabase `incidents` table |
+| G8 | Provide dashboard review and export | Streamlit can filter Supabase rows, show summaries, and export the approved six-column CSV |
+| G9 | Provide safe fallbacks | Local/free LLM summary or rule-based fallback summary works without paid APIs |
 
-| Input Type | MVP Limit |
-|---|---:|
-| PDF incident report | Up to 1 PDF per case |
-| Crime scene images | Up to 20 images per case |
-| Witness audio recordings | Up to 3 audio files per case |
-| Surveillance video | Up to 1 video, max 5 minutes |
-| Text evidence entries | Up to 20 text entries per case |
+## 5. Non-Goals
 
-## 6. Final Output
+| **ID** | **Non-Goal** | **Reason** |
+| --- | --- | --- |
+| NG1 | Production emergency deployment | This is an educational class prototype only |
+| NG2 | Paid APIs or paid LLM services | The project should be runnable without paid API usage |
+| NG3 | Local watch-folder as the main pipeline | The chosen MVP uses Streamlit upload, not folder monitoring |
+| NG4 | SQLite or local CSV as source of truth | Supabase `incidents` table is the source of truth after insertion |
+| NG5 | Supabase Storage for raw files | The MVP stores structured results only, not raw uploaded evidence |
+| NG6 | Async queue or external worker | Processing is synchronous inside Streamlit for the MVP |
+| NG7 | Multi-file batch or folder upload | The MVP accepts one file at a time |
+| NG8 | Legal-grade crime classification | Output is for demonstration and education, not official investigation |
+| NG9 | LLM as a factual authority | The LLM summarizer may summarize integrated fields; it must not override final event, location, time, or severity |
 
-The final dataset must contain only these columns:
+## 6. Users
+
+| **User** | **Need** |
+| --- | --- |
+| Student Developer | Clear ownership, input contracts, output contracts, and testable tasks |
+| Student 6 / Integration Lead | Stable extractor DataFrame contract, Student 6 integration contract, separate LLM summary function contract, ID rules, Supabase schema, and final export contract |
+| Modality Developers | A clear DataFrame output contract for audio, PDF, image, video, text, CSV, and JSON processors |
+| LLM Module Developer | A separate folder and function contract for incident summary generation with safe fallback behavior |
+| Instructor / Evaluator | A clear end-to-end demo from upload to extractor to integration to LLM summary to Supabase table to final CSV export |
+| Demo Analyst User | Simple dashboard for filtering, reading summaries, and exporting incident rows |
+
+## 7. MVP Scope
+
+| **Input Type** | **MVP Limit** | **Required Result** |
+| --- | --- | --- |
+| Audio | Exactly 1 uploaded file per run | Speech transcription and urgency/event extraction |
+| PDF | Exactly 1 uploaded file per run | Report text extraction with OCR fallback when needed |
+| Image | Exactly 1 uploaded file per run | Object/OCR extraction from scene images |
+| Video | Exactly 1 uploaded file per run; max 5 minutes | Short surveillance clip frame sampling and event signals |
+| Text | Exactly 1 uploaded file per run | Plain text incident evidence extraction |
+| CSV | Exactly 1 uploaded file per run | Structured/semi-structured tabular incident evidence extraction |
+| JSON | Exactly 1 uploaded file per run | Structured/semi-structured JSON incident evidence extraction |
+
+## 8. Core Processing Flow
+
+```text
+Streamlit uploads exactly one file
+        ↓
+Detect file type and route to one extractor
+        ↓
+Extractor returns normalized intermediate pandas DataFrame
+        ↓
+Student 6 integration receives DataFrame and returns cleaned incident rows
+        ↓
+Student 6 calls src/llm_summarizer.summarize_incident(...) for each row
+        ↓
+App adds incident_summary, summary_method, and summary_model to rows
+        ↓
+App generates abbreviated INC_TYPE_NUMBER incident IDs
+        ↓
+App automatically inserts rows into Supabase incidents table
+        ↓
+Dashboard reads from Supabase
+        ↓
+Final CSV export reads from Supabase and outputs only six required columns
+```
+
+## 9. Final Output and Data Persistence
+
+The application must automatically insert integrated and summarized incident rows into one Supabase table named `incidents`. The table may contain extra operational columns such as `source_filename`, `source_type`, `confidence`, `raw_text`, `incident_summary`, `summary_method`, `summary_model`, and `created_at`.
+
+The final exported CSV for submission must contain exactly these six columns in this exact order:
 
 ```text
 Incident_ID, Source, Event, Location, Time, Severity
 ```
 
-Missing final values must be filled with `Unknown`, except `Severity`, which must be `Low`, `Medium`, or `High`.
+Missing text fields must be filled with `Unknown`. Severity must always be `Low`, `Medium`, or `High`. No final exported CSV row may contain null values. Summary columns must remain in Supabase for dashboard display and must not be included in the final six-column CSV unless the instructor later explicitly changes the required CSV schema.
 
-## 7. Success Metrics
+## 10. LLM Summarizer Requirement
 
-| Metric | Target |
-|---|---|
-| Modality coverage | 5/5 modalities implemented |
-| Final schema validity | 100% rows match required schema |
-| Missing value handling | 0 null values in final CSV |
-| Extraction success | At least 80% curated demo samples produce non-Unknown event or location |
-| Runtime | One MVP case runs in 5 minutes or less, excluding first-time model downloads |
-| Dashboard usability | User can filter and view incident rows without code |
-| Summary availability | Every selected incident gets local LLM or fallback summary |
-| Submission readiness | Repo, report, diagram, dataset, and demo ready by June 26 |
+The LLM summary feature is a required module, but it is not part of the core extraction logic and must not be hidden inside Student 6 integration code. It must live in a separate folder:
 
-## 8. Timeline
+```text
+src/llm_summarizer/
+├── __init__.py
+├── summarizer.py
+├── prompts.py
+├── fallback.py
+└── schemas.py
+```
 
-| Date | Milestone |
-|---|---|
-| Jun 15 | Finalize PRD, roles, repo structure, dataset choices |
-| Jun 16 | Create repo, folders, requirements, and sample data layout |
-| Jun 17 | Build ingestion and synthetic ID generator |
-| Jun 18 | Build first-pass audio, PDF, image, and text processors |
-| Jun 19 | Build video processor and frame extraction |
-| Jun 20 | Standardize intermediate outputs |
-| Jun 21 | Build integration and severity classifier |
-| Jun 22 | Build Streamlit dashboard and summary module |
-| Jun 23 | Add upload or watch-folder ingestion |
-| Jun 24 | Write report and create architecture diagram |
-| Jun 25 | Record demo and test fresh setup |
-| Jun 26 | Final submission package ready |
+Student 6 integration calls the summarizer after rows are standardized and before rows are inserted into Supabase. The summarizer should add a short human-readable incident summary to the main table. If the local/free LLM is unavailable, slow, or returns invalid output, the fallback summary must still produce a safe deterministic summary from the integrated row.
+
+## 11. Success Metrics
+
+| **Metric** | **Target** |
+| --- | --- |
+| Modality coverage | 7/7 supported input types have a route or graceful fallback: audio, PDF, image, video, text, CSV, JSON |
+| Upload behavior | Exactly one file is processed per Streamlit run |
+| One-file-many-incidents behavior | A single uploaded file can produce zero, one, or many Supabase incident rows |
+| DataFrame contract validity | Extractor output and Student 6 integration output match the documented schemas |
+| LLM module separation | LLM summary code lives under `src/llm_summarizer/` and is called by Student 6; it is not mixed into extractor code |
+| Summary availability | Every inserted row has `incident_summary`; fallback is used if LLM fails |
+| ID validity | 100% of inserted rows use `INC_TYPE_NUMBER` with approved type abbreviations |
+| Supabase insert success | Processed rows are inserted into the `incidents` table automatically |
+| Final schema validity | Exported CSV has exactly six required columns and no extra columns |
+| Missing value handling | 0 null values in final exported CSV |
+| Dashboard usability | User can filter, read summaries, and export incidents from Supabase without code |
