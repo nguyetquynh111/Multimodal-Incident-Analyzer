@@ -1,64 +1,46 @@
 # Multimodal Incident Analyzer
 
-A classroom prototype that converts audio, PDF, image, video, text, CSV, or JSON evidence into structured incident records.
-
-> This project is for education only. It is not an emergency-response, investigative, or legal decision system.
-
-## Processing Flow
-
-```text
-Single-file upload
-    -> modality processor
-    -> shared pandas DataFrame
-    -> integration and severity normalization
-    -> LLM summary or rule-based fallback
-    -> incident ID
-    -> Supabase
-    -> dashboard and CSV export
-```
-
-One file may produce zero, one, or many incidents. Supabase is the source of truth after insertion.
-
-
-## Data Contracts
-
-The final CSV contains exactly:
-
-```text
-Incident_ID, Source, Event, Location, Time, Severity
-```
-
-Missing text values use `Unknown`. Severity is `Low`, `Medium`, or `High`.
+Class prototype for converting incident evidence into structured records. The audio module uses local Whisper transcription plus keyword, regex, and urgency rules. It does not use an LLM or download Hugging Face models.
 
 ## Setup
 
-Python 3.10 is recommended. FFmpeg is required for audio transcription.
+Python 3.10 and FFmpeg are required for audio files.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-cp .env.example .env
 ```
-
-Install FFmpeg with your system package manager, then add Supabase values to `.env` when working on the application flow. Never commit credentials or private evidence.
 
 ## Audio Processor
 
-Process one audio file:
+Run commands from the repository root. If your terminal is inside `audio/`, run `cd ..` first.
+
+Process one file:
 
 ```bash
-python -m src.audio.cli path/to/call.wav
+python -m audio.pipeline \
+  --input audio/sample_data/call_75_0.wav \
+  --output audio/output/audio_results.csv
 ```
 
-Process every supported audio file in a directory:
+Process the sample folder:
 
 ```bash
-python -m src.audio.batch src/audio/test_data
+python -m audio.pipeline \
+  --input audio/sample_data/ \
+  --output audio/output/audio_results.csv
 ```
 
-Results are written to `src/audio/output/audio_output.csv` with these columns:
+Test extraction without Whisper:
+
+```bash
+python -m audio.pipeline \
+  --demo-transcript "There are guns near Central Station." \
+  --output audio/output/audio_results.csv
+```
+
+Audio CSV columns are exactly:
 
 ```text
 Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
@@ -67,13 +49,8 @@ Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
 ## Tests
 
 ```bash
-python -m pytest
+pytest
 ```
-
 ## Documentation
 
-- [Product requirements](docs/PRD.md)
-- [Functional specifications](docs/specs.md)
-- [Technical design](docs/tech.md)
-- [Project rules](docs/rules.md)
-- [Implementation tickets](docs/tickets.md)
+See [PRD](docs/PRD.md), [specifications](docs/specs.md), [technical design](docs/tech.md), [rules](docs/rules.md), and [tickets](docs/tickets.md).
