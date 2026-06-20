@@ -29,9 +29,9 @@ This document defines product behavior and data contracts for the Multimodal Cri
 | **Input Type** | **Extensions** | **Source Abbreviation** | **MVP Behavior** |
 | --- | --- | --- | --- |
 | Audio | .wav, .mp3, .m4a | AUD | Transcribe or fallback, then extract event/location/time/severity signals |
-| PDF | .pdf | PDF | Extract text, use OCR fallback when enabled, then extract incident fields |
+| PDF | .pdf | PDF | Extract text directly; use OCR only when scanned or text is unavailable |
 | Image | .jpg, .jpeg, .png | IMG | Run OCR/object detection if available, then extract incident signals |
-| Video | .mp4, .mov | VID | Reject videos longer than 5 minutes; sample frames from short videos |
+| Video | .mp4, .mov, .mpg, .mpeg | VID | Reject videos longer than 5 minutes; sample frames and analyze motion frames |
 | Text | .txt | TXT | Read text and extract incident fields |
 | CSV | .csv | CSV | Parse rows/columns and map incident-like records into the extractor schema |
 | JSON | .json | JSON | Parse JSON objects/arrays and map incident-like records into the extractor schema |
@@ -68,23 +68,53 @@ A processor may return an empty DataFrame if no incident candidate is found. Emp
 
 ### 5.1 Audio Processor
 
-The audio processor must read one uploaded audio file, transcribe when a local/free speech-to-text option is available, and extract transcript-based event, location, time, sentiment, and urgency signals. If transcription fails, it must return Unknown transcript-derived fields instead of crashing.
+The audio processor transcribes one audio file and extracts event and location signals. It assigns `Calm` or `Distressed` sentiment and an independent urgency score from `0.0` to `1.0`. If transcription fails, it returns safe `Unknown` values instead of crashing.
+
+```text
+Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
+```
+
+For Integration, transcript, event, and location map to `raw_text`, `raw_event`, and `raw_location`. Urgency is not transcription confidence.
 
 ### 5.2 PDF Processor
 
-The PDF processor must read one uploaded PDF, extract text from text-based PDFs, and attempt OCR fallback if text extraction is empty or near-empty and OCR is enabled. It should extract incident type, date/time, location, officer/person entities, and report summary signals when available.
+The PDF processor extracts text directly from one official document and uses OCR only when the document is scanned or direct extraction is unavailable. Missing fields use `Unknown`.
+
+```text
+Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome
+```
+
+For Integration, incident type, date, location, and extracted text map to `raw_event`, `raw_time`, `raw_location`, and `raw_text`. Document `Summary` is source-grounded and is separate from the later LLM `incident_summary`.
 
 ### 5.3 Image Processor
 
-The image processor must read one uploaded image, detect relevant objects when supported by the selected local/free model, and attempt OCR for signs, labels, street text, or visible reports. If no objects or text are found, use Unknown fields.
+The image processor analyzes one scene image with pretrained detection/classification and OCR. It reports only supported labels, uses a confidence from `0.0` to `1.0`, and uses `Unknown` when no supported evidence is found.
+
+```text
+Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score
+```
+
+For Integration, scene/object labels map to `raw_event`, OCR maps to `raw_text`, and the artifact score maps to `confidence`. OCR maps to location only when it clearly identifies one.
 
 ### 5.4 Video Processor
 
-The video processor must read one uploaded surveillance video, reject files longer than 5 minutes, sample frames at configurable intervals, and detect objects or abnormal event signals when possible. It can produce multiple incident candidate rows from one video.
+The video processor rejects clips longer than five minutes and samples frames at one documented interval. It records elapsed `HH:MM:SS` timestamps and sequential `FRM_NNN` IDs, applies frame-difference motion detection, and runs object detection only on qualifying motion frames. Activity labels require documented temporal or rule-based evidence; an object detection alone is insufficient.
+
+```text
+Timestamp, Frame_ID, Event_Detected, Objects, Confidence
+```
+
+For Integration, event, timestamp, and confidence map to `raw_event`, `raw_time`, and `confidence`; frame and detection context map to `raw_text`. One video may produce zero, one, or many rows.
 
 ### 5.5 Text Processor
 
-The text processor must read one uploaded text file, clean raw text, and extract event, entities, sentiment, topic, time, and location signals when available.
+The text processor preserves the original input while cleaning a separate analysis copy. It extracts people, locations, organizations, and dates, then assigns sentiment and one topic: `Theft / Robbery`, `Assault / Violence`, `Fire / Arson`, `Traffic Accident`, `Public Disturbance`, or `Other`.
+
+```text
+Text_ID, Source, Raw_Text, Sentiment, Entities, Topic
+```
+
+For Integration, topic, location entities, date entities, and original text map to `raw_event`, `raw_location`, `raw_time`, and `raw_text`.
 
 ### 5.6 CSV Processor
 
@@ -162,6 +192,7 @@ Summary behavior:
 - Do not invent details that are not present in integrated fields or raw text.
 - Do not overwrite `event`, `location`, `time`, or `severity`.
 - Store the summary fields in the same Supabase `incidents` table.
+- Validate required keys, types, and length before accepting model output.
 
 ## 8. Supabase Main Table Contract
 
@@ -223,16 +254,17 @@ The Streamlit dashboard must:
 | --- | --- | --- |
 | AC-001 | User uploads one supported file | Correct extractor route is selected |
 | AC-002 | Audio processor runs | Extractor DataFrame is returned or safe Unknown fallback appears |
-| AC-003 | PDF processor runs | PDF text/OCR signals map to extractor schema |
-| AC-004 | Image processor runs | Image OCR/object signals map to extractor schema |
-| AC-005 | Video processor runs | Short video is sampled and can produce multiple incident rows |
-| AC-006 | Text/CSV/JSON processor runs | Structured or text content maps to extractor schema |
+| AC-003 | PDF processor runs | Direct extraction or conditional OCR produces the eight-field artifact and extractor mapping |
+| AC-004 | Image processor runs | Supported scene/object/OCR results use the five-field artifact and extractor mapping |
+| AC-005 | Video processor runs | Motion-gated sampled frames produce correctly formatted event rows |
+| AC-006 | Text/CSV/JSON processor runs | Text artifact and structured content map to the extractor schema |
 | AC-007 | Integration runs | Cleaned DataFrame has required integration columns |
 | AC-008 | LLM summary module runs | Each row receives `incident_summary`, with fallback if needed |
 | AC-009 | ID generation runs | Each row receives valid `INC_TYPE_NUMBER` ID |
 | AC-010 | Supabase insert runs | Rows appear in Supabase `incidents` table automatically |
 | AC-011 | Dashboard launches | Dataset table, filters, and summaries appear |
 | AC-012 | Final export runs | CSV has exactly six approved columns and no null values |
+| AC-013 | Hosted demo runs | App connects to Supabase without exposing credentials |
 
 ## 12. Edge Cases
 
@@ -242,7 +274,9 @@ The Streamlit dashboard must:
 | Audio transcription fails | Use Unknown transcript-derived fields and continue |
 | Image model detects no objects | Use OCR or Unknown fields |
 | Video exceeds 5 minutes | Reject with clear message and no insert |
+| Sampled video frame has no qualifying motion | Skip detection and do not create an unsupported event |
 | Text has no location | Set Location = Unknown |
+| Text has no supported topic | Set Topic = Other |
 | CSV/JSON contains many rows | One file may produce multiple incident rows |
 | Integration returns empty DataFrame | Insert nothing and show no incidents found |
 | LLM unavailable | Use rule-based summary and mark `summary_method = rule_based` |

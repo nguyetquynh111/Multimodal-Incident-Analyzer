@@ -88,6 +88,20 @@ Rules:
 - Extra debug columns are allowed only if Integration ignores or explicitly handles them.
 - Missing values must be converted to `Unknown` or safe defaults before Supabase insertion.
 
+### 4.1 Modality Artifact Rules
+
+Modality CSVs are demonstration artifacts, not the application integration contract.
+
+| **Modality** | **Exact Columns** | **Key Rule** |
+| --- | --- | --- |
+| Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm` or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
+| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Use direct extraction first and OCR only when scanned or text is unavailable |
+| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use supported model labels and confidence from 0.0 to 1.0 |
+| Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, `FRM_NNN`, motion gating, and documented event logic |
+| Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` | Preserve `Raw_Text`; unsupported topics use `Other` |
+
+Use `Unknown` for unsupported or missing evidence. Never infer facts that are not present in the source or model output.
+
 ## 5. Integration Rules
 
 Integration must accept a pandas DataFrame, not a CSV path. The required function contract is:
@@ -142,6 +156,7 @@ LLM summary rules:
 | Fallback required | If the LLM is disabled, unavailable, slow, or invalid, use deterministic rule-based fallback |
 | No paid API requirement | Local/free model or fallback only; no required paid LLM API |
 | Safe output | The summary is for dashboard review, not official investigation or legal conclusions |
+| Validation | Validate required keys, types, and length before accepting model output |
 
 ## 7. Severity Rules
 
@@ -175,6 +190,8 @@ When multiple signals disagree, choose the highest severity. Severity must alway
 | PDF text extraction empty | Try OCR fallback when enabled |
 | OCR unavailable or failed | Use Unknown fields and continue |
 | Image/video model detects nothing | Use OCR or Unknown fields |
+| Video frame has no qualifying motion | Skip model inference for that frame and do not invent an event |
+| Text has no supported topic | Use `Other` |
 | Integration schema mismatch | Stop before Supabase insert and show validation error |
 | Local/free LLM fails | Use rule-based summary from `src/llm_summarizer/fallback.py` |
 | Supabase credentials missing | Show setup guidance and do not crash |
@@ -199,6 +216,7 @@ Minimum required tests:
 | --- | --- |
 | test_file_type_detector.py | Extensions map to AUD/PDF/IMG/VID/TXT/CSV/JSON |
 | test_extractor_schema.py | Each processor returns required extractor DataFrame columns |
+| test_modality_output_schemas.py | Modality artifacts use their exact columns and bounded numeric scores |
 | test_integration_schema.py | Integration returns required cleaned incident columns |
 | test_llm_summarizer.py | LLM summarizer returns required keys and fallback works |
 | test_id_generator.py | IDs follow `INC_TYPE_NUMBER` and increment by source type |
@@ -209,3 +227,5 @@ Minimum required tests:
 ## 12. Demo Rules
 
 Keep sample data small. Use `FAST_DEMO_MODE=True` for presentation safety. The demo should show: one raw uploaded file, extracted DataFrame count, Integration result, LLM/fallback summary, Supabase insertion, dashboard filtering, and final six-column CSV export.
+
+The hosted demo must keep credentials private and clearly distinguish modality artifacts from the shared DataFrame and final export.

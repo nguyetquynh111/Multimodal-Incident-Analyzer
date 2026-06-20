@@ -10,11 +10,16 @@ import unittest
 from unittest.mock import Mock, patch
 import wave
 
-from src.extractors.audio_processor import (
+from src.audio.processor import (
+    AUDIO_OUTPUT_COLUMNS,
     EXTRACTOR_COLUMNS,
     UNKNOWN,
     _load_whisper,
+    analyze_transcript,
+    extract_names,
+    extract_urgency_phrases,
     process_audio,
+    to_audio_output,
     transcribe_whisper,
 )
 
@@ -74,6 +79,63 @@ class AudioProcessorTests(unittest.TestCase):
         self.assertEqual(row["raw_time"], UNKNOWN)
         self.assertEqual(row["raw_severity"], "Medium")
 
+    def test_audio_output_uses_required_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "call_001.wav"
+            _write_silent_wav(path)
+            extractor_result = process_audio(
+                path,
+                transcriber=lambda _: "Please hurry, there is a fire at 12 Main Street!",
+            )
+            result = to_audio_output(
+                extractor_result,
+                audio_paths={path.name: path},
+            )
+
+        self.assertEqual(list(result.columns), AUDIO_OUTPUT_COLUMNS)
+        row = result.iloc[0]
+        self.assertEqual(row["Call_ID"], "call_001")
+        self.assertEqual(row["Extracted_Event"], "Fire")
+        self.assertEqual(row["Location"], "12 Main Street")
+        self.assertEqual(row["Sentiment"], "Distressed")
+        self.assertGreater(row["Urgency_Score"], 0.75)
+
+    def test_extracts_explicit_names_and_urgency_phrases(self) -> None:
+        transcript = (
+            "My name is Sarah Connor. Please hurry and send an ambulance right now. "
+            "John is nearby."
+        )
+
+        self.assertEqual(extract_names(transcript), "Sarah Connor")
+        phrases = extract_urgency_phrases(transcript).lower()
+        self.assertIn("please", phrases)
+        self.assertIn("hurry", phrases)
+        self.assertIn("send an ambulance", phrases)
+        self.assertIn("right now", phrases)
+        self.assertNotIn("john", extract_names(transcript).lower())
+
+    def test_sentiment_and_urgency_are_independent(self) -> None:
+        analysis = analyze_transcript("There is a fire at 12 Main Street.")
+
+        self.assertEqual(analysis["sentiment"], "Calm")
+        self.assertGreaterEqual(analysis["urgency_score"], 0.75)
+
+    def test_process_audio_preserves_intermediate_annotations(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "named_call.wav"
+            _write_silent_wav(path)
+            result = process_audio(
+                path,
+                transcriber=lambda _: "This is Alex Morgan. Please send police right now.",
+            )
+
+        annotations = result.attrs["audio_annotations"]["named_call.wav"]
+        self.assertEqual(annotations["names"], "Alex Morgan")
+        self.assertIn("send police", annotations["urgency_phrases"].lower())
+        self.assertIn(annotations["sentiment"], {"Calm", "Distressed"})
+        self.assertGreaterEqual(annotations["urgency_score"], 0.0)
+        self.assertLessEqual(annotations["urgency_score"], 1.0)
+
     def test_transcription_failure_returns_safe_fallback(self) -> None:
         def failing_transcriber(_: Path) -> str:
             raise RuntimeError("model unavailable")
@@ -130,7 +192,7 @@ class AudioProcessorTests(unittest.TestCase):
                         "WHISPER_MODEL_DIR": "",
                     },
                 ),
-                patch("src.extractors.audio_processor.shutil.which", return_value="/usr/bin/ffmpeg"),
+                patch("src.audio.processor.shutil.which", return_value="/usr/bin/ffmpeg"),
             ):
                 result = transcribe_whisper(path, model_name="tiny.en")
             _load_whisper.cache_clear()

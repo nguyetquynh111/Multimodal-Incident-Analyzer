@@ -221,9 +221,13 @@ __marimo__/
 # macOS metadata
 .DS_Store
 
-# Local raw/sample datasets and archives
-audio/911_first6sec/
-audio/*.zip
+# Local modality datasets and archives
+src/*/data/*
+!src/*/data/.gitkeep
+src/*/data/**/*.zip
+
+# Temporary output writes; reviewed CSV outputs may be committed
+src/*/output/*.tmp
 
 # Local model caches
 .cache/whisper/

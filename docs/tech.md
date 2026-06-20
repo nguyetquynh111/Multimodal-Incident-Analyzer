@@ -26,9 +26,12 @@ Streamlit App
 
 Supabase Postgres
   └── incidents table = source of truth after insert
+
+Hosted class demo
+  └── protected environment secrets + Supabase connection
 ```
 
-Old local-folder ingestion, watch-folder monitoring, SQLite, AWS no-billing deployment plan, and local final CSV as source of truth are removed from the MVP architecture.
+Old local-folder ingestion, watch-folder monitoring, SQLite, an AWS-specific plan, and local final CSV as source of truth are removed. A simple hosted class demo remains required.
 
 ## 2. Repository Structure
 
@@ -38,13 +41,14 @@ multimodal-incident-analyzer/
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
-├── app.py
+├── app.py                     # planned Streamlit entry point
 ├── docs/
 │   ├── PRD.md
 │   ├── specs.md
 │   ├── tech.md
 │   ├── rules.md
-│   └── tickets.md
+│   ├── tickets.md
+│   └── diagrams/
 ├── sql/
 │   └── create_incidents_table.sql
 ├── src/
@@ -52,15 +56,13 @@ multimodal-incident-analyzer/
 │   ├── file_type.py
 │   ├── id_generator.py
 │   ├── supabase_client.py
-│   ├── extractors/
-│   │   ├── __init__.py
-│   │   ├── audio_processor.py
-│   │   ├── pdf_processor.py
-│   │   ├── image_processor.py
-│   │   ├── video_processor.py
-│   │   ├── text_processor.py
-│   │   ├── csv_processor.py
-│   │   └── json_processor.py
+│   ├── audio/                 # processor, CLI/batch, local output
+│   ├── pdf/                   # processor and local output
+│   ├── image/                 # processor and local output
+│   ├── video/                 # processor and local output
+│   ├── text/                  # processor and local output
+│   ├── csv/                   # processor and local output
+│   ├── json/                  # planned processor and local output
 │   ├── integration/
 │   │   ├── __init__.py
 │   │   ├── integration.py
@@ -75,10 +77,6 @@ multimodal-incident-analyzer/
 │   └── export/
 │       ├── __init__.py
 │       └── csv_export.py
-├── diagrams/
-│   └── architecture.png
-├── reports/
-│   └── project_report.md
 └── tests/
     ├── test_file_type_detector.py
     ├── test_extractor_schema.py
@@ -94,17 +92,16 @@ multimodal-incident-analyzer/
 
 | **Module** | **Responsibility** |
 | --- | --- |
-| app.py | Streamlit UI, upload flow, synchronous process button/flow, dashboard, and final CSV download |
+| app.py (planned) | Streamlit UI, upload flow, synchronous processing, dashboard, and final CSV download |
 | src/file_type.py | Detect extension and map to source abbreviation and processor |
 | src/id_generator.py | Generate `INC_TYPE_NUMBER` IDs by checking existing Supabase rows |
 | src/supabase_client.py | Create Supabase client and wrap insert/query/export calls |
-| src/extractors/audio_processor.py | Transcribe audio and extract event/location/time/severity signals |
-| src/extractors/pdf_processor.py | Extract PDF text and OCR fallback signals |
-| src/extractors/image_processor.py | Extract image object/OCR signals |
-| src/extractors/video_processor.py | Validate video length, sample frames, and extract video signals |
-| src/extractors/text_processor.py | Clean text and extract incident signals |
-| src/extractors/csv_processor.py | Parse CSV and map incident-like rows/fields to extractor schema |
-| src/extractors/json_processor.py | Parse JSON and map incident-like objects/fields to extractor schema |
+| src/audio/ | Transcribe audio and produce the audio artifact plus extractor mapping |
+| src/pdf/ | Extract document fields with conditional OCR and produce the PDF artifact |
+| src/image/ | Detect supported scene/object signals, run OCR, and produce the image artifact |
+| src/video/ | Sample frames, gate detection by motion, and produce the video event log |
+| src/text/ | Preserve source text, run NLP analysis, and produce the text artifact |
+| src/csv/ and src/json/ | Parse structured records and map them to the extractor schema |
 | src/integration/integration.py | Accept extractor DataFrame and return cleaned incident rows |
 | src/integration/severity.py | Apply severity rules and normalize severity values |
 | src/integration/validators.py | Validate extractor, integration, LLM summary, Supabase payload, and final export schemas |
@@ -158,8 +155,9 @@ The LLM summarizer can use a local/free text-generation model such as Ollama if 
 | Supabase | supabase |
 | Audio | openai-whisper, torch, and the FFmpeg system command |
 | PDF | pymupdf, pdfplumber, pytesseract |
-| Image/Video | opencv-python, moviepy, imageio, pillow |
-| NLP/LLM optional | spacy, nltk, and an optional local LLM client |
+| Image | opencv-python, pillow, pytesseract, ultralytics |
+| Video | opencv-python, ultralytics, moviepy, imageio |
+| NLP/LLM optional | spacy, nltk, transformers, and an optional local LLM client |
 | Testing | pytest |
 | Not required in MVP | watchdog, sqlite-specific tooling, AWS SDK, async queue libraries |
 
@@ -176,6 +174,8 @@ The LLM summarizer can use a local/free text-generation model such as Ollama if 
 | ENABLE_RULE_SUMMARY_FALLBACK | No | Keep summary fallback enabled; should default to true |
 | ENABLE_OCR_FALLBACK | No | Allow PDF/image OCR fallback |
 | FAST_DEMO_MODE | No | Use lightweight processing for demo safety |
+
+For deployment, store Supabase values in the host's secret manager or environment settings. Do not commit credentials or raw evidence. The hosted app only needs to support the classroom workflow; production availability and emergency-service security certification are out of scope.
 
 ## 7. Supabase Table SQL
 
@@ -240,6 +240,7 @@ pytest
 | Integration schema mismatch | Add strict validator tests before summary and Supabase insert |
 | ID collision if multiple users insert at the same time | For class demo, query current max per type before insert; document single-user assumption |
 | OCR setup is difficult | Use text-based PDF for main demo and keep OCR fallback optional |
-| Video processing is slow | Reject long videos and reduce frame sampling |
+| Video processing is slow | Reject long videos, use a documented sample interval, and run detection only on motion frames |
+| Object detections are mistaken for activities | Require documented temporal or rule-based evidence for video event labels |
 | Extractor returns nulls | Validators convert missing values to Unknown and severity to Low/Medium/High |
 | Dashboard reads local stale data | Dashboard must query Supabase directly |

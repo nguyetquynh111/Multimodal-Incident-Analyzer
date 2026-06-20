@@ -15,19 +15,19 @@ Build a working class prototype that uploads one evidence file at a time through
 | T-001 | Create updated repo structure | Group 2 | High | Folders match updated tech.md, including `src/llm_summarizer/` |
 | T-002 | Add README setup instructions | Group 2 | High | Fresh user can install, configure Supabase, and run Streamlit |
 | T-003 | Add requirements.txt and .env.example | Group 2 | High | Dependencies install and env variables are documented |
-| T-004 | Create Supabase incidents table SQL | Quynh | High | SQL creates one main table with summary columns |
+| T-004 | Configure Supabase incidents table | Quynh | High | Protected connection settings and SQL create the required table |
 | T-005 | Build Streamlit single-file upload UI | JN | High | User can upload exactly one supported file |
 | T-006 | Build file type detector | JN | High | Extensions map to AUD, PDF, IMG, VID, TXT, CSV, JSON |
-| T-007 | Build audio processor | Quynh | High | Returns required extractor DataFrame schema |
-| T-008 | Extract audio event/location/urgency | Quynh | Medium | Audio fields are populated or Unknown |
-| T-009 | Build PDF processor | Rodney | High | Returns required extractor DataFrame schema |
-| T-010 | Add PDF OCR fallback | Rodney | Medium | Empty PDFs attempt OCR or return Unknown |
-| T-011 | Build image processor | Zainab | High | Returns required extractor DataFrame schema |
-| T-012 | Add image OCR/object mapping | Zainab | Medium | Objects/text map to event signals or Unknown |
-| T-013 | Build video processor | Alex | High | Rejects long clips and samples frames from short videos |
-| T-014 | Extract video event signals | Alex | Medium | Returns one or more extractor rows when signals exist |
-| T-015 | Build text processor | Anh | High | Returns required extractor DataFrame schema |
-| T-016 | Extract text entities/sentiment/topic | Anh | Medium | Text fields are populated or Unknown |
+| T-007 | Build audio processor | Quynh | High | Produces the six-column audio artifact and extractor mapping |
+| T-008 | Extract audio event/location/urgency | Quynh | Medium | Sentiment is Calm/Distressed; urgency is independently bounded 0–1 |
+| T-009 | Build PDF processor | Rodney | High | Produces the eight-column document artifact and extractor mapping |
+| T-010 | Add PDF OCR fallback | Rodney | Medium | OCR runs only when scanned/direct text is unavailable; failures use Unknown |
+| T-011 | Build image processor | Zainab | High | Produces the five-column image artifact with supported labels and confidence |
+| T-012 | Add image OCR/object mapping | Zainab | Medium | Supported evidence maps to the extractor schema; missing evidence uses Unknown |
+| T-013 | Build video processor | Alex | High | Rejects long clips and produces formatted timestamps/frame IDs at a regular interval |
+| T-014 | Extract video event signals | Alex | Medium | Motion gates detection; documented logic produces the five-column event log |
+| T-015 | Build text processor | Anh | High | Preserves Raw_Text and produces the six-column text artifact |
+| T-016 | Extract text entities/sentiment/topic | Anh | Medium | Entities and sentiment are present; topic uses the approved labels or Other |
 | T-017 | Build CSV processor | Group 2 | Medium | CSV content maps to extractor schema or Unknown fallback |
 | T-018 | Build JSON processor | JN | Medium | JSON content maps to extractor schema or Unknown fallback |
 | T-019 | Build integration function | JN | High | `integrate_records(DataFrame)` returns cleaned incident DataFrame |
@@ -44,10 +44,10 @@ Build a working class prototype that uploads one evidence file at a time through
 | T-030 | Show selected incident summary in dashboard | JN | Medium | Dashboard displays `incident_summary` from Supabase |
 | T-031 | Build final CSV export | JN | High | Download contains exactly Incident_ID, Source, Event, Location, Time, Severity |
 | T-032 | Add unit tests | Group 2 | High | Core pytest tests pass |
-| T-033 | Create architecture diagram | Zainab | Medium | Diagram shows Streamlit -> extractor -> integration -> LLM summarizer -> Supabase -> dashboard/export |
-| T-034 | Write project report | Alex | High | Report explains datasets, models, flow, Supabase table, LLM summary module, and results |
+| T-033 | Create architecture and data-flow diagrams | Zainab | Medium | Both diagrams show the approved pipeline and distinguish artifact/DataFrame/export schemas |
+| T-034 | Write project report | Alex | High | Report explains implemented models, flow, Supabase table, summary module, results, and limitations |
 | T-035 | Record demo | Anh | High | Demo shows upload to Supabase insert to dashboard/export with summary |
-| T-036 | Fresh setup test | Quynh | High | Another laptop/account can run documented demo |
+| T-036 | Deploy and validate class demo | Quynh | High | Hosted app connects to Supabase with protected credentials and passes a fresh-account test |
 | T-037 | Freeze final submission | Group 2 | High | Repo, docs, report, diagram, Supabase SQL, CSV export, and demo are ready |
 
 ## 3. Recommended Work Order
@@ -65,7 +65,7 @@ Build a working class prototype that uploads one evidence file at a time through
 | 9 | Connect full upload -> process -> integrate -> summarize -> ID -> insert flow |
 | 10 | Build dashboard filters, selected incident summary display, and final CSV export |
 | 11 | Add tests for schemas, LLM fallback, IDs, Supabase mapping, and dashboard smoke run |
-| 12 | Create architecture diagram, write report, test fresh setup, and record final demo |
+| 12 | Create both diagrams, write report, deploy/test setup, and record final demo |
 
 ## 4. LLM Summarizer Implementation Checklist
 
@@ -89,5 +89,5 @@ Build a working class prototype that uploads one evidence file at a time through
 | Create intermediate CSV files per modality as main contract | Replaced by pandas DataFrame contract |
 | Build merge script that writes local `data/final/final_incidents.csv` as source of truth | Replaced by Supabase table and export from Supabase |
 | Add upload or watch-folder flow | Replaced by required Streamlit upload only |
-| Prepare AWS no-billing plan | Removed from MVP; Supabase is the selected persistence layer |
+| Prepare an AWS-specific plan | Removed; only a simple hosted class demo with Supabase is required |
 | Put summary code inside integration only | Removed; LLM summary must be a separate folder/function called after Integration |

@@ -1,6 +1,6 @@
 # Product Requirements Document: Multimodal Crime / Incident Report Analyzer
 
-| **Owner** | **Project Type** | **Date** | **Submission** |
+| **Team** | **Project Type** | **Date** | **Submission** |
 | --- | --- | --- | --- |
 | Group 2 | Class prototype only | June 19, 2026 | June 26, 2026 |
 
@@ -9,7 +9,7 @@
 | **Field** | **Decision** |
 | --- | --- |
 | Project name | Multimodal Crime / Incident Report Analyzer |
-| Owner | Group 2 |
+| Team | Group 2 |
 | Project type | Class prototype only |
 | Primary language | Python |
 | Dashboard | Streamlit |
@@ -19,6 +19,7 @@
 | Integration strategy | Extractor output is passed as a pandas DataFrame to Integration logic |
 | LLM summary strategy | Separate `src/llm_summarizer/` module. The platform calls it after Integration and before Supabase insert. Local/free LLM when available, rule-based fallback always required. |
 | Cloud/data scope | Supabase stores structured incident rows only; raw files are not uploaded to Supabase Storage in the MVP |
+| Cloud deployment | Host the class prototype with protected Supabase credentials; production hosting is out of scope |
 | Final submission date | June 26, 2026 |
 
 ## 2. Product Definition
@@ -46,6 +47,8 @@ Incident evidence can arrive as emergency calls, PDF reports, scene photos, surv
 | G7 | Persist cleaned rows in Supabase | Rows are automatically inserted into the Supabase `incidents` table |
 | G8 | Provide dashboard review and export | Streamlit can filter Supabase rows, show summaries, and export the approved six-column CSV |
 | G9 | Provide safe fallbacks | Local/free LLM summary or rule-based fallback summary works without paid APIs |
+| G10 | Produce consistent modality results | Audio, PDF, image, video, and text outputs follow their documented artifact schemas |
+| G11 | Demonstrate cloud access | The hosted class prototype connects to Supabase using protected credentials |
 
 ## 5. Non-Goals
 
@@ -60,6 +63,7 @@ Incident evidence can arrive as emergency calls, PDF reports, scene photos, surv
 | NG7 | Multi-file batch or folder upload | The MVP accepts one file at a time |
 | NG8 | Legal-grade crime classification | Output is for demonstration and education, not official investigation |
 | NG9 | LLM as a factual authority | The LLM summarizer may summarize integrated fields; it must not override final event, location, time, or severity |
+| NG10 | Train custom vision models | Pretrained models and documented rules are sufficient for the class prototype |
 
 ## 6. Users
 
@@ -77,12 +81,24 @@ Incident evidence can arrive as emergency calls, PDF reports, scene photos, surv
 | **Input Type** | **MVP Limit** | **Required Result** |
 | --- | --- | --- |
 | Audio | Exactly 1 uploaded file per run | Speech transcription and urgency/event extraction |
-| PDF | Exactly 1 uploaded file per run | Report text extraction with OCR fallback when needed |
-| Image | Exactly 1 uploaded file per run | Object/OCR extraction from scene images |
-| Video | Exactly 1 uploaded file per run; max 5 minutes | Short surveillance clip frame sampling and event signals |
-| Text | Exactly 1 uploaded file per run | Plain text incident evidence extraction |
+| PDF | Exactly 1 uploaded file per run | Direct text extraction, conditional OCR fallback, and structured report fields |
+| Image | Exactly 1 uploaded file per run | Scene/object detection, OCR, and bounded confidence |
+| Video | Exactly 1 uploaded file per run; max 5 minutes | Regular frame sampling, motion gating, and timestamped event signals |
+| Text | Exactly 1 uploaded file per run | Preserved source text, entities, sentiment, and topic |
 | CSV | Exactly 1 uploaded file per run | Structured/semi-structured tabular incident evidence extraction |
 | JSON | Exactly 1 uploaded file per run | Structured/semi-structured JSON incident evidence extraction |
+
+The main application contract remains the shared extractor DataFrame. For team review and demonstration, each unstructured modality also produces a small artifact with the following exact columns:
+
+| **Modality** | **Artifact Columns** |
+| --- | --- |
+| Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` |
+| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` |
+| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` |
+| Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` |
+| Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` |
+
+These modality artifacts do not replace the shared extractor DataFrame, Supabase table, or final six-column project export.
 
 ## 8. Core Processing Flow
 
@@ -133,7 +149,7 @@ src/llm_summarizer/
 └── schemas.py
 ```
 
-Integration calls the summarizer after rows are standardized and before rows are inserted into Supabase. The summarizer should add a short human-readable incident summary to the main table. If the local/free LLM is unavailable, slow, or returns invalid output, the fallback summary must still produce a safe deterministic summary from the integrated row.
+The platform calls the summarizer after Integration standardizes rows and before Supabase insertion. The summarizer returns `incident_summary`, `summary_method`, and `summary_model` without changing normalized facts. If the local/free LLM is unavailable, slow, disabled, or invalid, the fallback must produce a safe deterministic summary.
 
 ## 11. Success Metrics
 
@@ -150,3 +166,5 @@ Integration calls the summarizer after rows are standardized and before rows are
 | Final schema validity | Exported CSV has exactly six required columns and no extra columns |
 | Missing value handling | 0 null values in final exported CSV |
 | Dashboard usability | User can filter, read summaries, and export incidents from Supabase without code |
+| Modality artifact validity | Audio, PDF, image, video, and text artifacts use their exact documented columns |
+| Hosted demo | Hosted app connects to Supabase without exposing credentials |
