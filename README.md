@@ -46,25 +46,6 @@ Audio CSV columns are exactly:
 Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
 ```
 
-The implementation lives in `audio/processor.py`, matching the `processor.py`
-layout used by the image, PDF, text, and video modules. `audio/pipeline.py` is
-retained as a backward-compatible import alias.
-
-## Draft Modality Processors
-
-The image, PDF, text, and video draft processors validate one input file and
-write a schema-correct demonstration CSV. Their default output paths are inside
-each module's `output/` folder.
-
-```bash
-python -m images.processor path/to/scene.png
-python -m pdf.processor path/to/report.pdf
-python -m text.processor path/to/report.txt
-python -m video.processor path/to/clip.mp4
-```
-
-Pass `--output path/to/result.csv` to override a default output path.
-
 ## Tests
 
 ```bash
