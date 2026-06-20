@@ -173,7 +173,7 @@ The LLM summarizer can use a local/free text-generation model such as Ollama if 
 | LLM_TIMEOUT_SECONDS | No | Optional timeout for summary generation before fallback |
 | ENABLE_RULE_SUMMARY_FALLBACK | No | Keep summary fallback enabled; should default to true |
 | ENABLE_OCR_FALLBACK | No | Allow PDF/image OCR fallback |
-| FAST_DEMO_MODE | No | Use lightweight processing for demo safety |
+| FAST_DEMO_MODE | No | Use reduced processing for demo safety |
 
 For deployment, store Supabase values in the host's secret manager or environment settings. Do not commit credentials or raw evidence. The hosted app only needs to support the classroom workflow; production availability and emergency-service security certification are out of scope.
 
