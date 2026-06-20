@@ -5,17 +5,17 @@ from .transcribe import transcribe_audio
 
 
 def process_audio_file(*args, **kwargs):
-    """Lazily import the file pipeline so ``python -m`` runs without warnings."""
+    """Lazily import the processor so ``python -m`` runs without warnings."""
 
-    from .pipeline import process_audio_file as _process_audio_file
+    from .processor import process_audio_file as _process_audio_file
 
     return _process_audio_file(*args, **kwargs)
 
 
 def process_audio_folder(*args, **kwargs):
-    """Lazily import the folder pipeline so ``python -m`` runs without warnings."""
+    """Lazily import the processor so ``python -m`` runs without warnings."""
 
-    from .pipeline import process_audio_folder as _process_audio_folder
+    from .processor import process_audio_folder as _process_audio_folder
 
     return _process_audio_folder(*args, **kwargs)
 

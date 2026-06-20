@@ -10,7 +10,7 @@ import pandas as pd
 
 from audio.config import OUTPUT_COLUMNS
 from audio.extract import analyze_transcript
-from audio.pipeline import main, process_audio_file, process_audio_folder
+from audio.processor import main, process_audio_file, process_audio_folder
 
 
 class AudioProcessorTests(unittest.TestCase):
