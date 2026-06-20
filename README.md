@@ -1,215 +1,79 @@
-# Multimodal Crime / Incident Report Analyzer
+# Multimodal Incident Analyzer
 
-An educational class prototype that converts one uploaded incident-evidence file into zero, one, or many structured incident records. The approved MVP uses a Streamlit single-file upload flow, synchronous local processing, pandas DataFrames between modules, and Supabase Postgres as the source of truth after insertion.
+A classroom prototype that converts audio, PDF, image, video, text, CSV, or JSON evidence into structured incident records.
 
-> This project is a classroom prototype. It is not production emergency-response software, investigative evidence, or a legal decision system.
+> This project is for education only. It is not an emergency-response, investigative, or legal decision system.
 
-## Approved Processing Flow
+## Processing Flow
 
 ```text
-Streamlit single-file upload
-        ↓
-File-type detection and extractor routing
-        ↓
-Extractor DataFrame
-        ↓
-Integration and severity normalization
-        ↓
-Local/free LLM summary or deterministic fallback
-        ↓
-INC_TYPE_NUMBER ID generation
-        ↓
-Supabase incidents table
-        ↓
-Dashboard review and six-column CSV export
+Single-file upload
+    -> modality processor
+    -> shared pandas DataFrame
+    -> integration and severity normalization
+    -> LLM summary or rule-based fallback
+    -> incident ID
+    -> Supabase
+    -> dashboard and CSV export
 ```
 
-The dashboard and final export must read from Supabase. Local modality CSV files are compatibility templates only and are not the persistent source of truth.
+One file may produce zero, one, or many incidents. Supabase is the source of truth after insertion.
 
-## Supported Inputs
-
-| Type | Extensions | Abbreviation | MVP behavior |
-| --- | --- | --- | --- |
-| Audio | `.wav`, `.mp3`, `.m4a` | `AUD` | Transcribe or fall back safely, then extract incident signals |
-| PDF | `.pdf` | `PDF` | Extract text with optional OCR fallback |
-| Image | `.jpg`, `.jpeg`, `.png` | `IMG` | Extract OCR and object signals |
-| Video | `.mp4`, `.mov` | `VID` | Reject clips over five minutes and sample short videos |
-| Text | `.txt` | `TXT` | Extract incident fields from text |
-| CSV | `.csv` | `CSV` | Map incident-like rows into the extractor schema |
-| JSON | `.json` | `JSON` | Map incident-like objects into the extractor schema |
-
-Exactly one file is uploaded per processing run. One file may produce multiple incident rows.
 
 ## Data Contracts
 
-Every extractor returns a pandas DataFrame with these columns:
-
-```text
-source_filename, source_type, raw_event, raw_location, raw_time, raw_severity, confidence, raw_text
-```
-
-Integration receives that DataFrame in memory. Missing values use `Unknown`, and final severity is normalized to `Low`, `Medium`, or `High`.
-
-The final submission CSV is generated from Supabase with exactly:
+The final CSV contains exactly:
 
 ```text
 Incident_ID, Source, Event, Location, Time, Severity
 ```
 
-Incident IDs use a source-specific format such as `INC_AUD_001`, `INC_PDF_001`, or `INC_VID_001`.
-
-## Repository Structure
-
-```text
-multimodal-incident-analyzer/
-├── .env.example
-├── .gitignore
-├── app.py
-├── LICENSE
-├── README.md
-├── requirements.txt
-├── audio/
-│   ├── process_audio.py
-│   ├── process_multiple_audios.py
-│   ├── audio_output.csv
-│   └── 911_first6sec/              # local sample data; not committed
-├── dashboard/
-│   └── app.py                      # legacy compatibility entry point
-├── diagrams/
-│   ├── architecture.png
-│   └── data_flow.png
-├── docs/
-│   ├── PRD.md
-│   ├── rules.md
-│   ├── specs.md
-│   ├── tech.md
-│   └── tickets.md
-├── docs_docx/
-│   ├── PRD.docx
-│   ├── rules.docx
-│   ├── specs.docx
-│   ├── tech.docx
-│   └── tickets.docx
-├── images/
-│   ├── process_images.py
-│   └── image_output.csv
-├── integration/
-│   ├── merge_outputs.py
-│   ├── severity_rules.py
-│   └── final_incident_dataset.csv
-├── pdf/
-│   ├── process_pdf.py
-│   └── pdf_output.csv
-├── reports/
-│   └── project_report.md
-├── sql/
-│   └── create_incidents_table.sql
-├── src/
-│   ├── __init__.py
-│   ├── file_type.py
-│   ├── id_generator.py
-│   ├── supabase_client.py
-│   ├── extractors/
-│   │   ├── audio_processor.py
-│   │   ├── csv_processor.py
-│   │   ├── image_processor.py
-│   │   ├── json_processor.py
-│   │   ├── pdf_processor.py
-│   │   ├── text_processor.py
-│   │   └── video_processor.py
-│   ├── integration/
-│   │   ├── integration.py
-│   │   ├── severity.py
-│   │   └── validators.py
-│   ├── llm_summarizer/
-│   │   ├── fallback.py
-│   │   ├── prompts.py
-│   │   ├── schemas.py
-│   │   └── summarizer.py
-│   └── export/
-│       └── csv_export.py
-├── tests/
-│   ├── test_audio_processor.py
-│   ├── test_dashboard_smoke.py
-│   ├── test_extractor_schema.py
-│   ├── test_file_type_detector.py
-│   ├── test_final_export_schema.py
-│   ├── test_id_generator.py
-│   ├── test_integration_schema.py
-│   ├── test_llm_summarizer.py
-│   ├── test_process_multiple_audios.py
-│   └── test_supabase_mapping.py
-├── text/
-│   ├── process_text.py
-│   └── text_output.csv
-└── video/
-    ├── process_video.py
-    ├── tech.docx
-    └── video_output.csv
-```
-
-The older modality folders and `dashboard/` scripts remain as compatibility artifacts while the approved implementation moves under `src/` and root `app.py`.
+Missing text values use `Unknown`. Severity is `Low`, `Medium`, or `High`.
 
 ## Setup
 
-Python 3.10 or newer is recommended.
+Python 3.10 is recommended. FFmpeg is required for audio transcription.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-conda install -c conda-forge ffmpeg
 python -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `SUPABASE_URL` and `SUPABASE_KEY` in `.env`. Do not commit `.env`, API keys, credentials, raw evidence, or private data.
+Install FFmpeg with your system package manager, then add Supabase values to `.env` when working on the application flow. Never commit credentials or private evidence.
 
-## Run the Audio Extractor
+## Audio Processor
 
-```bash
-python audio/process_audio.py path/to/call.wav
-```
-
-To process the bundled audio directory sequentially with resume checkpoints:
+Process one audio file:
 
 ```bash
-python audio/process_multiple_audios.py path/to/audio
+python -m src.audio.cli path/to/call.wav
 ```
 
-## Run the Completed Application
-
-After the root Streamlit and Supabase tickets are implemented:
+Process every supported audio file in a directory:
 
 ```bash
-streamlit run app.py
+python -m src.audio.batch src/audio/test_data
 ```
 
-The completed app must process one file synchronously, summarize integrated rows, assign IDs, insert them into Supabase, and render dashboard/export data from Supabase.
+Results are written to `src/audio/output/audio_output.csv` with these columns:
+
+```text
+Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
+```
 
 ## Tests
 
 ```bash
-pytest
+python -m pytest
 ```
 
-To run only the completed audio tests:
-
-```bash
-python -m unittest discover -s tests -p 'test_audio_processor.py' -v
-```
-
-## Project Documentation
+## Documentation
 
 - [Product requirements](docs/PRD.md)
 - [Functional specifications](docs/specs.md)
 - [Technical design](docs/tech.md)
 - [Project rules](docs/rules.md)
 - [Implementation tickets](docs/tickets.md)
-
-## Safety and Scope
-
-- Use local/free models and deterministic fallbacks; paid APIs are not required.
-- Do not upload raw evidence to Supabase Storage for the MVP.
-- Do not treat generated summaries or severity labels as official conclusions.
-- Keep demonstration samples small and use `FAST_DEMO_MODE=True` when appropriate.
