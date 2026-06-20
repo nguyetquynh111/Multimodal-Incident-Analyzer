@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path(__file__).with_name("audio_output.csv"),
         help="CSV output path (default: audio/audio_output.csv)",
     )
-    parser.add_argument("--model", default=None, help="Optional Hugging Face Wav2Vec2 model")
+    parser.add_argument("--model", default=None, help="Optional OpenAI Whisper model name")
     return parser
 
 

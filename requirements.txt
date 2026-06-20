@@ -1,24 +1,26 @@
 # Core application
 pandas
-numpy
+# Intel macOS is limited to PyTorch 2.2, whose wheels use the NumPy 1.x ABI.
+numpy<2
 streamlit
 python-dotenv
 supabase
 
 # Audio
-librosa
-# Keep librosa's JIT dependencies on versions that publish Python 3.10 wheels
+# OpenAI Whisper uses local PyTorch inference and requires the ffmpeg system command.
+openai-whisper
+# Keep Whisper's JIT dependencies on versions that publish Python 3.10 wheels
 # for Intel macOS. Newer llvmlite releases otherwise require a local LLVM build.
 numba==0.62.1
 llvmlite==0.45.1
-soundfile
-torch
-transformers
+torch==2.2.2
 
 # PDF and OCR
 PyMuPDF
 pdfplumber
 pytesseract
+# 49.x no longer publishes a wheel compatible with Intel macOS.
+cryptography==48.0.1
 
 # Image and video
 # 4.10 is the newest release with an Intel macOS wheel.

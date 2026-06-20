@@ -62,34 +62,90 @@ Incident IDs use a source-specific format such as `INC_AUD_001`, `INC_PDF_001`, 
 
 ```text
 multimodal-incident-analyzer/
+├── .env.example
+├── .gitignore
+├── app.py
+├── LICENSE
 ├── README.md
 ├── requirements.txt
-├── .env.example
-├── app.py
+├── audio/
+│   ├── process_audio.py
+│   ├── process_multiple_audios.py
+│   ├── audio_output.csv
+│   └── 911_first6sec/              # local sample data; not committed
+├── dashboard/
+│   └── app.py                      # legacy compatibility entry point
+├── diagrams/
+│   ├── architecture.png
+│   └── data_flow.png
 ├── docs/
 │   ├── PRD.md
+│   ├── rules.md
 │   ├── specs.md
 │   ├── tech.md
-│   ├── rules.md
 │   └── tickets.md
+├── docs_docx/
+│   ├── PRD.docx
+│   ├── rules.docx
+│   ├── specs.docx
+│   ├── tech.docx
+│   └── tickets.docx
+├── images/
+│   ├── process_images.py
+│   └── image_output.csv
+├── integration/
+│   ├── merge_outputs.py
+│   ├── severity_rules.py
+│   └── final_incident_dataset.csv
+├── pdf/
+│   ├── process_pdf.py
+│   └── pdf_output.csv
+├── reports/
+│   └── project_report.md
 ├── sql/
 │   └── create_incidents_table.sql
 ├── src/
+│   ├── __init__.py
 │   ├── file_type.py
 │   ├── id_generator.py
 │   ├── supabase_client.py
 │   ├── extractors/
+│   │   ├── audio_processor.py
+│   │   ├── csv_processor.py
+│   │   ├── image_processor.py
+│   │   ├── json_processor.py
+│   │   ├── pdf_processor.py
+│   │   ├── text_processor.py
+│   │   └── video_processor.py
 │   ├── integration/
 │   │   ├── integration.py
 │   │   ├── severity.py
 │   │   └── validators.py
 │   ├── llm_summarizer/
+│   │   ├── fallback.py
+│   │   ├── prompts.py
+│   │   ├── schemas.py
+│   │   └── summarizer.py
 │   └── export/
-├── diagrams/
-│   └── architecture.png
-├── reports/
-│   └── project_report.md
-└── tests/
+│       └── csv_export.py
+├── tests/
+│   ├── test_audio_processor.py
+│   ├── test_dashboard_smoke.py
+│   ├── test_extractor_schema.py
+│   ├── test_file_type_detector.py
+│   ├── test_final_export_schema.py
+│   ├── test_id_generator.py
+│   ├── test_integration_schema.py
+│   ├── test_llm_summarizer.py
+│   ├── test_process_multiple_audios.py
+│   └── test_supabase_mapping.py
+├── text/
+│   ├── process_text.py
+│   └── text_output.csv
+└── video/
+    ├── process_video.py
+    ├── tech.docx
+    └── video_output.csv
 ```
 
 The older modality folders and `dashboard/` scripts remain as compatibility artifacts while the approved implementation moves under `src/` and root `app.py`.
@@ -102,6 +158,7 @@ Python 3.10 or newer is recommended.
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
+conda install -c conda-forge ffmpeg
 python -m pip install -r requirements.txt
 cp .env.example .env
 ```
@@ -114,7 +171,11 @@ Set `SUPABASE_URL` and `SUPABASE_KEY` in `.env`. Do not commit `.env`, API keys,
 python audio/process_audio.py path/to/call.wav
 ```
 
-The default local speech model is `facebook/wav2vec2-base-960h`. Its files may download on first use. If transcription dependencies or model files are unavailable, the extractor returns a safe `Unknown` row instead of crashing.
+To process the bundled audio directory sequentially with resume checkpoints:
+
+```bash
+python audio/process_multiple_audios.py path/to/audio
+```
 
 ## Run the Completed Application
 

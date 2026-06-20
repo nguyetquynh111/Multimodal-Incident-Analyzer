@@ -1,7 +1,7 @@
 """Audio extraction for the Multimodal Incident Analyzer.
 
 The public ``process_audio`` function accepts a path or an uploaded file,
-transcribes it with a local Wav2Vec2 model, and returns the extractor DataFrame
+transcribes it with a local OpenAI Whisper model, and returns the extractor DataFrame
 contract shared by all modalities.  Model imports are lazy so schema validation
 and rule extraction remain usable when the optional audio stack is unavailable.
 """
@@ -34,7 +34,7 @@ EXTRACTOR_COLUMNS = [
     "raw_text",
 ]
 SUPPORTED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a"}
-DEFAULT_ASR_MODEL = "facebook/wav2vec2-base-960h"
+DEFAULT_WHISPER_MODEL = "base.en"
 UNKNOWN = "Unknown"
 
 
@@ -244,46 +244,57 @@ def calculate_urgency(transcript: str, acoustic_score: float = 0.0) -> float:
 
 
 @lru_cache(maxsize=2)
-def _load_wav2vec2(model_name: str, local_files_only: bool) -> tuple[Any, Any]:
+def _load_whisper(model_name: str, device: str, download_root: str | None) -> Any:
     try:
-        from transformers import AutoProcessor, Wav2Vec2ForCTC
+        import whisper
     except ImportError as exc:  # pragma: no cover - depends on optional packages
         raise RuntimeError(
-            "Audio transcription requires transformers, torch, and librosa. "
+            "Audio transcription requires openai-whisper. "
             "Install the project requirements or inject a transcriber."
         ) from exc
 
-    processor = AutoProcessor.from_pretrained(model_name, local_files_only=local_files_only)
-    model = Wav2Vec2ForCTC.from_pretrained(model_name, local_files_only=local_files_only)
-    model.eval()
-    return processor, model
+    load_options: dict[str, Any] = {"device": device}
+    if download_root:
+        load_options["download_root"] = download_root
+    return whisper.load_model(model_name, **load_options)
 
 
-def transcribe_wav2vec2(audio_path: str | Path, model_name: str | None = None) -> TranscriptionResult:
-    """Transcribe an audio file with the local/free Hugging Face Wav2Vec2 model."""
+def transcribe_whisper(audio_path: str | Path, model_name: str | None = None) -> TranscriptionResult:
+    """Transcribe an audio file locally with OpenAI Whisper."""
 
-    try:
-        import librosa
-        import torch
-    except ImportError as exc:  # pragma: no cover - depends on optional packages
+    if shutil.which("ffmpeg") is None:
         raise RuntimeError(
-            "Audio transcription requires transformers, torch, and librosa."
-        ) from exc
+            "OpenAI Whisper requires ffmpeg. On macOS, install it with: brew install ffmpeg"
+        )
 
-    selected_model = model_name or os.getenv("AUDIO_ASR_MODEL", DEFAULT_ASR_MODEL)
-    local_only = os.getenv("AUDIO_LOCAL_FILES_ONLY", "false").lower() in {"1", "true", "yes"}
-    processor, model = _load_wav2vec2(selected_model, local_only)
-    samples, _ = librosa.load(str(audio_path), sr=16_000, mono=True)
-    if samples.size == 0:
-        return TranscriptionResult(UNKNOWN, 0.0)
+    selected_model = model_name or os.getenv("WHISPER_MODEL", DEFAULT_WHISPER_MODEL)
+    device = os.getenv("WHISPER_DEVICE", "cpu").strip() or "cpu"
+    language = os.getenv("WHISPER_LANGUAGE", "en").strip() or None
+    download_root = os.getenv("WHISPER_MODEL_DIR", "").strip() or None
+    model = _load_whisper(selected_model, device, download_root)
+    result = model.transcribe(
+        str(audio_path),
+        task="transcribe",
+        language=language,
+        fp16=device.startswith("cuda"),
+        verbose=False,
+    )
 
-    inputs = processor(samples, sampling_rate=16_000, return_tensors="pt", padding=True)
-    with torch.inference_mode():
-        logits = model(**inputs).logits
-    predicted_ids = torch.argmax(logits, dim=-1)
-    text = processor.batch_decode(predicted_ids)[0]
-    token_confidence = torch.softmax(logits, dim=-1).amax(dim=-1).mean().item()
-    return TranscriptionResult(_clean_text(text), _clamp(token_confidence))
+    text = _clean_text(result.get("text", UNKNOWN))
+    segments = result.get("segments") or []
+    segment_confidences = []
+    for segment in segments:
+        avg_logprob = segment.get("avg_logprob")
+        if avg_logprob is None:
+            continue
+        no_speech_probability = _clamp(segment.get("no_speech_prob", 0.0))
+        segment_confidences.append(math.exp(float(avg_logprob)) * (1.0 - no_speech_probability))
+    confidence = (
+        sum(segment_confidences) / len(segment_confidences)
+        if segment_confidences
+        else 0.0
+    )
+    return TranscriptionResult(text, _clamp(confidence))
 
 
 def _source_filename(audio: str | Path | BinaryIO) -> str:
@@ -334,6 +345,7 @@ def process_audio(
     *,
     transcriber: Callable[[Path], Any] | None = None,
     model_name: str | None = None,
+    raise_on_transcription_error: bool = False,
 ) -> pd.DataFrame:
     """Process one audio file and return the required eight-column DataFrame.
 
@@ -354,10 +366,12 @@ def process_audio(
             transcription_value = (
                 transcriber(audio_path)
                 if transcriber is not None
-                else transcribe_wav2vec2(audio_path, model_name=model_name)
+                else transcribe_whisper(audio_path, model_name=model_name)
             )
             transcription = _normalize_transcription(transcription_value)
-        except Exception:
+        except Exception as exc:
+            if raise_on_transcription_error:
+                raise RuntimeError(f"Whisper transcription failed for {filename}: {exc}") from exc
             transcription = TranscriptionResult(UNKNOWN, 0.0)
 
     transcript = transcription.text
@@ -400,5 +414,5 @@ __all__ = [
     "extract_location",
     "extract_time",
     "process_audio",
-    "transcribe_wav2vec2",
+    "transcribe_whisper",
 ]

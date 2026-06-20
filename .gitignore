@@ -226,4 +226,4 @@ audio/911_first6sec/
 audio/*.zip
 
 # Local model caches
-.cache/huggingface/
+.cache/whisper/

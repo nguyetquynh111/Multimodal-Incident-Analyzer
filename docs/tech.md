@@ -148,7 +148,7 @@ for row in integrated_df.to_dict(orient="records"):
 insert_incidents(rows_to_insert)
 ```
 
-The LLM summarizer can use a local/free Hugging Face or Ollama-style model if available, but the fallback in `fallback.py` must always work without model downloads or paid APIs.
+The LLM summarizer can use a local/free text-generation model such as Ollama if available, but the fallback in `fallback.py` must always work without model downloads or paid APIs.
 
 ## 5. Suggested Dependencies
 
@@ -156,9 +156,10 @@ The LLM summarizer can use a local/free Hugging Face or Ollama-style model if av
 | --- | --- |
 | Core | python, pandas, numpy, streamlit, python-dotenv |
 | Supabase | supabase |
+| Audio | openai-whisper, torch, and the FFmpeg system command |
 | PDF | pymupdf, pdfplumber, pytesseract |
 | Image/Video | opencv-python, moviepy, imageio, pillow |
-| NLP/LLM optional | spacy, nltk, transformers, torch |
+| NLP/LLM optional | spacy, nltk, and an optional local LLM client |
 | Testing | pytest |
 | Not required in MVP | watchdog, sqlite-specific tooling, AWS SDK, async queue libraries |
 

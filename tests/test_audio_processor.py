@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from io import BytesIO
+import os
 from pathlib import Path
+import sys
 import tempfile
+from types import ModuleType
 import unittest
+from unittest.mock import Mock, patch
 import wave
 
-from src.extractors.audio_processor import EXTRACTOR_COLUMNS, UNKNOWN, process_audio
+from src.extractors.audio_processor import (
+    EXTRACTOR_COLUMNS,
+    UNKNOWN,
+    _load_whisper,
+    process_audio,
+    transcribe_whisper,
+)
 
 
 def _write_silent_wav(path: Path) -> None:
@@ -95,6 +105,46 @@ class AudioProcessorTests(unittest.TestCase):
     def test_unsupported_extension_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "Unsupported audio type"):
             process_audio("call.txt", transcriber=lambda _: "test")
+
+    def test_openai_whisper_backend_normalizes_transcription(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "whisper.wav"
+            _write_silent_wav(path)
+
+            model = Mock()
+            model.transcribe.return_value = {
+                "text": "  There is a fire at the school.  ",
+                "segments": [{"avg_logprob": -0.1, "no_speech_prob": 0.05}],
+            }
+            whisper_module = ModuleType("whisper")
+            whisper_module.load_model = Mock(return_value=model)
+
+            _load_whisper.cache_clear()
+            with (
+                patch.dict(sys.modules, {"whisper": whisper_module}),
+                patch.dict(
+                    os.environ,
+                    {
+                        "WHISPER_DEVICE": "cpu",
+                        "WHISPER_LANGUAGE": "en",
+                        "WHISPER_MODEL_DIR": "",
+                    },
+                ),
+                patch("src.extractors.audio_processor.shutil.which", return_value="/usr/bin/ffmpeg"),
+            ):
+                result = transcribe_whisper(path, model_name="tiny.en")
+            _load_whisper.cache_clear()
+
+        whisper_module.load_model.assert_called_once_with("tiny.en", device="cpu")
+        model.transcribe.assert_called_once_with(
+            str(path),
+            task="transcribe",
+            language="en",
+            fp16=False,
+            verbose=False,
+        )
+        self.assertEqual(result.text, "There is a fire at the school.")
+        self.assertGreater(result.confidence, 0.8)
 
 
 if __name__ == "__main__":
