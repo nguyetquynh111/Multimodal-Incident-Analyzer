@@ -1,0 +1,4 @@
+Call_ID,Transcript,Extracted_Event,Location,Sentiment,Urgency_Score
+C001,"There is a fire, people are trapped on the second floor of Downtown Ave",building fire,Downtown Ave,Distressed,0.91
+C002,"A car crashed at the intersection of Main Street and 5th",car accident,Main Street,Distressed,0.78
+C003,"Someone broke into my house on Oak Road and stole my laptop",burglary/robbery,Oak Road,Concerned,0.55

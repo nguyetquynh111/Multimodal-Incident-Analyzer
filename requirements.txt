@@ -1,30 +1,27 @@
-# Core application
+# Multimodal Incident Analyzer — all dependencies (app + every modality).
+#
+# Versions are intentionally left open so pip selects wheels compatible with
+# your Python. Tested on Python 3.13 (Apple Silicon); also resolves on 3.10.
+# The audio module additionally needs the FFmpeg system command for real
+# Whisper transcription:  macOS -> brew install ffmpeg
+
+# Core: integration, Streamlit dashboard/app, Supabase
 pandas
-# Intel macOS is limited to PyTorch 2.2, whose wheels use the NumPy 1.x ABI.
-numpy<2
 streamlit
 python-dotenv
 supabase
 
-# Audio
-# OpenAI Whisper uses local PyTorch inference and requires the ffmpeg system command.
+# Audio — Whisper speech-to-text (pulls torch + numba automatically)
 openai-whisper
-# Keep Whisper's JIT dependencies on versions that publish Python 3.10 wheels
-# for Intel macOS. Newer llvmlite releases otherwise require a local LLVM build.
-numba==0.62.1
-llvmlite==0.45.1
-torch==2.2.2
+torch
 
 # PDF and OCR
 PyMuPDF
 pdfplumber
 pytesseract
-# 49.x no longer publishes a wheel compatible with Intel macOS.
-cryptography==48.0.1
 
 # Image and video
-# 4.10 is the newest release with an Intel macOS wheel.
-opencv-python==4.10.0.84
+opencv-python
 moviepy
 imageio
 Pillow

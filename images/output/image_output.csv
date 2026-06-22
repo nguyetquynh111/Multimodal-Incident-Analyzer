@@ -1,0 +1,3 @@
+Image_ID,Scene_Type,Objects_Detected,Text_Extracted,Confidence_Score
+IMG_034,Fire Scene,"fire, smoke",MAIN ST,0.94
+IMG_051,Traffic Accident,"car, person",HWY 12,0.81

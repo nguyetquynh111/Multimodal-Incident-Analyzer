@@ -1,1 +1,3 @@
 Text_ID,Source,Raw_Text,Sentiment,Entities,Topic
+TXT_112,Twitter,"Robbery reported on Oak Street, Chicago",Negative,Oak Street; Chicago,Theft / Robbery
+TXT_113,News,Fire breaks out at a downtown warehouse overnight,Negative,downtown,Fire / Arson
