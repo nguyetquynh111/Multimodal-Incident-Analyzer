@@ -19,6 +19,9 @@ torch==2.2.2
 PyMuPDF
 pdfplumber
 pytesseract
+# Optional NER for PDF field extraction; the processor falls back to regex
+# when spaCy or its model is unavailable.
+spacy
 # 49.x no longer publishes a wheel compatible with Intel macOS.
 cryptography==48.0.1
 
