@@ -1,0 +1,182 @@
+"""Tests for the video processor (T-013 / T-014).
+
+Covers:
+- process_video_file() returns the exact extractor schema
+- source_type is always VID
+- confidence is always 0.0 – 1.0
+- Videos longer than 5 minutes are rejected
+- Unreadable paths return an empty DataFrame
+- Event classification logic
+- Severity mapping logic
+"""
+
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+import cv2
+import numpy as np
+import pandas as pd
+
+from video.processor import (
+    EXTRACTOR_COLUMNS,
+    SOURCE_TYPE,
+    classify_event,
+    event_to_severity,
+    format_objects,
+    process_video_file,
+)
+
+
+def _make_synthetic_video(path: Path, duration_seconds: int = 4, fps: int = 15) -> None:
+    """Write a tiny synthetic video file for testing."""
+    width, height = 320, 180
+    writer = cv2.VideoWriter(
+        str(path),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (width, height),
+    )
+    total_frames = duration_seconds * fps
+    for i in range(total_frames):
+        frame = np.full((height, width, 3), 200, dtype=np.uint8)
+        x = (i * 6) % width
+        cv2.rectangle(frame, (x, 60), (x + 30, 120), (30, 30, 30), -1)
+        writer.write(frame)
+    writer.release()
+
+
+class VideoExtractorSchemaTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.video_path = Path(self._tmpdir.name) / "test_clip.mp4"
+        _make_synthetic_video(self.video_path)
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def test_returns_dataframe_with_exact_extractor_columns(self) -> None:
+        df = process_video_file(str(self.video_path))
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(list(df.columns), EXTRACTOR_COLUMNS)
+
+    def test_source_type_is_always_vid(self) -> None:
+        df = process_video_file(str(self.video_path))
+        self.assertGreaterEqual(len(df), 1)
+        for value in df["source_type"]:
+            self.assertEqual(value, SOURCE_TYPE)
+
+    def test_source_filename_matches_file(self) -> None:
+        df = process_video_file(str(self.video_path))
+        for value in df["source_filename"]:
+            self.assertEqual(value, self.video_path.name)
+
+    def test_confidence_is_bounded_float(self) -> None:
+        df = process_video_file(str(self.video_path))
+        for value in df["confidence"]:
+            self.assertIsInstance(float(value), float)
+            self.assertGreaterEqual(value, 0.0)
+            self.assertLessEqual(value, 1.0)
+
+    def test_severity_is_always_valid(self) -> None:
+        df = process_video_file(str(self.video_path))
+        for value in df["raw_severity"]:
+            self.assertIn(value, {"Low", "Medium", "High"})
+
+    def test_no_null_values(self) -> None:
+        df = process_video_file(str(self.video_path))
+        self.assertFalse(df.isnull().values.any())
+
+    def test_unreadable_path_returns_empty_dataframe(self) -> None:
+        df = process_video_file("nonexistent_video.mp4")
+        self.assertIsInstance(df, pd.DataFrame)
+        self.assertEqual(list(df.columns), EXTRACTOR_COLUMNS)
+        self.assertEqual(len(df), 0)
+
+    def test_video_over_five_minutes_is_rejected(self) -> None:
+        long_video = Path(self._tmpdir.name) / "long_clip.mp4"
+        _make_synthetic_video(long_video, duration_seconds=301)
+        df = process_video_file(str(long_video))
+        self.assertEqual(list(df.columns), EXTRACTOR_COLUMNS)
+        self.assertEqual(len(df), 0)
+
+
+class ClassifyEventTests(unittest.TestCase):
+    def test_altercation_with_high_motion(self) -> None:
+        event, conf = classify_event(0.15, ["person", "person"], 2)
+        self.assertEqual(event, "Possible altercation")
+        self.assertGreater(conf, 0.5)
+
+    def test_multiple_persons_low_motion(self) -> None:
+        event, conf = classify_event(0.01, [], 2)
+        self.assertEqual(event, "Multiple persons present")
+
+    def test_person_running(self) -> None:
+        event, conf = classify_event(0.20, ["person"], 1)
+        self.assertEqual(event, "Person running")
+
+    def test_person_walking(self) -> None:
+        event, conf = classify_event(0.08, ["person"], 1)
+        self.assertEqual(event, "Person walking")
+
+    def test_no_activity(self) -> None:
+        event, conf = classify_event(0.0, [], 0)
+        self.assertEqual(event, "No activity")
+
+    def test_yolo_ran_but_found_nothing(self) -> None:
+        event, conf = classify_event(0.05, [], 0, yolo_ran=True)
+        self.assertEqual(event, "Unclear motion detected")
+
+    def test_motion_detected_without_yolo(self) -> None:
+        event, conf = classify_event(0.05, [], 0, yolo_ran=False)
+        self.assertEqual(event, "Motion detected")
+
+    def test_confidence_is_bounded(self) -> None:
+        for score in [0.0, 0.05, 0.15, 0.30, 0.50]:
+            for moving in [0, 1, 2, 3]:
+                _, conf = classify_event(score, [], moving)
+                self.assertGreaterEqual(conf, 0.0)
+                self.assertLessEqual(conf, 1.0)
+
+
+class SeverityMappingTests(unittest.TestCase):
+    def test_fire_is_high(self) -> None:
+        self.assertEqual(event_to_severity("Fire detected"), "High")
+
+    def test_altercation_is_high(self) -> None:
+        self.assertEqual(event_to_severity("Possible altercation"), "High")
+
+    def test_collapsing_is_high(self) -> None:
+        self.assertEqual(event_to_severity("Person collapsing"), "High")
+
+    def test_running_is_medium(self) -> None:
+        self.assertEqual(event_to_severity("Person running"), "Medium")
+
+    def test_multiple_persons_is_medium(self) -> None:
+        self.assertEqual(event_to_severity("Multiple persons detected"), "Medium")
+
+    def test_walking_is_low(self) -> None:
+        self.assertEqual(event_to_severity("Person walking"), "Low")
+
+    def test_no_activity_is_low(self) -> None:
+        self.assertEqual(event_to_severity("No activity"), "Low")
+
+
+class FormatObjectsTests(unittest.TestCase):
+    def test_single_person(self) -> None:
+        self.assertEqual(format_objects(["person"]), "1 person")
+
+    def test_multiple_persons(self) -> None:
+        self.assertEqual(format_objects(["person", "person"]), "2 persons")
+
+    def test_motion_regions_fallback(self) -> None:
+        self.assertEqual(format_objects([], moving_regions=3), "3 motion regions")
+
+    def test_none_detected(self) -> None:
+        self.assertEqual(format_objects([]), "none detected")
+
+
+if __name__ == "__main__":
+    unittest.main()
