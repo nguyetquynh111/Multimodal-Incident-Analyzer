@@ -69,3 +69,33 @@ def test_video_five_column_draft_maps_to_incident_schema() -> None:
         }
     ]
     assert list(to_final_csv_frame(result).columns) == list(FINAL_CSV_COLUMNS)
+
+
+def test_text_six_column_draft_maps_labeled_entities_to_location_and_time() -> None:
+    draft = pd.DataFrame(
+        [
+            {
+                "Text_ID": "TXT_112",
+                "Source": "Twitter",
+                "Raw_Text": "Robbery reported on Oak Street near Chicago around 9pm tonight.",
+                "Sentiment": "Negative",
+                "Entities": "LOCATION: Oak Street, Chicago; ORGANIZATION: Police; DATE: 9pm tonight",
+                "Topic": "Theft / Robbery",
+            }
+        ]
+    )
+
+    result = build_incidents(draft, "text", existing_ids=[9])
+
+    assert list(result.columns) == list(INCIDENT_COLUMNS)
+    assert result.to_dict(orient="records") == [
+        {
+            "incident_id": 10,
+            "source": "Text",
+            "event": "Theft / Robbery",
+            "location": "Oak Street, Chicago",
+            "time": "9pm tonight",
+            "severity": "Medium",
+        }
+    ]
+    assert list(to_final_csv_frame(result).columns) == list(FINAL_CSV_COLUMNS)

@@ -182,6 +182,29 @@ def _first_known(row: Mapping[str, Any], *columns: str) -> str:
     return UNKNOWN
 
 
+def _text_entity_group(entities: Any, *labels: str) -> str:
+    """Extract one label group from text ``Entities`` values.
+
+    Student 5 stores entities as semicolon-delimited groups such as
+    ``LOCATION: Oak Street; DATE: 9pm tonight``. Older/simple outputs may store
+    only a plain location string, so callers can still fall back to the raw
+    ``Entities`` field when no labeled group is present.
+    """
+
+    text = _clean(entities)
+    if text == UNKNOWN:
+        return UNKNOWN
+    wanted = {label.upper() for label in labels}
+    values: list[str] = []
+    for match in re.finditer(r"(?:^|;\s*)([A-Za-z_ ]+):\s*([^;]+)", text):
+        label = match.group(1).strip().upper().replace("_", " ")
+        if label in wanted:
+            value = _clean(match.group(2))
+            if value != UNKNOWN:
+                values.append(value)
+    return ", ".join(values) if values else UNKNOWN
+
+
 def _mapped_severity(
     row: Mapping[str, Any],
     *,
@@ -258,10 +281,21 @@ def _map_video(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _map_text(row: Mapping[str, Any]) -> dict[str, Any]:
+    entities = row.get("Entities")
+    location = _first_known(row, "Location")
+    if location == UNKNOWN:
+        location = _text_entity_group(entities, "LOCATION", "LOC", "GPE", "FAC")
+    if location == UNKNOWN:
+        location = _first_known(row, "Entities")
+
+    time = _first_known(row, "Time", "Timestamp")
+    if time == UNKNOWN:
+        time = _text_entity_group(entities, "DATE", "TIME")
+
     return {
         "event": normalize_event(_first_known(row, "Topic")),
-        "location": _first_known(row, "Entities", "Location"),
-        "time": _first_known(row, "Time", "Timestamp"),
+        "location": location,
+        "time": time,
         "severity": _mapped_severity(
             row,
             explicit=("Severity",),
