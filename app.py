@@ -14,6 +14,7 @@ Run with:  streamlit run app.py
 
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -42,6 +43,7 @@ SOURCE_ICON = {"Audio": "mic", "PDF": "description", "Image": "image", "Video": 
 FINAL_COLS = list(ig.FINAL_CSV_COLUMNS)
 
 ACCENT = "#4F46E5"
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
@@ -138,9 +140,17 @@ def _stat(col, label: str, value, color: str = "#0F172A", icon: str | None = Non
 # --------------------------------------------------------------------------- #
 # Supabase helpers
 # --------------------------------------------------------------------------- #
-def _hint(error: Exception) -> str:
-    cause = getattr(error, "__cause__", None)
-    return f"{error} ({cause})" if cause else str(error)
+def _friendly_error(error: Exception, action: str) -> str:
+    """Return useful guidance without exposing implementation details."""
+
+    message = str(error).lower()
+    if any(term in message for term in ("ffmpeg", "whisper", "transcrib", "audio")):
+        return "We couldn't transcribe this audio. Please confirm the file plays correctly and try again."
+    if any(term in message for term in ("unsupported", "file type", "extension")):
+        return "This file type isn't supported yet. Please choose one of the listed evidence formats."
+    if any(term in message for term in ("supabase", "postgrest", "connection", "network", "timeout")):
+        return "Incident records are temporarily unavailable. Please try again in a moment."
+    return f"We couldn't {action}. Please check your file or entries and try again."
 
 
 def load_incidents() -> pd.DataFrame:
@@ -156,15 +166,6 @@ def existing_incident_ids() -> list:
         return [r.get("incident_id") for r in query_incidents(limit=1000) if r.get("incident_id") is not None]
     except Exception:
         return []
-
-
-@st.cache_data(ttl=30, show_spinner=False)
-def connection_ok() -> bool:
-    try:
-        query_incidents(limit=1)
-        return True
-    except Exception:
-        return False
 
 
 def _save_upload_to_tempdir(uploaded) -> Path:
@@ -186,6 +187,73 @@ def _style_table(display_df: pd.DataFrame):
     if "Severity" in display_df.columns:
         styler = styler.map(sev, subset=["Severity"])
     return styler
+
+
+def _review_queue() -> dict[str, dict]:
+    """Return evidence reviewed during this browser session, keyed by filename."""
+
+    return st.session_state.setdefault("review_queue", {})
+
+
+def _queue_review(
+    filename: str,
+    source_type: str,
+    draft: pd.DataFrame,
+    *,
+    final: pd.DataFrame | None = None,
+    saved: bool | None = None,
+) -> None:
+    existing = _review_queue().get(filename, {})
+    _review_queue()[filename] = {
+        "source_type": source_type,
+        "draft": draft.copy(),
+        "final": final.copy() if final is not None else existing.get("final"),
+        "saved": existing.get("saved", False) if saved is None else saved,
+    }
+
+
+def _sync_current_review() -> None:
+    """Carry a review created before the session queue was introduced into it."""
+
+    result = st.session_state.get("ingest")
+    if not result or "draft" not in result or "filename" not in result:
+        return
+    source_type = result.get("source_type") or ig.detect_source_type(result["filename"])
+    if source_type:
+        _queue_review(
+            result["filename"],
+            source_type,
+            result["draft"],
+            final=result.get("final"),
+        )
+
+
+def _queued_review_status() -> dict[str, int]:
+    status = {source_type: 0 for source_type in ig.MODALITIES}
+    for item in _review_queue().values():
+        status[item["source_type"]] += 1
+    return status
+
+
+def _build_queued_incidents(existing_ids: list) -> pd.DataFrame:
+    saved_frames = []
+    pending_frames = []
+    for item in _review_queue().values():
+        if item.get("saved"):
+            if item.get("final") is not None:
+                saved_frames.append(item["final"].copy())
+            continue
+        pending_frames.append(ig.integrate_records(item["draft"], item["source_type"]))
+
+    if pending_frames:
+        pending = pd.concat(pending_frames, ignore_index=True)
+        pending = ig.assign_incident_ids(pending, ig.next_incident_number(existing_ids))
+    else:
+        pending = pd.DataFrame(columns=ig.INCIDENT_COLUMNS)
+
+    frames = [*saved_frames, pending]
+    nonempty = [frame for frame in frames if not frame.empty]
+    return pd.concat(nonempty, ignore_index=True) if nonempty else pending
 
 
 def _severity_donut(view: pd.DataFrame) -> alt.Chart:
@@ -281,42 +349,50 @@ def _timeline(view: pd.DataFrame):
 # View 1: Ingest & Convert
 # --------------------------------------------------------------------------- #
 def view_ingest() -> None:
-    _page_head("upload_file", "Ingest & Convert", "Upload one evidence file → AI extraction → final schema → Supabase.")
+    _page_head("upload_file", "Add Evidence", "Choose a file and we'll turn it into a clear incident record.")
 
-    uploaded = st.file_uploader("Upload one evidence file", type=ig.supported_extensions())
+    uploaded = st.file_uploader("Choose an evidence file", type=ig.supported_extensions())
     if uploaded is None:
-        st.info("Supported: audio (.wav .mp3 .m4a), PDF, image (.jpg .png), video (.mp4 .mov), text (.txt). "
-                "Try `samples/social_post.txt`.")
+        st.info("You can add an audio recording, document, image, video, or text file.")
         return
 
     source_type = ig.detect_source_type(uploaded.name)
     if source_type is None:
-        st.error(f"Unsupported file type: {Path(uploaded.name).suffix or '(none)'}")
+        st.error("We can't review this file type yet. Please choose an audio, document, image, video, or text file.")
         return
 
     label = ig.source_label(source_type)
     st.markdown(
         f'<span class="badge b-info">{_icon(SOURCE_ICON.get(label, "description"))} '
-        f'Detected: {label} · prefix {ig.source_prefix(source_type)}-</span>', unsafe_allow_html=True)
+        f'Ready to review · {label}</span>', unsafe_allow_html=True)
     st.write("")
 
-    transcript = None
     if source_type == "audio":
-        if not st.toggle("Transcribe with Whisper (needs torch + ffmpeg)", value=False):
-            transcript = st.text_area(
-                "Transcript (audio is analysed from this text)",
-                value="There is a fire, people are trapped on the second floor of Main Street.", height=100)
+        st.info("We'll create a written transcript from this recording automatically.")
 
-    if st.button("Process file", type="primary", icon=":material/play_arrow:"):
-        with st.spinner("Running modality processor + integration…"):
+    if st.button("Review evidence", type="primary", icon=":material/play_arrow:"):
+        with st.spinner("Reviewing your file…"):
             try:
                 path = _save_upload_to_tempdir(uploaded)
-                draft_df = ig.run_modality(source_type, path, transcript=transcript)
+                draft_df = ig.run_modality(source_type, path)
                 final_df = ig.build_incidents(draft_df, source_type, existing_incident_ids())
-                st.session_state["ingest"] = {"draft": draft_df, "final": final_df, "filename": uploaded.name}
+                _queue_review(
+                    uploaded.name,
+                    source_type,
+                    draft_df,
+                    final=final_df,
+                    saved=False,
+                )
+                st.session_state["ingest"] = {
+                    "draft": draft_df,
+                    "final": final_df,
+                    "filename": uploaded.name,
+                    "source_type": source_type,
+                }
             except Exception as exc:  # noqa: BLE001
+                logger.exception("Evidence processing failed")
                 st.session_state.pop("ingest", None)
-                st.error(f"Processing failed: {_hint(exc)}")
+                st.error(_friendly_error(exc, "review this evidence"))
 
     result = st.session_state.get("ingest")
     if not result or result.get("filename") != uploaded.name:
@@ -325,53 +401,64 @@ def view_ingest() -> None:
     final_df = result["final"]
     c1, c2 = st.columns(2)
     with c1:
-        _section("1 · Draft output (modality schema)")
+        _section("What we found")
         st.dataframe(result["draft"], width="stretch", hide_index=True)
     with c2:
-        _section("2 · Final schema (ready for Supabase)")
+        _section("Incident record")
         st.dataframe(_style_table(ig.to_final_csv_frame(final_df)), width="stretch", hide_index=True)
 
     d1, d2 = st.columns(2)
     d1.download_button(
-        "Download final CSV", ig.to_final_csv_frame(final_df).to_csv(index=False).encode("utf-8"),
+        "Download incident record", ig.to_final_csv_frame(final_df).to_csv(index=False).encode("utf-8"),
         file_name=f"{result['filename']}_incidents.csv", mime="text/csv",
         icon=":material/download:", width="stretch")
-    if d2.button("Upload to Supabase", type="primary", icon=":material/cloud_upload:", width="stretch"):
+    if d2.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
         try:
             summary = upload_incidents(final_df)
-            st.success(f"Inserted {summary['inserted_count']} row(s) into Supabase.")
+            st.success(f"Added {summary['inserted_count']} incident record(s).")
+            item = _review_queue().get(result["filename"])
+            if item is not None:
+                item["saved"] = True
+                item["final"] = final_df.copy()
             st.session_state.pop("ingest", None)
         except Exception as exc:  # noqa: BLE001
-            st.error(f"Upload failed: {_hint(exc)}")
+            logger.exception("Incident upload failed")
+            st.error(_friendly_error(exc, "add this incident"))
 
 
 # --------------------------------------------------------------------------- #
 # View 2: Integrate (Final Integration Task)
 # --------------------------------------------------------------------------- #
 def view_integrate() -> None:
-    _page_head("hub", "Integrate", "UNION every modality's output into one unified incident dataset.")
+    _page_head("hub", "Combine Reports", "Bring completed evidence reviews into one organized incident list.")
 
-    status = ig.modality_output_status()
-    _section("Modality outputs detected")
+    _sync_current_review()
+    status = _queued_review_status()
+    _section("Available evidence reviews")
     cols = st.columns(len(ig.MODALITIES))
     for col, source_type in zip(cols, ig.MODALITIES):
         label = ig.source_label(source_type)
+        count = status[source_type]
+        count_label = "review" if count == 1 else "reviews"
         col.markdown(
             f'<div class="mcard">{_icon(SOURCE_ICON.get(label, "description"))}'
-            f'<div class="mname">{label}</div><div class="mcount">{status[source_type]} rows</div></div>',
+            f'<div class="mname">{label}</div><div class="mcount">{count} {count_label}</div></div>',
             unsafe_allow_html=True)
 
+    st.caption("Counts include all evidence reviewed during this session, including records already added.")
+
     if sum(status.values()) == 0:
-        st.warning("No modality output CSVs found. Each modality writes to its `*/output/` folder.")
+        st.info("No completed evidence reviews are available yet. Start by adding an evidence file.")
         return
 
     st.write("")
-    if st.button("Build unified dataset", type="primary", icon=":material/merge:"):
-        with st.spinner("Merging all modalities…"):
+    if st.button("Combine reports", type="primary", icon=":material/merge:"):
+        with st.spinner("Bringing the reports together…"):
             try:
-                st.session_state["master"] = ig.build_master_dataset(existing_incident_ids())
+                st.session_state["master"] = _build_queued_incidents(existing_incident_ids())
             except Exception as exc:  # noqa: BLE001
-                st.error(f"Merge failed: {_hint(exc)}")
+                logger.exception("Report combination failed")
+                st.error(_friendly_error(exc, "combine these reports"))
 
     master = st.session_state.get("master")
     if master is None or master.empty:
@@ -380,12 +467,12 @@ def view_integrate() -> None:
     final_view = ig.to_final_csv_frame(master)
     k = st.columns(3)
     _stat(k[0], "Total incidents", len(master), icon="summarize")
-    _stat(k[1], "Modalities merged", master["source"].nunique(), color=ACCENT, icon="hub")
+    _stat(k[1], "Evidence types", master["source"].nunique(), color=ACCENT, icon="hub")
     _stat(k[2], "High severity", int(master["severity"].value_counts().get("High", 0)),
           color=SEV_COLORS["High"], icon="priority_high")
 
     st.write("")
-    _section(f"Unified master dataset · {len(final_view)} incidents")
+    _section(f"Combined incident list · {len(final_view)} incidents")
     st.dataframe(_style_table(final_view), width="stretch", hide_index=True)
     cc1, cc2 = st.columns(2)
     with cc1:
@@ -395,36 +482,25 @@ def view_integrate() -> None:
         _section("Severity by source")
         st.altair_chart(_severity_by_source(master), width="stretch")
 
-    a, b, c = st.columns(3)
-    a.download_button(
-        "Download final CSV", final_view.to_csv(index=False).encode("utf-8"),
+    st.download_button(
+        "Download combined report", final_view.to_csv(index=False).encode("utf-8"),
         file_name="final_incident_dataset.csv", mime="text/csv", icon=":material/download:", width="stretch")
-    if b.button("Save to repo", icon=":material/save:", width="stretch",
-                help="Write integration/output/final_incident_dataset.csv"):
-        path = ig.write_final_dataset(master)
-        st.success(f"Saved {path.relative_to(ig.PROJECT_ROOT)}")
-    if c.button("Upload all to Supabase", type="primary", icon=":material/cloud_upload:", width="stretch"):
-        try:
-            summary = upload_incidents(master)
-            st.success(f"Inserted {summary['inserted_count']} incidents into Supabase.")
-            st.session_state.pop("master", None)
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Upload failed: {_hint(exc)}")
 
 
 # --------------------------------------------------------------------------- #
 # View 3: Dashboard
 # --------------------------------------------------------------------------- #
 def view_dashboard() -> None:
-    _page_head("insights", "Dashboard", "Live analytics over the Supabase incidents table.")
+    _page_head("insights", "Incident Overview", "See priorities, patterns, and recent activity at a glance.")
 
     try:
         df = load_incidents()
     except Exception as exc:  # noqa: BLE001
-        st.error(f"Could not read from Supabase: {_hint(exc)}")
+        logger.exception("Incident loading failed")
+        st.error(_friendly_error(exc, "load incident records"))
         return
     if df.empty:
-        st.info("No incidents yet. Add some from **Ingest & Convert** or **Integrate**.")
+        st.info("No incidents have been added yet. Start with **Add Evidence** or **Combine Reports**.")
         return
 
     df = ig.with_display_ids(df)
@@ -511,7 +587,7 @@ def view_dashboard() -> None:
         _section(f"All incidents · {len(final_view)}")
         st.dataframe(_style_table(final_view), width="stretch", hide_index=True)
         st.download_button(
-            "Export final CSV (6 columns)", final_view.to_csv(index=False).encode("utf-8"),
+            "Download incident report", final_view.to_csv(index=False).encode("utf-8"),
             file_name="final_incident_dataset.csv", mime="text/csv", icon=":material/download:")
 
 
@@ -523,7 +599,7 @@ def _add_incident_dialog(existing_ids: list) -> None:
     source_type = st.selectbox("Source", list(ig.MODALITIES.keys()), format_func=ig.source_label)
     next_number = ig.next_incident_number(existing_ids)
     next_label = ig.display_id(ig.source_label(source_type), next_number)
-    st.caption(f"New ID: `{next_label}`  (stored as incident_id = {next_number})")
+    st.caption(f"New incident ID: `{next_label}`")
     event = st.text_input("Event", "Unknown")
     location = st.text_input("Location", "Unknown")
     time_val = st.text_input("Time", "Unknown")
@@ -531,18 +607,23 @@ def _add_incident_dialog(existing_ids: list) -> None:
     if st.button("Save", type="primary", icon=":material/save:"):
         row = pd.DataFrame([{
             "incident_id": next_number, "source": ig.source_label(source_type),
-            "event": event or "Unknown", "location": location or "Unknown",
+            "event": ig.normalize_event(event), "location": location or "Unknown",
             "time": time_val or "Unknown", "severity": severity}])
         try:
             upload_incidents(row)
             st.success(f"Added {next_label}")
             st.rerun()
         except Exception as exc:  # noqa: BLE001
-            st.error(f"Add failed: {_hint(exc)}")
+            logger.exception("Manual incident creation failed")
+            st.error(_friendly_error(exc, "add this incident"))
 
 
 def view_manage() -> None:
-    _page_head("edit_note", "Manage Data", "Add, edit, or delete incidents directly in Supabase.")
+    _page_head("edit_note", "Manage Incidents", "Add new incidents or keep existing details up to date.")
+
+    notice = st.session_state.pop("manage_notice", None)
+    if notice:
+        st.success(notice)
 
     if st.button("Add incident", type="primary", icon=":material/add:"):
         _add_incident_dialog(existing_incident_ids())
@@ -550,45 +631,244 @@ def view_manage() -> None:
     try:
         df = load_incidents()
     except Exception as exc:  # noqa: BLE001
-        st.error(f"Could not read from Supabase: {_hint(exc)}")
+        logger.exception("Incident loading failed")
+        st.error(_friendly_error(exc, "load incident records"))
         return
     if df.empty:
         st.info("No incidents yet. Use **Add incident** above.")
         return
 
     df = ig.with_display_ids(df)
-    st.dataframe(_style_table(ig.to_final_csv_frame(df)), width="stretch", hide_index=True)
 
-    st.divider()
-    _section("Edit / delete a row")
-    selected_label = st.selectbox("Select incident", df["Incident_ID"].tolist())
-    current = df[df["Incident_ID"] == selected_label].iloc[0]
-    selected_id = int(current["incident_id"])
+    with st.expander("Bulk actions", expanded=False):
+        st.caption("Update several incidents at once or remove a group. Incident IDs and sources never change.")
+        filter_source_col, filter_severity_col, filter_search_col = st.columns(3)
+        available_sources = sorted(df["source"].dropna().unique().tolist())
+        available_severities = [
+            severity for severity in SEVERITY_ORDER if severity in df["severity"].unique()
+        ]
+        bulk_sources = filter_source_col.multiselect(
+            "Filter by source",
+            available_sources,
+            default=available_sources,
+            key="bulk_filter_sources",
+        )
+        bulk_severities = filter_severity_col.multiselect(
+            "Filter by severity",
+            available_severities,
+            default=available_severities,
+            key="bulk_filter_severities",
+        )
+        bulk_search = filter_search_col.text_input(
+            "Search ID, event, or location",
+            key="bulk_filter_search",
+        )
 
-    with st.form("edit_form"):
-        event = st.text_input("Event", str(current.get("event", "")))
-        location = st.text_input("Location", str(current.get("location", "")))
-        time_val = st.text_input("Time", str(current.get("time", "")))
-        sev_default = SEVERITY_ORDER.index(current["severity"]) if current.get("severity") in SEVERITY_ORDER else 1
-        severity = st.selectbox("Severity", SEVERITY_ORDER, index=sev_default)
-        c1, c2 = st.columns(2)
-        do_update = c1.form_submit_button("Save changes", type="primary", icon=":material/save:", width="stretch")
-        do_delete = c2.form_submit_button("Delete", icon=":material/delete:", width="stretch")
+        filtered = df[
+            df["source"].isin(bulk_sources)
+            & df["severity"].isin(bulk_severities)
+        ]
+        if bulk_search:
+            search_mask = pd.Series(False, index=filtered.index)
+            for column in ("Incident_ID", "event", "location"):
+                search_mask |= filtered[column].astype(str).str.contains(
+                    bulk_search,
+                    case=False,
+                    regex=False,
+                    na=False,
+                )
+            filtered = filtered[search_mask]
+        target_labels = filtered["Incident_ID"].tolist()
+        st.info(f"{len(target_labels)} of {len(df)} incidents selected by these filters.")
 
-    if do_update:
+        field_labels = st.multiselect(
+            "Fields to update",
+            ["Event", "Location", "Time", "Severity"],
+            help="Only selected fields will be overwritten.",
+            key="bulk_fields",
+        )
+        bulk_values: dict[str, str] = {}
+        input_columns = st.columns(2)
+        if "Event" in field_labels:
+            bulk_values["event"] = input_columns[0].text_input(
+                "New event", key="bulk_event"
+            )
+        if "Location" in field_labels:
+            bulk_values["location"] = input_columns[1].text_input(
+                "New location", key="bulk_location"
+            )
+        if "Time" in field_labels:
+            bulk_values["time"] = input_columns[0].text_input(
+                "New time", key="bulk_time"
+            )
+        if "Severity" in field_labels:
+            bulk_values["severity"] = input_columns[1].selectbox(
+                "New severity", SEVERITY_ORDER, index=1, key="bulk_severity"
+            )
+
+        target_count = len(target_labels)
+        confirm_remove = st.checkbox(
+            f"I understand that removing {target_count} incident(s) cannot be undone.",
+            key="confirm_bulk_remove",
+        )
+        update_col, remove_col = st.columns(2)
+        do_bulk_update = update_col.button(
+            f"Update {target_count} incident(s)",
+            type="primary",
+            icon=":material/edit:",
+            width="stretch",
+            disabled=target_count == 0 or not field_labels,
+        )
+        remove_label = (
+            "Remove all incidents"
+            if target_count == len(df)
+            else f"Remove {target_count} incident(s)"
+        )
+        do_bulk_remove = remove_col.button(
+            remove_label,
+            icon=":material/delete:",
+            width="stretch",
+            disabled=target_count == 0 or not confirm_remove,
+        )
+
+    if do_bulk_update or do_bulk_remove:
+        targets = df[df["Incident_ID"].isin(target_labels)]
+        succeeded = 0
+        failures: list[str] = []
+        for _, target in targets.iterrows():
+            label = str(target["Incident_ID"])
+            try:
+                if do_bulk_remove:
+                    delete_incident(int(target["incident_id"]))
+                else:
+                    payload = {
+                        field: (
+                            ig.normalize_event(value)
+                            if field == "event"
+                            else (str(value).strip() or "Unknown")
+                        )
+                        for field, value in bulk_values.items()
+                    }
+                    update_incident(int(target["incident_id"]), payload)
+                succeeded += 1
+            except Exception:  # noqa: BLE001
+                logger.exception("Bulk incident action failed for %s", label)
+                failures.append(label)
+
+        if failures:
+            action = "removed" if do_bulk_remove else "updated"
+            st.error(
+                f"{succeeded} incident(s) were {action}, but {len(failures)} could not be changed. "
+                "Please try those records again."
+            )
+            return
+
+        action = "removed" if do_bulk_remove else "updated"
+        st.session_state["manage_notice"] = f"Successfully {action} {succeeded} incident(s)."
+        st.rerun()
+
+    _section("Incident list")
+    st.caption("Edit any unlocked cell. Select Remove for records you no longer need, then apply your changes.")
+
+    editable = df.loc[:, ["Incident_ID", "source", "event", "location", "time", "severity"]].copy()
+    editable["remove"] = False
+
+    with st.form("incident_table_form"):
+        edited = st.data_editor(
+            editable,
+            width="stretch",
+            hide_index=True,
+            disabled=["Incident_ID", "source"],
+            column_order=["Incident_ID", "source", "event", "location", "time", "severity", "remove"],
+            column_config={
+                "Incident_ID": st.column_config.TextColumn("Incident ID", width="small"),
+                "source": st.column_config.TextColumn("Source", width="small"),
+                "event": st.column_config.TextColumn("Event", width="large", required=True),
+                "location": st.column_config.TextColumn("Location", width="medium", required=True),
+                "time": st.column_config.TextColumn("Time", width="medium", required=True),
+                "severity": st.column_config.SelectboxColumn(
+                    "Severity",
+                    options=SEVERITY_ORDER,
+                    required=True,
+                    width="small",
+                ),
+                "remove": st.column_config.CheckboxColumn(
+                    "Remove",
+                    help="Checked incidents will be deleted when you apply changes.",
+                    default=False,
+                    width="small",
+                ),
+            },
+            num_rows="fixed",
+            key="incident_editor",
+        )
+        apply_changes = st.form_submit_button(
+            "Apply changes",
+            type="primary",
+            icon=":material/save:",
+            width="stretch",
+        )
+
+    if not apply_changes:
+        return
+
+    original = df.set_index("Incident_ID", drop=False)
+    updated_count = 0
+    deleted_count = 0
+    failures: list[str] = []
+
+    def clean(value) -> str:
+        return "Unknown" if pd.isna(value) or not str(value).strip() else str(value).strip()
+
+    for _, row in edited.iterrows():
+        label = str(row["Incident_ID"])
+        current = original.loc[label]
+        incident_id = int(current["incident_id"])
         try:
-            update_incident(selected_id, {"event": event, "location": location, "time": time_val, "severity": severity})
-            st.success(f"Updated {selected_label}")
-            st.rerun()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Update failed: {_hint(exc)}")
-    if do_delete:
-        try:
-            delete_incident(selected_id)
-            st.success(f"Deleted {selected_label}")
-            st.rerun()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Delete failed: {_hint(exc)}")
+            if bool(row["remove"]):
+                delete_incident(incident_id)
+                deleted_count += 1
+                continue
+
+            changes = {
+                field: (
+                    ig.normalize_event(row[field])
+                    if field == "event"
+                    else clean(row[field])
+                )
+                for field in ("event", "location", "time", "severity")
+                if (
+                    ig.normalize_event(row[field]) != ig.normalize_event(current[field])
+                    if field == "event"
+                    else clean(row[field]) != clean(current[field])
+                )
+            }
+            if changes:
+                update_incident(incident_id, changes)
+                updated_count += 1
+        except Exception:  # noqa: BLE001
+            logger.exception("Incident table change failed for %s", label)
+            failures.append(label)
+
+    if failures:
+        saved_count = updated_count + deleted_count
+        st.error(
+            f"We couldn't save changes for {len(failures)} incident(s). "
+            f"{saved_count} other change(s) were saved. Please try again."
+        )
+        return
+
+    if not updated_count and not deleted_count:
+        st.info("No changes to apply.")
+        return
+
+    parts = []
+    if updated_count:
+        parts.append(f"updated {updated_count}")
+    if deleted_count:
+        parts.append(f"removed {deleted_count}")
+    st.session_state["manage_notice"] = "Changes saved: " + " and ".join(parts) + "."
+    st.rerun()
 
 
 # --------------------------------------------------------------------------- #
@@ -605,10 +885,10 @@ def _bridge_streamlit_secrets() -> None:
 
 
 PAGES = [
-    ("Ingest & Convert", ":material/upload_file:", view_ingest),
-    ("Integrate", ":material/hub:", view_integrate),
-    ("Dashboard", ":material/insights:", view_dashboard),
-    ("Manage Data", ":material/edit_note:", view_manage),
+    ("Add Evidence", ":material/upload_file:", view_ingest),
+    ("Combine Reports", ":material/hub:", view_integrate),
+    ("Incident Overview", ":material/insights:", view_dashboard),
+    ("Manage Incidents", ":material/edit_note:", view_manage),
 ]
 
 
@@ -619,19 +899,12 @@ def main() -> None:
 
     with st.sidebar:
         st.markdown(f'<div class="sb-brand">{_icon("local_police")} Incident Analyzer</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sb-sub">Multimodal Crime / Incident Reports</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sb-sub">Evidence review and incident insights</div>', unsafe_allow_html=True)
         for name, icon, _ in PAGES:
             kind = "primary" if st.session_state["page"] == name else "secondary"
             if st.button(name, icon=icon, width="stretch", type=kind, key=f"nav_{name}"):
                 st.session_state["page"] = name
                 st.rerun()
-        st.divider()
-        if connection_ok():
-            st.markdown(f'<span class="badge b-ok">{_icon("cloud_done")} Supabase connected</span>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<span class="badge b-bad">{_icon("cloud_off")} Supabase offline</span>', unsafe_allow_html=True)
-        st.markdown('<div class="sb-sub" style="margin-top:.8rem;">Student 6 — Integration &amp; Dashboard</div>',
-                    unsafe_allow_html=True)
 
     view = {name: fn for name, _, fn in PAGES}[st.session_state["page"]]
     view()

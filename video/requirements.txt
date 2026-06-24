@@ -1,6 +1,7 @@
-opencv-python==4.8.1.78
+# Keep the video-only environment aligned with the root Cloud Run environment.
+opencv-python-headless==4.10.0.84
 ultralytics==8.4.70
-torch==2.8.0
-torchvision==0.23.0
-pandas==2.1.1
-numpy==1.26.1
+torch==2.2.2
+torchvision==0.17.2
+pandas
+numpy<2

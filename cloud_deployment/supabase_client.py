@@ -11,9 +11,12 @@ import pandas as pd
 from dotenv import load_dotenv
 
 try:
-    from supabase import Client, create_client
+    from httpx import Client as HttpxClient
+    from supabase import Client, ClientOptions, create_client
 except ImportError:  # Allows validation-only use before dependencies are installed.
     Client = Any
+    ClientOptions = None
+    HttpxClient = None
     create_client = None
 
 from .validators import INCIDENT_COLUMNS
@@ -69,7 +72,10 @@ def get_supabase_client() -> Client:
         )
 
     try:
-        return create_client(url, key)
+        # Supplying the shared HTTP client uses the current Supabase/PostgREST
+        # API and avoids their deprecated ``timeout`` and ``verify`` arguments.
+        options = ClientOptions(httpx_client=HttpxClient())
+        return create_client(url, key, options=options)
     except Exception as exc:
         logger.exception("Could not create the Supabase client.")
         raise RuntimeError("Could not create the Supabase client.") from exc

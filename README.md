@@ -35,7 +35,8 @@ streamlit run app.py
 
 A single `requirements.txt` covers the app, integration, and every modality
 processor. Real Whisper audio also needs FFmpeg (`brew install ffmpeg`); without
-it the Ingest page falls back to analysing a pasted transcript.
+it audio processing stops with an installation hint. Uploaded audio is always
+transcribed and never replaced with a pasted transcript.
 
 The app has four pages:
 
@@ -82,6 +83,8 @@ Streamlit Cloud):
 ```text
 SUPABASE_URL=https://<your-project>.supabase.co
 SUPABASE_KEY=<publishable-or-anon-key>
+# Live tests are enabled by default; set this to 0 to keep pytest offline
+RUN_SUPABASE_LIVE_TESTS=1
 ```
 
 The existing `incidents` table is used as-is — `incident_id` stays `int8`, so
@@ -91,6 +94,10 @@ The existing `incidents` table is used as-is — `incident_id` stays `int8`, so
 ```bash
 RUN_SUPABASE_LIVE_TESTS=1 python -m pytest cloud_deployment/tests -k insert_exists
 ```
+
+With Supabase credentials configured, the live test runs by default and writes
+to the configured database before cleaning up its temporary row. Set
+`RUN_SUPABASE_LIVE_TESTS=0` in `.env` to disable it and keep pytest offline.
 
 ### ID and severity scheme (assignment §4)
 
@@ -161,13 +168,11 @@ Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
 
 ## PDF Processor
 
-Tickets T-009 / T-010. Converts one PDF document into two distinct outputs, per
+Tickets T-009 / T-010. Converts one PDF document into one six-column output, per
 [specs](docs/specs.md) section 5.2:
 
-- An 8-column demo artifact CSV at `pdf/output/pdf_output.csv`
-  (`Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome`).
-- An in-memory extractor DataFrame consumed by Integration
-  (`source_filename, source_type, raw_event, raw_location, raw_time, raw_severity, confidence, raw_text`).
+- A six-column DataFrame and CSV at `pdf/output/pdf_output.csv`
+  (`Report_ID, Incident_Type, Date, Location, Officer, Summary`).
 
 Text is extracted directly first (PyMuPDF, then pdfplumber); OCR (pytesseract) runs
 only when direct extraction is empty or near-empty.
@@ -177,14 +182,14 @@ Run it:
 ```python
 from pdf.processor import process_pdf_file
 
-extractor_df = process_pdf_file("tests/fixtures/LESO2.pdf")  # also writes the artifact CSV
+pdf_df = process_pdf_file("tests/fixtures/LESO2.pdf")
 ```
 
 ### Test status
 
 `tests/test_extractor_schema.py` and `tests/test_modality_output_schemas.py` —
-5 tests passing (extractor-contract columns, OCR fallback path, and artifact CSV
-schema with no nulls).
+5 tests passing (PDF draft columns, OCR fallback path, and CSV schema with no
+nulls).
 
 ### Design decision (intentional, not open for debate)
 
@@ -196,7 +201,7 @@ name is real and source-grounded, not fabricated. This is intentional behavior.
 
 1. **Multi-agency bundle.** The current test PDF is a bundle of 5 different agencies'
    submissions in one file. The processor returns a single row using only the first
-   agency's info; the other 4 agencies remain in `raw_text` but are not broken out
+   agency's info; the other 4 agencies remain in the source document but are not broken out
    into the structured fields. Splitting was deferred given the deadline — documented
    as a known limitation.
 2. **All-Unknown rows.** This PDF legitimately produces a row with

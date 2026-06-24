@@ -1,8 +1,8 @@
 """Tests for validation, payload creation, and optional Supabase round trips.
 
 ``incident_id`` is a unique integer (the Supabase column is ``int8``). The live
-round-trip test only runs when ``RUN_SUPABASE_LIVE_TESTS=1`` so the default
-``pytest`` run stays offline and never mutates the real database.
+round-trip test runs by default when Supabase credentials are configured. Set
+``RUN_SUPABASE_LIVE_TESTS=0`` to keep a ``pytest`` run offline.
 """
 
 from __future__ import annotations
@@ -18,6 +18,10 @@ from dotenv import load_dotenv
 
 from cloud_deployment import supabase_client, upload_service
 from cloud_deployment.validators import INCIDENT_COLUMNS, validate_incidents_df
+
+# Load the project-root file before pytest evaluates the skip marker below.
+# Keeping override=False means an explicit shell environment still wins.
+load_dotenv(supabase_client.PROJECT_ROOT / ".env", override=False)
 
 
 def _incident_frame(incident_id: object = 101) -> pd.DataFrame:
@@ -80,6 +84,32 @@ def test_insert_incidents_sends_only_allowed_columns(monkeypatch: pytest.MonkeyP
     assert "created_at" not in records[0]
     assert summary["success"] is True
     assert summary["inserted_count"] == 1
+
+
+def test_get_supabase_client_uses_shared_http_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    http_client = object()
+    options = object()
+    client = object()
+    create_client = MagicMock(return_value=client)
+
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_KEY", "test-key")
+    monkeypatch.setattr(supabase_client, "HttpxClient", lambda: http_client)
+    monkeypatch.setattr(
+        supabase_client,
+        "ClientOptions",
+        lambda **kwargs: options if kwargs == {"httpx_client": http_client} else None,
+    )
+    monkeypatch.setattr(supabase_client, "create_client", create_client)
+
+    assert supabase_client.get_supabase_client() is client
+    create_client.assert_called_once_with(
+        "https://example.supabase.co",
+        "test-key",
+        options=options,
+    )
 
 
 def test_upload_incidents_validates_before_insert(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,8 +214,8 @@ def test_crud_rejects_invalid_identifiers_and_filters() -> None:
 
 
 @pytest.mark.skipif(
-    os.getenv("RUN_SUPABASE_LIVE_TESTS") != "1",
-    reason="Set RUN_SUPABASE_LIVE_TESTS=1 to run the live Supabase round trip.",
+    os.getenv("RUN_SUPABASE_LIVE_TESTS", "1") != "1",
+    reason="RUN_SUPABASE_LIVE_TESTS=0 disables the live Supabase round trip.",
 )
 def test_supabase_insert_exists_then_delete() -> None:
     """Create, read, update, and delete one row, then confirm cleanup.
@@ -193,7 +223,6 @@ def test_supabase_insert_exists_then_delete() -> None:
     The configured key must have permission to insert, select, update, and
     delete test rows so cleanup can be verified.
     """
-    load_dotenv(supabase_client.PROJECT_ROOT / ".env", override=False)
     if not any(
         os.getenv(name)
         for name in (

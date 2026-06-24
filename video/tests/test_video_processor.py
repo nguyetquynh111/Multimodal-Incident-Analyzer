@@ -1,8 +1,7 @@
 """Tests for the video processor (T-013 / T-014).
 
 Covers:
-- process_video_file() returns the exact extractor schema
-- source_type is always VID
+- process_video_file() returns the exact five-column draft schema
 - confidence is always 0.0 – 1.0
 - Videos longer than 5 minutes are rejected
 - Unreadable paths return an empty DataFrame
@@ -21,11 +20,11 @@ import numpy as np
 import pandas as pd
 
 from video.processor import (
-    EXTRACTOR_COLUMNS,
-    SOURCE_TYPE,
+    DRAFT_COLUMNS,
     classify_event,
     event_to_severity,
     format_objects,
+    process_video,
     process_video_file,
 )
 
@@ -48,7 +47,7 @@ def _make_synthetic_video(path: Path, duration_seconds: int = 4, fps: int = 15) 
     writer.release()
 
 
-class VideoExtractorSchemaTests(unittest.TestCase):
+class VideoDraftSchemaTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
         self.video_path = Path(self._tmpdir.name) / "test_clip.mp4"
@@ -57,49 +56,49 @@ class VideoExtractorSchemaTests(unittest.TestCase):
     def tearDown(self) -> None:
         self._tmpdir.cleanup()
 
-    def test_returns_dataframe_with_exact_extractor_columns(self) -> None:
+    def test_returns_dataframe_with_exact_draft_columns(self) -> None:
         df = process_video_file(str(self.video_path))
         self.assertIsInstance(df, pd.DataFrame)
-        self.assertEqual(list(df.columns), EXTRACTOR_COLUMNS)
+        self.assertEqual(list(df.columns), DRAFT_COLUMNS)
 
-    def test_source_type_is_always_vid(self) -> None:
+    def test_frame_ids_use_required_format(self) -> None:
         df = process_video_file(str(self.video_path))
         self.assertGreaterEqual(len(df), 1)
-        for value in df["source_type"]:
-            self.assertEqual(value, SOURCE_TYPE)
-
-    def test_source_filename_matches_file(self) -> None:
-        df = process_video_file(str(self.video_path))
-        for value in df["source_filename"]:
-            self.assertEqual(value, self.video_path.name)
+        for value in df["Frame_ID"]:
+            self.assertRegex(str(value), r"^FRM_\d{3}$")
 
     def test_confidence_is_bounded_float(self) -> None:
         df = process_video_file(str(self.video_path))
-        for value in df["confidence"]:
+        for value in df["Confidence"]:
             self.assertIsInstance(float(value), float)
             self.assertGreaterEqual(value, 0.0)
             self.assertLessEqual(value, 1.0)
-
-    def test_severity_is_always_valid(self) -> None:
-        df = process_video_file(str(self.video_path))
-        for value in df["raw_severity"]:
-            self.assertIn(value, {"Low", "Medium", "High"})
 
     def test_no_null_values(self) -> None:
         df = process_video_file(str(self.video_path))
         self.assertFalse(df.isnull().values.any())
 
+    def test_public_video_output_has_five_draft_columns(self) -> None:
+        output = Path(self._tmpdir.name) / "video_output.csv"
+        frame = process_video(str(self.video_path), output)
+        saved = pd.read_csv(output)
+
+        self.assertEqual(list(frame.columns), DRAFT_COLUMNS)
+        self.assertEqual(list(saved.columns), DRAFT_COLUMNS)
+        self.assertGreaterEqual(len(frame), 1)
+        self.assertRegex(str(frame.iloc[0]["Frame_ID"]), r"^FRM_\d{3}$")
+
     def test_unreadable_path_returns_empty_dataframe(self) -> None:
         df = process_video_file("nonexistent_video.mp4")
         self.assertIsInstance(df, pd.DataFrame)
-        self.assertEqual(list(df.columns), EXTRACTOR_COLUMNS)
+        self.assertEqual(list(df.columns), DRAFT_COLUMNS)
         self.assertEqual(len(df), 0)
 
     def test_video_over_five_minutes_is_rejected(self) -> None:
         long_video = Path(self._tmpdir.name) / "long_clip.mp4"
         _make_synthetic_video(long_video, duration_seconds=301)
         df = process_video_file(str(long_video))
-        self.assertEqual(list(df.columns), EXTRACTOR_COLUMNS)
+        self.assertEqual(list(df.columns), DRAFT_COLUMNS)
         self.assertEqual(len(df), 0)
 
 

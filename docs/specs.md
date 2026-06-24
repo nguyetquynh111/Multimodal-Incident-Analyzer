@@ -15,7 +15,7 @@ This document defines product behavior and data contracts for the Multimodal Cri
 2. User uploads exactly one supported file.
 3. App detects the file type and source abbreviation.
 4. App runs the correct extractor synchronously.
-5. Extractor returns a pandas DataFrame using the extractor schema.
+5. Processor returns its documented modality draft DataFrame.
 6. Integration receives that DataFrame and returns cleaned incident rows.
 7. The platform calls the separate LLM summarizer function for each cleaned row.
 8. App adds summary columns to each row.
@@ -33,8 +33,8 @@ This document defines product behavior and data contracts for the Multimodal Cri
 | Image | .jpg, .jpeg, .png | IMG | Run OCR/object detection if available, then extract incident signals |
 | Video | .mp4, .mov, .mpg, .mpeg | VID | Reject videos longer than 5 minutes; sample frames and analyze motion frames |
 | Text | .txt | TXT | Read text and extract incident fields |
-| CSV | .csv | CSV | Parse rows/columns and map incident-like records into the extractor schema |
-| JSON | .json | JSON | Parse JSON objects/arrays and map incident-like records into the extractor schema |
+| CSV | .csv | CSV | Parse rows/columns into a documented modality draft |
+| JSON | .json | JSON | Parse JSON objects/arrays into a documented modality draft |
 
 Rules:
 - The Streamlit uploader accepts exactly one file per processing run.
@@ -43,26 +43,11 @@ Rules:
 - Raw files are not uploaded to Supabase Storage in the MVP.
 - Unsupported file types must be rejected with a clear message and no Supabase insert.
 
-## 4. Extractor Output Contract
+## 4. Modality Output Contract
 
-Every modality processor must return a pandas DataFrame. Required columns:
-
-```text
-source_filename, source_type, raw_event, raw_location, raw_time, raw_severity, confidence, raw_text
-```
-
-| **Column** | **Type** | **Requirement** |
-| --- | --- | --- |
-| source_filename | string | Original uploaded filename |
-| source_type | string | One of AUD, PDF, IMG, VID, TXT, CSV, JSON |
-| raw_event | string | Extractor-level event label or Unknown |
-| raw_location | string | Extractor-level location or Unknown |
-| raw_time | string | Extractor-level time or Unknown |
-| raw_severity | string | Extractor-level severity signal or Unknown |
-| confidence | float | 0.0 to 1.0 if available; otherwise 0.0 |
-| raw_text | string | Extracted transcript/text/OCR/structured context or Unknown |
-
-A processor may return an empty DataFrame if no incident candidate is found. Empty output should not crash the app.
+Every modality processor returns its documented draft DataFrame below.
+Integration maps each draft directly into the final incident schema. A
+processor may return an empty DataFrame when no incident candidate is found.
 
 ## 5. Modality Functional Specifications
 
@@ -74,17 +59,18 @@ The audio processor transcribes one audio file and extracts event and location s
 Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
 ```
 
-For Integration, transcript, event, and location map to `raw_text`, `raw_event`, and `raw_location`. Urgency is not transcription confidence.
+Integration maps event and location directly; urgency determines severity.
 
 ### 5.2 PDF Processor
 
 The PDF processor extracts text directly from one official document and uses OCR only when the document is scanned or direct extraction is unavailable. Missing fields use `Unknown`.
 
 ```text
-Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome
+Report_ID, Incident_Type, Date, Location, Officer, Summary
 ```
 
-For Integration, incident type, date, location, and extracted text map to `raw_event`, `raw_time`, `raw_location`, and `raw_text`. Document `Summary` is source-grounded and is separate from the later LLM `incident_summary`.
+Integration maps incident type, location, and date directly to Event, Location,
+and Time. Document `Summary` remains source-grounded supporting context.
 
 ### 5.3 Image Processor
 
@@ -94,7 +80,7 @@ The image processor analyzes one scene image with pretrained detection/classific
 Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score
 ```
 
-For Integration, scene/object labels map to `raw_event`, OCR maps to `raw_text`, and the artifact score maps to `confidence`. OCR maps to location only when it clearly identifies one.
+Integration maps scene/object labels to Event and the score to Severity.
 
 ### 5.4 Video Processor
 
@@ -104,7 +90,8 @@ The video processor rejects clips longer than five minutes and samples frames at
 Timestamp, Frame_ID, Event_Detected, Objects, Confidence
 ```
 
-For Integration, event, timestamp, and confidence map to `raw_event`, `raw_time`, and `confidence`; frame and detection context map to `raw_text`. One video may produce zero, one, or many rows.
+Integration maps event and timestamp directly and derives Severity from
+Confidence. One video may produce zero, one, or many rows.
 
 ### 5.5 Text Processor
 
@@ -114,15 +101,17 @@ The text processor preserves the original input while cleaning a separate analys
 Text_ID, Source, Raw_Text, Sentiment, Entities, Topic
 ```
 
-For Integration, topic, location entities, date entities, and original text map to `raw_event`, `raw_location`, `raw_time`, and `raw_text`.
+Integration maps topic and location entities directly to Event and Location.
 
 ### 5.6 CSV Processor
 
-The CSV processor must parse one uploaded CSV file. If the file already has incident-like columns, map them into the extractor schema. If the CSV has multiple incident rows, the processor may produce multiple extractor rows. Unknown values must be handled explicitly.
+The CSV processor must parse one uploaded CSV file. Multiple incident rows may
+produce multiple draft rows. Unknown values must be handled explicitly.
 
 ### 5.7 JSON Processor
 
-The JSON processor must parse one uploaded JSON file. If the JSON contains a list of incident-like objects, each object may become one extractor row. Nested values should be flattened only as needed for the extractor schema.
+The JSON processor must parse one uploaded JSON file. If the JSON contains a
+list of incident-like objects, each object may become one draft row.
 
 ## 6. Integration Contract
 
@@ -131,14 +120,14 @@ Integration receives the extractor DataFrame directly in memory. It does not rec
 Required function:
 
 ```text
-def integrate_records(extractor_df: pandas.DataFrame) -> pandas.DataFrame:
-    """Normalize extractor output into cleaned incident rows."""
+def integrate_records(draft_df: pandas.DataFrame, source_type: str) -> pandas.DataFrame:
+    """Normalize one modality draft into cleaned incident rows."""
 ```
 
 Required output columns before ID and summary:
 
 ```text
-event, location, time, severity, confidence, raw_text
+source, event, location, time, severity
 ```
 
 Integration responsibilities:
@@ -146,7 +135,6 @@ Integration responsibilities:
 - Normalize location and time fields.
 - Convert missing fields to Unknown.
 - Compute or normalize severity to Low, Medium, or High.
-- Preserve enough raw text/context for the LLM summarizer.
 - Return zero, one, or many cleaned incident rows.
 
 Integration must not call Supabase insert until ID generation and LLM summary enrichment are complete.
@@ -257,7 +245,7 @@ The Streamlit dashboard must:
 | AC-003 | PDF processor runs | Direct extraction or conditional OCR produces the eight-field artifact and extractor mapping |
 | AC-004 | Image processor runs | Supported scene/object/OCR results use the five-field artifact and extractor mapping |
 | AC-005 | Video processor runs | Motion-gated sampled frames produce correctly formatted event rows |
-| AC-006 | Text/CSV/JSON processor runs | Text artifact and structured content map to the extractor schema |
+| AC-006 | Text/CSV/JSON processor runs | Text artifact and structured content map to documented modality drafts |
 | AC-007 | Integration runs | Cleaned DataFrame has required integration columns |
 | AC-008 | LLM summary module runs | Each row receives `incident_summary`, with fallback if needed |
 | AC-009 | ID generation runs | Each row receives valid `INC_TYPE_NUMBER` ID |

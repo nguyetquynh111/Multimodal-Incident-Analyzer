@@ -1,13 +1,7 @@
 """Public PDF processing API.
 
-Produces two deliberately distinct outputs from one official document:
-
-1. A demonstration *artifact* CSV with the exact PDF columns
-   ``Report_ID, Incident_Type, Date, Location, Officer, Summary,
-   Suspect_Description, Outcome`` written under ``pdf/output/``.
-2. The shared *extractor contract* DataFrame
-   ``source_filename, source_type, raw_event, raw_location, raw_time,
-   raw_severity, confidence, raw_text`` returned in memory for Integration.
+Produces the exact six-column PDF draft used by Integration:
+``Report_ID, Incident_Type, Date, Location, Officer, Summary``.
 
 Text is extracted directly first (PyMuPDF, then pdfplumber). OCR
 (pytesseract) is only attempted when direct extraction yields empty or
@@ -32,22 +26,8 @@ ARTIFACT_COLUMNS = [
     "Location",
     "Officer",
     "Summary",
-    "Suspect_Description",
-    "Outcome",
 ]
 
-EXTRACTOR_COLUMNS = [
-    "source_filename",
-    "source_type",
-    "raw_event",
-    "raw_location",
-    "raw_time",
-    "raw_severity",
-    "confidence",
-    "raw_text",
-]
-
-SOURCE_TYPE = "PDF"
 UNKNOWN = "Unknown"
 SUPPORTED_PDF_EXTENSIONS = {".pdf"}
 
@@ -248,49 +228,7 @@ def analyze_document(report_id: str, text: str) -> dict[str, Any]:
         "Location": extract_location(normalized),
         "Officer": extract_officer(normalized),
         "Summary": summarize_document(normalized),
-        "Suspect_Description": _extract_context(normalized, "suspect"),
-        "Outcome": _extract_context(normalized, "outcome"),
     }
-
-
-# --- Confidence and extractor mapping ----------------------------------------
-
-def _confidence(artifact_row: dict[str, Any], used_ocr: bool) -> float:
-    """Confidence in [0, 1]: lower when OCR was needed or fields are Unknown."""
-
-    signal_fields = ("Incident_Type", "Date", "Location")
-    filled = sum(1 for field in signal_fields if artifact_row.get(field, UNKNOWN) != UNKNOWN)
-    score = 0.3 + 0.2 * filled  # 0.3 .. 0.9
-    if used_ocr:
-        score *= 0.6
-    return round(max(0.0, min(1.0, score)), 2)
-
-
-def map_to_extractor(
-    artifact_rows: list[dict[str, Any]],
-    source_filename: str,
-    raw_text: str,
-    used_ocr: bool,
-) -> pd.DataFrame:
-    """Map zero or more artifact rows onto the shared extractor contract."""
-
-    normalized_text = _normalize_text(raw_text) or UNKNOWN
-    extractor_rows = [
-        {
-            "source_filename": source_filename,
-            "source_type": SOURCE_TYPE,
-            "raw_event": row.get("Incident_Type", UNKNOWN) or UNKNOWN,
-            "raw_location": row.get("Location", UNKNOWN) or UNKNOWN,
-            "raw_time": row.get("Date", UNKNOWN) or UNKNOWN,
-            "raw_severity": severity_signal(
-                normalized_text, row.get("Incident_Type", UNKNOWN)
-            ),
-            "confidence": _confidence(row, used_ocr),
-            "raw_text": normalized_text,
-        }
-        for row in artifact_rows
-    ]
-    return pd.DataFrame(extractor_rows, columns=EXTRACTOR_COLUMNS)
 
 
 # --- Text extraction (direct first, OCR fallback) ----------------------------
@@ -364,29 +302,39 @@ def process_pdf_file(
     write_artifact: bool = True,
     output_csv_path: str | Path | None = None,
 ) -> pd.DataFrame:
-    """Process one PDF and return the extractor-contract DataFrame.
+    """Process one PDF and return the six-column PDF draft.
 
     Direct text extraction is tried first; OCR runs only when direct
-    extraction is empty or near-empty. When ``write_artifact`` is true the
-    eight-column demo artifact is also written under ``pdf/output/``. The
-    returned DataFrame is the in-memory pipeline contract and is never the
-    primary on-disk output.
+    extraction is empty or near-empty. When ``write_artifact`` is true, the
+    same six-column result is written under ``pdf/output/``.
     """
 
     path = _validate_pdf_path(pdf_path)
 
     text = (text_extractor or _extract_text_direct)(str(path))
-    used_ocr = False
     if len(text.strip()) < _MIN_DIRECT_TEXT_CHARS:
         text = (ocr_extractor or _extract_text_ocr)(str(path))
-        used_ocr = True
 
     artifact_rows = [analyze_document(report_id or "RPT_001", text)]
 
     if write_artifact:
-        save_artifact(artifact_rows, output_csv_path)
+        return save_artifact(artifact_rows, output_csv_path)
+    return pd.DataFrame(artifact_rows, columns=ARTIFACT_COLUMNS).fillna(UNKNOWN)
 
-    return map_to_extractor(artifact_rows, path.name, text, used_ocr)
+
+def process_pdf(
+    pdf_path: str | Path,
+    output_csv_path: str | Path | None = None,
+    report_id: str | None = None,
+) -> pd.DataFrame:
+    """Process one PDF and return the six-column PDF draft contract."""
+
+    return process_pdf_file(
+        str(pdf_path),
+        report_id=report_id,
+        write_artifact=True,
+        output_csv_path=output_csv_path,
+    )
 
 
 def save_artifact(
@@ -426,7 +374,7 @@ def main(argv: list[str] | None = None) -> int:
         output_csv_path=args.output,
     )
     print(frame.to_string(index=False))
-    print(f"Returned {len(frame)} extractor row(s) for {Path(args.input).name}")
+    print(f"Returned {len(frame)} PDF row(s) for {Path(args.input).name}")
     return 0
 
 
@@ -436,10 +384,9 @@ if __name__ == "__main__":
 
 __all__ = [
     "ARTIFACT_COLUMNS",
-    "EXTRACTOR_COLUMNS",
     "analyze_document",
     "classify_incident",
-    "map_to_extractor",
+    "process_pdf",
     "process_pdf_file",
     "save_artifact",
 ]
