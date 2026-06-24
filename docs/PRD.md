@@ -93,7 +93,7 @@ The main application contract remains the shared extractor DataFrame. For team r
 | **Modality** | **Artifact Columns** |
 | --- | --- |
 | Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` |
-| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` |
+| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary` |
 | Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` |
 | Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` |
 | Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` |

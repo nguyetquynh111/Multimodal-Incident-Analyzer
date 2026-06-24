@@ -20,19 +20,19 @@ Build a working class prototype that uploads one evidence file at a time through
 | T-006 | Build file type detector | JN | High | Extensions map to AUD, PDF, IMG, VID, TXT, CSV, JSON |
 | T-007 | Build audio processor | Quynh | High | Produces the six-column audio artifact and extractor mapping |
 | T-008 | Extract audio event/location/urgency | Quynh | Medium | Sentiment is Calm/Distressed; urgency is independently bounded 0–1 |
-| T-009 | Build PDF processor | Rodney | High | Produces the eight-column document artifact and extractor mapping |
+| T-009 | Build PDF processor | Rodney | High | Produces the six-column PDF draft and integration mapping |
 | T-010 | Add PDF OCR fallback | Rodney | Medium | OCR runs only when scanned/direct text is unavailable; failures use Unknown |
 | T-011 | Build image processor | Zainab | High | Produces the five-column image artifact with supported labels and confidence |
-| T-012 | Add image OCR/object mapping | Zainab | Medium | Supported evidence maps to the extractor schema; missing evidence uses Unknown |
+| T-012 | Add image OCR/object mapping | Zainab | Medium | Supported evidence maps to the image draft; missing evidence uses Unknown |
 | T-013 | Build video processor | Alex | High | Rejects long clips and produces formatted timestamps/frame IDs at a regular interval |
 | T-014 | Extract video event signals | Alex | Medium | Motion gates detection; documented logic produces the five-column event log |
 | T-015 | Build text processor | Anh | High | Preserves Raw_Text and produces the six-column text artifact |
 | T-016 | Extract text entities/sentiment/topic | Anh | Medium | Entities and sentiment are present; topic uses the approved labels or Other |
-| T-017 | Build CSV processor | Group 2 | Medium | CSV content maps to extractor schema or Unknown fallback |
-| T-018 | Build JSON processor | JN | Medium | JSON content maps to extractor schema or Unknown fallback |
-| T-019 | Build integration function | JN | High | `integrate_records(DataFrame)` returns cleaned incident DataFrame |
+| T-017 | Build CSV processor | Group 2 | Medium | CSV content maps to its documented draft or Unknown fallback |
+| T-018 | Build JSON processor | JN | Medium | JSON content maps to its documented draft or Unknown fallback |
+| T-019 | Build integration function | JN | High | `integrate_records(DataFrame, source_type)` returns cleaned incident DataFrame |
 | T-020 | Build severity classifier | JN | High | Severity is always Low, Medium, or High |
-| T-021 | Build schema validators | JN | High | Extractor, integration, LLM summary, Supabase payload, and export schemas are validated |
+| T-021 | Build schema validators | JN | High | Modality draft, integration, Supabase payload, and export schemas are validated |
 | T-022 | Create separate LLM summarizer folder | Rodney | High | `src/llm_summarizer/` exists with summarizer, prompts, fallback, and schemas files |
 | T-023 | Build LLM summarizer public function | Rodney | High | `summarize_incident(row: dict)` returns incident_summary, summary_method, summary_model |
 | T-024 | Build rule-based summary fallback | Rodney | High | Fallback summary works when LLM is unavailable, disabled, or invalid |

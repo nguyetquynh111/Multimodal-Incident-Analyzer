@@ -31,6 +31,7 @@ numeric confidence default to ``Medium``.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -156,54 +157,116 @@ def _clean(value: Any) -> str:
     return text if text else UNKNOWN
 
 
+def normalize_event(value: Any) -> str:
+    """Return one consistent, title-cased event label.
+
+    Missing values and labels beginning with ``unknown`` collapse to the
+    single canonical label ``Unknown``. Separators are spaced for display.
+    """
+
+    text = _clean(value)
+    if text == UNKNOWN or re.match(r"^unknown(?:\b|[_/-])", text, re.IGNORECASE):
+        return UNKNOWN
+    text = re.sub(r"\s*/\s*", " / ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.title()
+
+
+def _first_known(row: Mapping[str, Any], *columns: str) -> str:
+    """Return the first populated, non-Unknown value from candidate columns."""
+
+    for column in columns:
+        value = _clean(row.get(column))
+        if value.casefold() != UNKNOWN.casefold():
+            return value
+    return UNKNOWN
+
+
+def _mapped_severity(
+    row: Mapping[str, Any],
+    *,
+    explicit: tuple[str, ...] = (),
+    confidence: tuple[str, ...] = (),
+    default: str = DEFAULT_SEVERITY,
+) -> str:
+    """Prefer a valid explicit severity, then derive one from confidence."""
+
+    value = _first_known(row, *explicit)
+    canonical = value.title()
+    if canonical in SEVERITY_LEVELS:
+        return canonical
+    score = _first_known(row, *confidence)
+    return severity_from_confidence(score) if score != UNKNOWN else default
+
+
 def _map_audio(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "event": _clean(row.get("Extracted_Event")),
-        "location": _clean(row.get("Location")),
-        "time": UNKNOWN,  # audio transcripts rarely carry a wall-clock time
-        "severity": severity_from_confidence(row.get("Urgency_Score")),
+        "event": normalize_event(_first_known(row, "Extracted_Event")),
+        "location": _first_known(row, "Location"),
+        "time": _first_known(row, "Time", "Timestamp"),
+        "severity": _mapped_severity(
+            row,
+            explicit=("Severity",),
+            confidence=("Urgency_Score",),
+        ),
     }
 
 
 def _map_pdf(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "event": _clean(row.get("Incident_Type")),
-        "location": _clean(row.get("Location")),
-        "time": _clean(row.get("Date")),
-        "severity": DEFAULT_SEVERITY,  # PDF draft carries no numeric confidence
+        "event": normalize_event(_first_known(row, "Incident_Type")),
+        "location": _first_known(row, "Location"),
+        "time": _first_known(row, "Date"),
+        "severity": _mapped_severity(
+            row,
+            explicit=("Severity",),
+            confidence=("Confidence",),
+        ),
     }
 
 
 def _map_image(row: Mapping[str, Any]) -> dict[str, Any]:
-    event = _clean(row.get("Scene_Type"))
+    event = normalize_event(_first_known(row, "Scene_Type"))
     objects = _clean(row.get("Objects_Detected"))
     if event == UNKNOWN and objects != UNKNOWN:
-        event = objects
+        event = normalize_event(objects)
     return {
         "event": event,
         # OCR text only becomes a location when it clearly is one; the draft
         # keeps it Unknown, so we default to Unknown here.
-        "location": UNKNOWN,
-        "time": UNKNOWN,
-        "severity": severity_from_confidence(row.get("Confidence_Score")),
+        "location": _first_known(row, "Location"),
+        "time": _first_known(row, "Time", "Timestamp"),
+        "severity": _mapped_severity(
+            row,
+            explicit=("Severity",),
+            confidence=("Confidence_Score",),
+        ),
     }
 
 
 def _map_video(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "event": _clean(row.get("Event_Detected")),
-        "location": UNKNOWN,
-        "time": _clean(row.get("Timestamp")),
-        "severity": severity_from_confidence(row.get("Confidence")),
+        "event": normalize_event(_first_known(row, "Event_Detected")),
+        "location": _first_known(row, "Location"),
+        "time": _first_known(row, "Timestamp"),
+        "severity": _mapped_severity(
+            row,
+            explicit=("Severity",),
+            confidence=("Confidence",),
+        ),
     }
 
 
 def _map_text(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "event": _clean(row.get("Topic")),
-        "location": _clean(row.get("Entities")),  # location entities, if any
-        "time": UNKNOWN,
-        "severity": DEFAULT_SEVERITY,  # text draft carries no numeric confidence
+        "event": normalize_event(_first_known(row, "Topic")),
+        "location": _first_known(row, "Entities", "Location"),
+        "time": _first_known(row, "Time", "Timestamp"),
+        "severity": _mapped_severity(
+            row,
+            explicit=("Severity",),
+            confidence=("Confidence",),
+        ),
     }
 
 
@@ -309,6 +372,8 @@ def with_display_ids(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.Dat
     frame = pd.DataFrame(rows) if not isinstance(rows, pd.DataFrame) else rows.copy()
     if frame.empty:
         return frame
+    if "event" in frame.columns:
+        frame["event"] = frame["event"].map(normalize_event)
     labels = [
         display_id(s, i)
         for s, i in zip(frame.get("source"), frame.get("incident_id"))
@@ -332,6 +397,7 @@ def to_final_csv_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.D
         display_id(s, i) for s, i in zip(frame["source"], frame["incident_id"])
     ]
     out = frame.loc[:, list(INCIDENT_COLUMNS)].copy()
+    out["event"] = out["event"].map(normalize_event)
     out["incident_id"] = labels
     out.columns = list(FINAL_CSV_COLUMNS)
     return out
@@ -414,7 +480,6 @@ def run_modality(
     source_type: str,
     input_path: str | Path | None = None,
     *,
-    transcript: str | None = None,
     output_csv: str | Path | None = None,
 ) -> pd.DataFrame:
     """Run the processor for ``source_type`` and return its draft DataFrame.
@@ -422,32 +487,28 @@ def run_modality(
     Processors are imported lazily so heavy optional dependencies (Whisper,
     OpenCV, ...) are only loaded for the modality actually used.
 
-    For audio, pass ``transcript=`` to skip Whisper and analyse pasted text
-    directly (useful when torch/Whisper is unavailable, e.g. on Python 3.13 or
-    Streamlit Community Cloud).
+    Audio files are always transcribed before analysis; uploaded audio never
+    falls back to user-supplied transcript text.
     """
+    if input_path is None:
+        raise ValueError(f"{source_type} processing requires a file path.")
+
     if source_type == "audio":
-        if transcript is not None:
-            from audio.config import OUTPUT_COLUMNS
-            from audio.extract import analyze_transcript
-
-            call_id = Path(input_path).stem if input_path else "DEMO001"
-            row = analyze_transcript(call_id, transcript)
-            return pd.DataFrame([row], columns=OUTPUT_COLUMNS)
-
         from audio.config import OUTPUT_COLUMNS
         from audio.processor import process_audio_file
 
         row = process_audio_file(str(input_path))
-        return pd.DataFrame([row], columns=OUTPUT_COLUMNS)
-
-    if input_path is None:
-        raise ValueError(f"{source_type} processing requires a file path.")
+        frame = pd.DataFrame([row], columns=OUTPUT_COLUMNS)
+        if output_csv:
+            output = Path(output_csv)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            frame.to_csv(output, index=False)
+        return frame
 
     if source_type == "pdf":
         from pdf.processor import process_pdf
 
-        return process_pdf(input_path, output_csv) if output_csv else process_pdf(input_path)
+        return process_pdf(str(input_path), output_csv_path=output_csv)
     if source_type == "image":
         from images.processor import process_image
 
@@ -455,7 +516,7 @@ def run_modality(
     if source_type == "video":
         from video.processor import process_video
 
-        return process_video(input_path, output_csv) if output_csv else process_video(input_path)
+        return process_video(str(input_path), output_csv) if output_csv else process_video(str(input_path))
     if source_type == "text":
         from text.processor import process_text
 
@@ -504,6 +565,7 @@ __all__ = [
     "source_label",
     "source_prefix",
     "severity_from_confidence",
+    "normalize_event",
     "integrate_records",
     "next_incident_number",
     "assign_incident_ids",

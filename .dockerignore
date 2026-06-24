@@ -1,0 +1,45 @@
+# Version-control and editor metadata
+.git
+.gitignore
+.github
+.idea
+.vscode
+.DS_Store
+
+# Never send local credentials to the Docker daemon or Cloud Build.
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Local Python environments and generated files
+.venv
+venv
+env
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+
+# Local caches and downloaded model weights
+.cache
+**/.cache
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Development-only material; application source and reviewed CSVs remain.
+tests
+**/tests
+docs
+diagrams
+audio/sample_data
+
+# Local build products
+build
+dist
+Dockerfile.*

@@ -1,8 +1,8 @@
 """Video processor for the Multimodal Incident Analyzer group pipeline.
 
-Public interface
-----------------
-process_video_file(video_path: str) -> pd.DataFrame   # returns EXTRACTOR_COLUMNS schema
+Public output columns
+---------------------
+Timestamp, Frame_ID, Event_Detected, Objects, Confidence
 """
 
 from __future__ import annotations
@@ -16,17 +16,14 @@ import numpy as np
 import pandas as pd
 
 
-SOURCE_TYPE = "VID"
-EXTRACTOR_COLUMNS = [
-    "source_filename",
-    "source_type",
-    "raw_event",
-    "raw_location",
-    "raw_time",
-    "raw_severity",
-    "confidence",
-    "raw_text",
+DRAFT_COLUMNS = [
+    "Timestamp",
+    "Frame_ID",
+    "Event_Detected",
+    "Objects",
+    "Confidence",
 ]
+DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "output" / "video_output.csv"
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg", ".wmv"}
 _SAMPLE_SECONDS = 0.5
@@ -193,17 +190,17 @@ def format_timestamp(seconds: float) -> str:
 
 
 def process_video_file(video_path: str) -> pd.DataFrame:
-    """Analyze one video file and return an extractor DataFrame.
+    """Analyze one video file and return the five-column video draft.
 
     Rejects clips longer than 5 minutes. Returns an empty DataFrame with
-    EXTRACTOR_COLUMNS if the file cannot be read or exceeds the time limit.
+    DRAFT_COLUMNS if the file cannot be read or exceeds the time limit.
     """
     path = Path(video_path)
     model = load_yolo_model()
 
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
-        return pd.DataFrame(columns=EXTRACTOR_COLUMNS)
+        return pd.DataFrame(columns=DRAFT_COLUMNS)
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     if not fps or math.isnan(fps) or fps <= 0:
@@ -212,7 +209,7 @@ def process_video_file(video_path: str) -> pd.DataFrame:
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     if total_frames / fps > _MAX_DURATION_SECONDS:
         cap.release()
-        return pd.DataFrame(columns=EXTRACTOR_COLUMNS)
+        return pd.DataFrame(columns=DRAFT_COLUMNS)
 
     sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
     mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
@@ -254,23 +251,35 @@ def process_video_file(video_path: str) -> pd.DataFrame:
 
             timestamp = format_timestamp(frame_index / fps)
             objects_str = format_objects(objects, moving_regions)
-            raw_text = f"Event: {event}. Objects detected: {objects_str}. Timestamp: {timestamp}."
-
             extractor_rows.append({
-                "source_filename": path.name,
-                "source_type":     SOURCE_TYPE,
-                "raw_event":       event,
-                "raw_location":    "Unknown",
-                "raw_time":        timestamp,
-                "raw_severity":    event_to_severity(event),
-                "confidence":      round(float(confidence), 2),
-                "raw_text":        raw_text,
+                "Timestamp": timestamp,
+                "Frame_ID": f"FRM_{frame_index:03d}",
+                "Event_Detected": event,
+                "Objects": objects_str,
+                "Confidence": round(float(confidence), 2),
             })
 
         frame_index += 1
 
     cap.release()
-    return pd.DataFrame(extractor_rows, columns=EXTRACTOR_COLUMNS)
+    return pd.DataFrame(extractor_rows, columns=DRAFT_COLUMNS)
 
 
-__all__ = ["process_video_file", "EXTRACTOR_COLUMNS", "SOURCE_TYPE"]
+def process_video(
+    video_path: str | Path,
+    output_csv_path: str | Path = DEFAULT_OUTPUT_PATH,
+) -> pd.DataFrame:
+    """Analyze one video and return the five-column video draft contract."""
+
+    frame = process_video_file(str(video_path))
+    output = Path(output_csv_path).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(output, index=False)
+    return frame
+
+
+__all__ = [
+    "DRAFT_COLUMNS",
+    "process_video",
+    "process_video_file",
+]

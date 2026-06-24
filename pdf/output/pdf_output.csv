@@ -1,2 +1,2 @@
-Report_ID,Incident_Type,Date,Location,Officer,Summary,Suspect_Description,Outcome
-RPT_001,Unknown,"January 19, 2015",Fort Smith,Cpl. Monty McMillen,"To: Whom it may Concern From: Fort Smith Police Department Date: January 19, 2015 Ref: MRAP The following documentation is intended to document the intended use and training of the Mine Resistatant Ambush Protection Vehicle, which was alloc...",Unknown,Unknown
+Report_ID,Incident_Type,Date,Location,Officer,Summary
+RPT_001,Unknown,"January 19, 2015",Fort Smith,Cpl. Monty McMillen,"To: Whom it may Concern From: Fort Smith Police Department Date: January 19, 2015 Ref: MRAP The following documentation is intended to document the intended use and training of the Mine Resistatant Ambush Protection Vehicle, which was alloc..."

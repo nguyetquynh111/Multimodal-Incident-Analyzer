@@ -1,6 +1,6 @@
 """Modality artifact tests for the PDF processor (rules.md section 4.1).
 
-Verifies the demonstration CSV uses its exact eight columns in order and never
+Verifies the demonstration CSV uses its exact six columns in order and never
 contains NaN/None (missing values are the literal string ``Unknown``).
 """
 
@@ -12,13 +12,27 @@ import unittest
 
 import pandas as pd
 
-from pdf.processor import ARTIFACT_COLUMNS, UNKNOWN, process_pdf_file, save_artifact
+from pdf.processor import (
+    ARTIFACT_COLUMNS,
+    UNKNOWN,
+    process_pdf,
+    process_pdf_file,
+    save_artifact,
+)
 
 
 FIXTURE_PDF = Path(__file__).resolve().parent / "fixtures" / "LESO2.pdf"
 
 
 class PdfArtifactSchemaTests(unittest.TestCase):
+    def test_public_pdf_output_has_six_draft_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "pdf_output.csv"
+            frame = process_pdf(str(FIXTURE_PDF), output)
+
+        self.assertEqual(list(frame.columns), ARTIFACT_COLUMNS)
+        self.assertEqual(len(frame.columns), 6)
+
     def test_artifact_csv_has_exact_columns_in_order_and_no_nulls(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "pdf_output.csv"
@@ -30,7 +44,7 @@ class PdfArtifactSchemaTests(unittest.TestCase):
             saved = pd.read_csv(output, keep_default_na=False)
 
         self.assertEqual(list(saved.columns), ARTIFACT_COLUMNS)
-        self.assertEqual(len(saved.columns), 8)
+        self.assertEqual(len(saved.columns), 6)
         self.assertFalse(saved.isnull().values.any())
         for value in saved.iloc[0]:
             self.assertNotIn(value, ("", None))
@@ -47,15 +61,13 @@ class PdfArtifactSchemaTests(unittest.TestCase):
                     "Location": "Fort Smith",
                     "Officer": UNKNOWN,
                     "Summary": "Training proposal document.",
-                    "Suspect_Description": UNKNOWN,
-                    "Outcome": UNKNOWN,
                 }
             ],
             output_csv_path=Path(tempfile.gettempdir()) / "pdf_artifact_schema_test.csv",
         )
 
         self.assertEqual(list(frame.columns), ARTIFACT_COLUMNS)
-        self.assertEqual(frame.iloc[0]["Suspect_Description"], UNKNOWN)
+        self.assertEqual(frame.iloc[0]["Officer"], UNKNOWN)
         self.assertFalse(frame.isnull().values.any())
 
 

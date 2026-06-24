@@ -101,7 +101,7 @@ multimodal-incident-analyzer/
 | src/image/ | Detect supported scene/object signals, run OCR, and produce the image artifact |
 | src/video/ | Sample frames, gate detection by motion, and produce the video event log |
 | src/text/ | Preserve source text, run NLP analysis, and produce the text artifact |
-| src/csv/ and src/json/ | Parse structured records and map them to the extractor schema |
+| src/csv/ and src/json/ | Parse structured records into documented modality drafts |
 | src/integration/integration.py | Accept extractor DataFrame and return cleaned incident rows |
 | src/integration/severity.py | Apply severity rules and normalize severity values |
 | src/integration/validators.py | Validate extractor, integration, LLM summary, Supabase payload, and final export schemas |
