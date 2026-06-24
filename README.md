@@ -211,6 +211,42 @@ name is real and source-grounded, not fabricated. This is intentional behavior.
    OCR result only; it has not yet been verified against a real scanned PDF with a
    real pytesseract install.
 
+## Text Processor
+
+Student 5 converts CrimeReport social/news posts into:
+
+```text
+Text_ID, Source, Raw_Text, Sentiment, Entities, Topic
+```
+
+The processor preserves `Raw_Text`, cleans a separate analysis copy, extracts
+`PERSON`, `LOCATION`, `ORGANIZATION`, and `DATE` groups, then classifies one of
+`Theft / Robbery`, `Assault / Violence`, `Fire / Arson`, `Traffic Accident`,
+`Public Disturbance`, or `Other`. It uses spaCy NER when `en_core_web_sm` is
+available and rule-based fallbacks otherwise, so the demo works offline.
+
+The Kaggle CrimeReport download is stored at `text/data/crimereport.txt`. The
+download is a JSON Lines `.txt` file: each line is one tweet/news-like record
+with fields such as `text`, `created_at`, `source`, `place`, and `user`. The
+processor detects that format and emits one structured row per JSON line. The
+current dataset produces 115 text rows.
+
+Run the Kaggle dataset:
+
+```bash
+python -m text.processor text/data/crimereport.txt --output text/output/text_output.csv --source CrimeReport
+python -m integration.integration
+```
+
+This writes `text/output/text_output.csv` and rebuilds
+`integration/output/final_incident_dataset.csv`. The sample
+`samples/social_post.txt` is still useful for a one-row smoke test, but it is
+not the main Student 5 dataset.
+
+For CSV variants, pass the file path and optionally `--text-column` if the
+narrative column is not named `Raw_Text`, `text`, `details`, `report`,
+`narrative`, `content`, `post`, `tweet`, `article`, or `summary`.
+
 ## Tests
 
 ```bash
