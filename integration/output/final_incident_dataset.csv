@@ -1,1 +1,12 @@
 Incident_ID,Source,Event,Location,Time,Severity
+AUD-001,Audio,building fire,Downtown Ave,Unknown,High
+AUD-002,Audio,car accident,Main Street,Unknown,High
+AUD-003,Audio,burglary/robbery,Oak Road,Unknown,Medium
+DOC-004,PDF,Theft,Oak Road,2015-04-10,Medium
+DOC-005,PDF,Assault,5th Avenue,2016-08-22,Medium
+IMG-006,Image,Fire Scene,Unknown,Unknown,High
+IMG-007,Image,Traffic Accident,Unknown,Unknown,High
+VID-008,Video,Person collapsing,Unknown,00:00:12,High
+VID-009,Video,Crowd gathering,Unknown,00:01:45,High
+TXT-010,Text,Theft / Robbery,Oak Street; Chicago,Unknown,Medium
+TXT-011,Text,Fire / Arson,downtown,Unknown,Medium

@@ -1,4 +1,9 @@
-"""Tests for validation, payload creation, and optional Supabase round trips."""
+"""Tests for validation, payload creation, and optional Supabase round trips.
+
+``incident_id`` is a unique integer (the Supabase column is ``int8``). The live
+round-trip test only runs when ``RUN_SUPABASE_LIVE_TESTS=1`` so the default
+``pytest`` run stays offline and never mutates the real database.
+"""
 
 from __future__ import annotations
 
@@ -35,6 +40,10 @@ def test_validate_incidents_df_accepts_valid_input() -> None:
     validate_incidents_df(_incident_frame("101"))
 
 
+def _duplicate_id_frame() -> pd.DataFrame:
+    return pd.concat([_incident_frame(101), _incident_frame(101)], ignore_index=True)
+
+
 @pytest.mark.parametrize(
     ("frame", "message"),
     [
@@ -43,6 +52,7 @@ def test_validate_incidents_df_accepts_valid_input() -> None:
         (_incident_frame(None), "null values"),
         (_incident_frame("not-an-integer"), "convertible"),
         (_incident_frame(1.5), "whole integer"),
+        (_duplicate_id_frame(), "unique"),
     ],
 )
 def test_validate_incidents_df_rejects_invalid_input(
@@ -173,6 +183,10 @@ def test_crud_rejects_invalid_identifiers_and_filters() -> None:
         supabase_client.query_incidents(limit=0)
 
 
+@pytest.mark.skipif(
+    os.getenv("RUN_SUPABASE_LIVE_TESTS") != "1",
+    reason="Set RUN_SUPABASE_LIVE_TESTS=1 to run the live Supabase round trip.",
+)
 def test_supabase_insert_exists_then_delete() -> None:
     """Create, read, update, and delete one row, then confirm cleanup.
 
