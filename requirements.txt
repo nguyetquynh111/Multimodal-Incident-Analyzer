@@ -33,5 +33,10 @@ opencv-python-headless==4.10.0.84
 ultralytics==8.4.70
 Pillow
 
+# LLM summarizer
+# Only the optional OpenRouter (free-tier) HTTP call needs this; the rule-based
+# fallback in llm_summarizer/fallback.py has no dependencies.
+requests
+
 # Testing
 pytest
