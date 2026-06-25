@@ -1,1 +1,207 @@
 Incident_ID,Source,Event,Location,Time,Severity
+DOC-001,PDF,Unknown,Fort Smith,"January 19, 2015",Medium
+IMG-002,Image,Fire Scene,Unknown,Unknown,High
+IMG-003,Image,Smoke Scene,Unknown,Unknown,High
+IMG-004,Image,Traffic Accident Scene,Unknown,Unknown,High
+IMG-005,Image,General Scene,Unknown,Unknown,Medium
+IMG-006,Image,Fire Scene,Unknown,Unknown,High
+IMG-007,Image,Smoke Scene,Unknown,Unknown,High
+IMG-008,Image,Traffic Accident Scene,Unknown,Unknown,High
+IMG-009,Image,Fire Scene,Unknown,Unknown,High
+IMG-010,Image,General Scene,Unknown,Unknown,Medium
+IMG-011,Image,Traffic Accident Scene,Unknown,Unknown,High
+VID-012,Video,Person Running,Unknown,00:00:00,High
+VID-013,Video,No Activity,Unknown,00:00:00,Medium
+VID-014,Video,Person Collapsing,Unknown,00:00:01,Medium
+VID-015,Video,Person Collapsing,Unknown,00:00:01,Medium
+VID-016,Video,No Activity,Unknown,00:00:02,Medium
+VID-017,Video,No Activity,Unknown,00:00:02,Medium
+VID-018,Video,No Activity,Unknown,00:00:03,Medium
+VID-019,Video,Person Collapsing,Unknown,00:00:03,Medium
+VID-020,Video,Person Collapsing,Unknown,00:00:04,Medium
+VID-021,Video,Person Collapsing,Unknown,00:00:04,Medium
+VID-022,Video,Person Collapsing,Unknown,00:00:05,Medium
+VID-023,Video,Person Standing,Unknown,00:00:05,Medium
+VID-024,Video,Person Collapsing,Unknown,00:00:06,Medium
+VID-025,Video,Person Collapsing,Unknown,00:00:06,Medium
+VID-026,Video,Person Collapsing,Unknown,00:00:07,Medium
+VID-027,Video,Person Collapsing,Unknown,00:00:07,Medium
+VID-028,Video,Multiple Persons Present,Unknown,00:00:08,Medium
+VID-029,Video,Multiple Persons Present,Unknown,00:00:08,Medium
+VID-030,Video,No Activity,Unknown,00:00:09,Medium
+VID-031,Video,No Activity,Unknown,00:00:09,Medium
+VID-032,Video,Person Collapsing,Unknown,00:00:10,Medium
+VID-033,Video,Person Standing,Unknown,00:00:10,Medium
+VID-034,Video,Person Standing,Unknown,00:00:11,Medium
+VID-035,Video,No Activity,Unknown,00:00:11,Medium
+VID-036,Video,No Activity,Unknown,00:00:12,Medium
+VID-037,Video,No Activity,Unknown,00:00:12,Medium
+VID-038,Video,Person Standing,Unknown,00:00:12,Medium
+VID-039,Video,Person Standing,Unknown,00:00:13,Medium
+VID-040,Video,No Activity,Unknown,00:00:13,Medium
+VID-041,Video,No Activity,Unknown,00:00:14,Medium
+VID-042,Video,Person Standing,Unknown,00:00:14,Medium
+VID-043,Video,Person Standing,Unknown,00:00:15,Medium
+VID-044,Video,No Activity,Unknown,00:00:15,Medium
+VID-045,Video,No Activity,Unknown,00:00:16,Medium
+VID-046,Video,No Activity,Unknown,00:00:16,Medium
+VID-047,Video,No Activity,Unknown,00:00:17,Medium
+VID-048,Video,No Activity,Unknown,00:00:17,Medium
+VID-049,Video,No Activity,Unknown,00:00:18,Medium
+VID-050,Video,No Activity,Unknown,00:00:18,Medium
+VID-051,Video,No Activity,Unknown,00:00:19,Medium
+VID-052,Video,No Activity,Unknown,00:00:19,Medium
+VID-053,Video,No Activity,Unknown,00:00:20,Medium
+VID-054,Video,Person Standing,Unknown,00:00:20,Medium
+VID-055,Video,Person Standing,Unknown,00:00:21,Medium
+VID-056,Video,Person Standing,Unknown,00:00:21,Medium
+VID-057,Video,Person Collapsing,Unknown,00:00:22,Medium
+VID-058,Video,Person Standing,Unknown,00:00:22,Medium
+VID-059,Video,Person Collapsing,Unknown,00:00:23,Medium
+VID-060,Video,Person Collapsing,Unknown,00:00:23,Medium
+VID-061,Video,Person Collapsing,Unknown,00:00:24,Medium
+VID-062,Video,No Activity,Unknown,00:00:24,Medium
+VID-063,Video,Person Standing,Unknown,00:00:24,Medium
+VID-064,Video,Person Standing,Unknown,00:00:25,Medium
+VID-065,Video,Person Standing,Unknown,00:00:25,Medium
+VID-066,Video,Person Collapsing,Unknown,00:00:26,Medium
+VID-067,Video,Person Collapsing,Unknown,00:00:26,Medium
+VID-068,Video,Person Collapsing,Unknown,00:00:27,Medium
+VID-069,Video,Person Collapsing,Unknown,00:00:27,Medium
+VID-070,Video,Person Collapsing,Unknown,00:00:28,Medium
+VID-071,Video,No Activity,Unknown,00:00:28,Medium
+VID-072,Video,No Activity,Unknown,00:00:29,Medium
+VID-073,Video,Person Standing,Unknown,00:00:29,Medium
+VID-074,Video,Person Collapsing,Unknown,00:00:30,Medium
+VID-075,Video,Person Collapsing,Unknown,00:00:30,Medium
+VID-076,Video,Person Collapsing,Unknown,00:00:31,Medium
+VID-077,Video,Person Collapsing,Unknown,00:00:31,Medium
+VID-078,Video,Person Standing,Unknown,00:00:32,Medium
+VID-079,Video,No Activity,Unknown,00:00:32,Medium
+VID-080,Video,No Activity,Unknown,00:00:33,Medium
+VID-081,Video,No Activity,Unknown,00:00:33,Medium
+VID-082,Video,No Activity,Unknown,00:00:34,Medium
+VID-083,Video,No Activity,Unknown,00:00:34,Medium
+VID-084,Video,No Activity,Unknown,00:00:35,Medium
+VID-085,Video,No Activity,Unknown,00:00:35,Medium
+VID-086,Video,No Activity,Unknown,00:00:36,Medium
+VID-087,Video,No Activity,Unknown,00:00:36,Medium
+VID-088,Video,No Activity,Unknown,00:00:36,Medium
+VID-089,Video,No Activity,Unknown,00:00:37,Medium
+VID-090,Video,No Activity,Unknown,00:00:37,Medium
+VID-091,Video,No Activity,Unknown,00:00:38,Medium
+TXT-092,Text,Assault / Violence,"Jeff, Hoover, AL, Alabama",Fri Jan 31 05:51:59 +0000 2014,Medium
+TXT-093,Text,Assault / Violence,"Monday shooting, Rocky Mount, N.C",Fri Jan 31 05:01:39 +0000 2014,Medium
+TXT-094,Text,Other,"public via, Northern Virginia",Fri Jan 31 18:10:37 +0000 2014,Medium
+TXT-095,Text,Assault / Violence,A Crime Scene,Fri Jan 31 02:33:17 +0000 2014,Medium
+TXT-096,Text,Assault / Violence,"stamp out, domestic violence, London",Thu Jan 30 23:18:45 +0000 2014,Medium
+TXT-097,Text,Other,"stamp out, London","Today, Fri Jan 31 07:22:18 +0000 2014",Medium
+TXT-098,Text,Theft / Robbery,"Buffalo, NY",Thu Jan 30 22:19:37 +0000 2014,Medium
+TXT-099,Text,Other,"lack of, Pakistan become easy targets for crime, Washington, D.C",Thu Jan 30 14:31:21 +0000 2014,Medium
+TXT-100,Text,Assault / Violence,"A Crime Scene, Washington, DC",Thu Jan 30 18:24:27 +0000 2014,Medium
+TXT-101,Text,Other,"end the violent MJ trade, Baltimore, MD",Fri Jan 31 04:37:05 +0000 2014,Medium
+TXT-102,Text,Other,"co-ordinated raids, Essex, England",Fri Jan 31 08:20:12 +0000 2014,Medium
+TXT-103,Text,Assault / Violence,a crime scene,Fri Jan 31 22:25:01 +0000 2014,Medium
+TXT-104,Text,Other,"Devon and Cornwall, England",Fri Jan 31 12:49:56 +0000 2014,Medium
+TXT-105,Text,Assault / Violence,"Badger Guns suit, Washington, D.C",Thu Jan 30 20:23:16 +0000 2014,Medium
+TXT-106,Text,Other,"river, York,North Yorkshire",Fri Jan 31 13:04:37 +0000 2014,Medium
+TXT-107,Text,Other,"cry foul, CITY OF DREAMS (BOMBAYY",Sat Feb 01 07:01:12 +0000 2014,Medium
+TXT-108,Text,Other,"Delhi. Home minister, Bhilai",Sat Feb 01 07:00:47 +0000 2014,Medium
+TXT-109,Text,Other,"Delhi. Home minister, Mumbai",Sat Feb 01 06:58:52 +0000 2014,Medium
+TXT-110,Text,Other,Delhi. Home minister,Sat Feb 01 06:58:28 +0000 2014,Medium
+TXT-111,Text,Other,University of Southern Comfort,Sat Feb 01 06:57:23 +0000 2014,Medium
+TXT-112,Text,Other,Delhi. Home minister,Sat Feb 01 06:55:13 +0000 2014,Medium
+TXT-113,Text,Other,SIGMA LAND blasting Hatch,Sat Feb 01 06:54:50 +0000 2014,Medium
+TXT-114,Text,Assault / Violence,"a crime scene, Berlin",Sat Feb 01 06:54:09 +0000 2014,Medium
+TXT-115,Text,Other,Delhi. Home minister,Sat Feb 01 06:54:05 +0000 2014,Medium
+TXT-116,Text,Other,USC '15 • D(M)V,Sat Feb 01 06:53:10 +0000 2014,Medium
+TXT-117,Text,Other,"Rs 8 cr heist, Karachi Pakistan",Sat Feb 01 06:51:55 +0000 2014,Medium
+TXT-118,Text,Other,"High Court, Mumbai jail for 10 years, Karachi Pakistan",Sat Feb 01 06:51:55 +0000 2014,Medium
+TXT-119,Text,Other,"Delhi. Home minister, France",Sat Feb 01 06:51:32 +0000 2014,Medium
+TXT-120,Text,Other,"a playlist World's Scariest, Victoria bc",Sat Feb 01 06:48:16 +0000 2014,Medium
+TXT-121,Text,Other,Sydney Australia,Sat Feb 01 06:48:08 +0000 2014,Medium
+TXT-122,Text,Fire / Arson,"grass fires, FACEBOOK",Sat Feb 01 06:46:27 +0000 2014,Medium
+TXT-123,Text,Other,"capital by govnment, b present ther b4 crime take place, South Africa",Sat Feb 01 06:43:47 +0000 2014,Medium
+TXT-124,Text,Other,"Onitsha, Ilorin, Kwara State, Nigeria",Sat Feb 01 06:43:22 +0000 2014,Medium
+TXT-125,Text,Other,"prevent a crime or arrest the suspect, California",Sat Feb 01 06:43:11 +0000 2014,Medium
+TXT-126,Text,Other,"showdown, Cranston, RI",Sat Feb 01 06:42:57 +0000 2014,Medium
+TXT-127,Text,Other,FACEBOOK,Sat Feb 01 06:42:54 +0000 2014,Medium
+TXT-128,Text,Other,Petaluma,Sat Feb 01 06:40:55 +0000 2014,Medium
+TXT-129,Text,Other,"sunny spot med. MJ shop on 17th, San Francisco, CA",Sat Feb 01 06:35:45 +0000 2014,Medium
+TXT-130,Text,Assault / Violence,"be fighting crime on the streets, a hiding spot waiting",Sat Feb 01 06:35:17 +0000 2014,Medium
+TXT-131,Text,Assault / Violence,Ontario,Sat Feb 01 06:32:41 +0000 2014,Medium
+TXT-132,Text,Other,"St. Louis, Mo",Sat Feb 01 06:32:15 +0000 2014,Medium
+TXT-133,Text,Other,"blame Delhi, Hell",Sat Feb 01 06:31:40 +0000 2014,Medium
+TXT-134,Text,Other,"w, • Afghanistan, CA •",Sat Feb 01 06:31:20 +0000 2014,Medium
+TXT-135,Text,Other,"pay for their crime of beating him.Delhi, Capital, India",Sat Feb 01 06:31:00 +0000 2014,Medium
+TXT-136,Text,Assault / Violence,Pontchartrain Park,Sat Feb 01 06:29:25 +0000 2014,Medium
+TXT-137,Text,Other,pay for their crime of beating him.Delhi,Sat Feb 01 06:29:18 +0000 2014,Medium
+TXT-138,Text,Other,"cry foul, Chennai, India",Sat Feb 01 06:28:49 +0000 2014,Medium
+TXT-139,Text,Assault / Violence,"Murder Case, San Dimas, CA",Sat Feb 01 06:28:37 +0000 2014,Medium
+TXT-140,Text,Other,"Petaluma, San Francisco, California",Sat Feb 01 06:27:37 +0000 2014,Medium
+TXT-141,Text,Other,/dev/null,Sat Feb 01 06:27:14 +0000 2014,Medium
+TXT-142,Text,Other,"Petaluma, Burlingame, CA",Sat Feb 01 06:25:11 +0000 2014,Medium
+TXT-143,Text,Assault / Violence,"Pontchartrain Park, New Orleans, LA",Sat Feb 01 06:25:03 +0000 2014,Medium
+TXT-144,Text,Assault / Violence,"Detroit, Somewhere in SE Michigan",Sat Feb 01 06:23:34 +0000 2014,Medium
+TXT-145,Text,Other,Florida,Sat Feb 01 06:22:28 +0000 2014,Medium
+TXT-146,Text,Other,"Toledo, OH",Sat Feb 01 06:22:24 +0000 2014,Medium
+TXT-147,Text,Other,"Toledo, OH",Sat Feb 01 06:22:17 +0000 2014,Medium
+TXT-148,Text,Other,PERSON: David E P Dennis; DATE: Sat Feb 01 06:22:08 +0000 2014,Sat Feb 01 06:22:08 +0000 2014,Medium
+TXT-149,Text,Other,Petaluma,Sat Feb 01 06:20:51 +0000 2014,Medium
+TXT-150,Text,Other,"deserve such loyal companion. This is a, Sacramento, CA",Sat Feb 01 06:20:30 +0000 2014,Medium
+TXT-151,Text,Other,deserve such loyal companion. This is a,Sat Feb 01 06:18:36 +0000 2014,Medium
+TXT-152,Text,Other,"Toledo, OH",Sat Feb 01 06:16:14 +0000 2014,Medium
+TXT-153,Text,Other,"Toledo, OH",Sat Feb 01 06:16:12 +0000 2014,Medium
+TXT-154,Text,Assault / Violence,British army's crime-fighting software,Sat Feb 01 06:14:25 +0000 2014,Medium
+TXT-155,Text,Assault / Violence,a crime scene,Sat Feb 01 06:14:18 +0000 2014,Medium
+TXT-156,Text,Assault / Violence,PERSON: Crime Watch India; ORGANIZATION: Police; DATE: Sat Feb 01 06:11:02 +0000 2014,Sat Feb 01 06:11:02 +0000 2014,Medium
+TXT-157,Text,Other,California,Sat Feb 01 06:10:17 +0000 2014,Medium
+TXT-158,Text,Assault / Violence,Pontchartrain Park,Sat Feb 01 06:07:42 +0000 2014,Medium
+TXT-159,Text,Assault / Violence,"Pontchartrain Park, HollyGrove-New Orleans",Sat Feb 01 06:07:09 +0000 2014,Medium
+TXT-160,Text,Assault / Violence,"Pontchartrain Park, New Orleans, LA",Sat Feb 01 06:06:04 +0000 2014,Medium
+TXT-161,Text,Assault / Violence,"Hopkinsville, Ky",Sat Feb 01 06:03:28 +0000 2014,Medium
+TXT-162,Text,Other,"14.8, Ventura, CA",Sat Feb 01 06:03:23 +0000 2014,Medium
+TXT-163,Text,Assault / Violence,"Pontchartrain Park, Gentilly neighborhood Saturday, United States of America","Jan. 31, Sat Feb 01 06:00:01 +0000 2014",Medium
+TXT-164,Text,Other,PERSON: Janie Peveto Johnson; ORGANIZATION: Police; DATE: Sat Feb 01 05:57:43 +0000 2014,Sat Feb 01 05:57:43 +0000 2014,Medium
+TXT-165,Text,Other,PERSON: *; DATE: Sat Feb 01 05:57:38 +0000 2014,Sat Feb 01 05:57:38 +0000 2014,Medium
+TXT-166,Text,Other,"alleged child porn bust, Hopkinsville, Ky",Sat Feb 01 05:57:29 +0000 2014,Medium
+TXT-167,Text,Assault / Violence,"Pontchartrain Park, New Orleans, Louisiana",Sat Feb 01 05:54:51 +0000 2014,Medium
+TXT-168,Text,Other,"Springfield, Springfield, MO",Sat Feb 01 05:53:06 +0000 2014,Medium
+TXT-169,Text,Other,"Springfield, MO",Sat Feb 01 05:53:04 +0000 2014,Medium
+TXT-170,Text,Other,Delhi,Sat Feb 01 05:52:48 +0000 2014,Medium
+TXT-171,Text,Other,"Leeds, UK",Sat Feb 01 05:51:37 +0000 2014,Medium
+TXT-172,Text,Other,Seoul / Oakland,Sat Feb 01 05:50:33 +0000 2014,Medium
+TXT-173,Text,Other,Mountains of Madness,Sat Feb 01 05:48:25 +0000 2014,Medium
+TXT-174,Text,Other,"local, @GoodGirlBackUp",Sat Feb 01 05:46:18 +0000 2014,Medium
+TXT-175,Text,Other,PERSON: -; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:33 +0000 2014,Sat Feb 01 05:41:33 +0000 2014,Medium
+TXT-176,Text,Other,PERSON: -; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:26 +0000 2014,Sat Feb 01 05:41:26 +0000 2014,Medium
+TXT-177,Text,Other,PERSON: Avissena; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:23 +0000 2014,Sat Feb 01 05:41:23 +0000 2014,Medium
+TXT-178,Text,Other,"Nairobi , Kenya",Sat Feb 01 05:41:23 +0000 2014,Medium
+TXT-179,Text,Other,All Round The World,Sat Feb 01 05:41:23 +0000 2014,Medium
+TXT-180,Text,Other,"California, Estados Unidos",Sat Feb 01 05:41:23 +0000 2014,Medium
+TXT-181,Text,Other,PERSON: -; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:23 +0000 2014,Sat Feb 01 05:41:23 +0000 2014,Medium
+TXT-182,Text,Other,"Ridgeland, Mississippi",Sat Feb 01 05:40:22 +0000 2014,Medium
+TXT-183,Text,Other,"Delhi NCR, India + California",Sat Feb 01 05:38:35 +0000 2014,Medium
+TXT-184,Text,Other,"be traipsed over multiple times, Denver, CO",Sat Feb 01 05:37:20 +0000 2014,Medium
+TXT-185,Text,Other,Ramsay Street,Sat Feb 01 05:36:44 +0000 2014,Medium
+TXT-186,Text,Other,"Hertfordshire, England, UK",Sat Feb 01 05:35:35 +0000 2014,Medium
+TXT-187,Text,Other,"it, On the road with Rick",Sat Feb 01 05:35:23 +0000 2014,Medium
+TXT-188,Text,Other,"Delhi, somewhere in INDIA or BHARAT",Sat Feb 01 05:32:45 +0000 2014,Medium
+TXT-189,Text,Other,McDonald's Happy Meals,Sat Feb 01 05:31:32 +0000 2014,Medium
+TXT-190,Text,Other,"The Shoals, Alabama",Sat Feb 01 05:31:05 +0000 2014,Medium
+TXT-191,Text,Other,UK,Sat Feb 01 05:30:42 +0000 2014,Medium
+TXT-192,Text,Other,Delhi,Sat Feb 01 05:28:23 +0000 2014,Medium
+TXT-193,Text,Assault / Violence,"a crime scene, Los Angeles Digital Journo",Sat Feb 01 05:25:49 +0000 2014,Medium
+TXT-194,Text,Other,"Delhi, New Delhi / Sikkim",Sat Feb 01 05:25:12 +0000 2014,Medium
+TXT-195,Text,Assault / Violence,United Kingdom,Sat Feb 01 05:23:12 +0000 2014,Medium
+TXT-196,Text,Fire / Arson,"Richland, Worldwide",Sat Feb 01 05:22:38 +0000 2014,Medium
+TXT-197,Text,Other,PERSON: Felicity Gamelin; DATE: Sat Feb 01 05:21:56 +0000 2014,Sat Feb 01 05:21:56 +0000 2014,Medium
+TXT-198,Text,Fire / Arson,"Richland, Michigan - Worldwide",Sat Feb 01 05:19:53 +0000 2014,Medium
+TXT-199,Text,Other,Here But I'm Gone,Sat Feb 01 05:19:44 +0000 2014,Medium
+TXT-200,Text,Other,"cry foul, Gurgaon",Sat Feb 01 05:18:59 +0000 2014,Medium
+TXT-201,Text,Assault / Violence,Badger Guns suit,Sat Feb 01 05:17:58 +0000 2014,Medium
+TXT-202,Text,Other,Ontario,Sat Feb 01 05:16:57 +0000 2014,Medium
+TXT-203,Text,Assault / Violence,"Badger Guns suit, Windber, PA",Sat Feb 01 05:14:28 +0000 2014,Medium
+TXT-204,Text,Other,Anywhere USA,Sat Feb 01 05:13:33 +0000 2014,Medium
+TXT-205,Text,Other,"San Jose, Ca",Sat Feb 01 05:11:50 +0000 2014,Medium
+TXT-206,Text,Other,"Wyoming Highway, United States",Sat Feb 01 05:11:45 +0000 2014,Medium

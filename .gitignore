@@ -9,6 +9,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 .DS_Store
+.streamlit/
+.pytest_cache/
 build/
 develop-eggs/
 dist/
@@ -151,6 +153,7 @@ activemq-data/
 # Environments
 .env
 .envrc
+.streamlit/secrets.toml
 .venv
 env/
 venv/

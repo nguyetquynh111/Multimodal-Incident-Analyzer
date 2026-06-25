@@ -1,13 +1,7 @@
 """Public PDF processing API.
 
-Produces two deliberately distinct outputs from one official document:
-
-1. A demonstration *artifact* CSV with the exact PDF columns
-   ``Report_ID, Incident_Type, Date, Location, Officer, Summary,
-   Suspect_Description, Outcome`` written under ``pdf/output/``.
-2. The shared *extractor contract* DataFrame
-   ``source_filename, source_type, raw_event, raw_location, raw_time,
-   raw_severity, confidence, raw_text`` returned in memory for Integration.
+Produces the exact six-column PDF draft used by Integration:
+``Report_ID, Incident_Type, Date, Location, Officer, Summary``.
 
 Text is extracted directly first (PyMuPDF, then pdfplumber). OCR
 (pytesseract) is applied *page by page* and only to pages that have no
@@ -49,22 +43,8 @@ ARTIFACT_COLUMNS = [
     "Location",
     "Officer",
     "Summary",
-    "Suspect_Description",
-    "Outcome",
 ]
 
-EXTRACTOR_COLUMNS = [
-    "source_filename",
-    "source_type",
-    "raw_event",
-    "raw_location",
-    "raw_time",
-    "raw_severity",
-    "confidence",
-    "raw_text",
-]
-
-SOURCE_TYPE = "PDF"
 UNKNOWN = "Unknown"
 SUPPORTED_PDF_EXTENSIONS = {".pdf"}
 
@@ -420,197 +400,10 @@ def analyze_document(report_id: str, text: str) -> dict[str, Any]:
         "Location": extract_location(normalized),
         "Officer": extract_officer(normalized),
         "Summary": summarize_document(normalized),
-        "Suspect_Description": _extract_context(normalized, "suspect") if is_crime_report else UNKNOWN,
-        "Outcome": _extract_context(normalized, "outcome") if is_crime_report else UNKNOWN,
     }
 
 
-# --- Confidence and extractor mapping ----------------------------------------
-
-def _confidence(artifact_row: dict[str, Any], used_ocr: bool) -> float:
-    """Confidence in [0, 1]: lower when OCR was needed or fields are Unknown."""
-
-    signal_fields = ("Incident_Type", "Date", "Location")
-    filled = sum(1 for field in signal_fields if artifact_row.get(field, UNKNOWN) != UNKNOWN)
-    score = 0.3 + 0.2 * filled  # 0.3 .. 0.9
-    if used_ocr:
-        score *= 0.6
-    return round(max(0.0, min(1.0, score)), 2)
-
-
-def map_to_extractor(
-    artifact_rows: list[dict[str, Any]],
-    source_filename: str,
-    raw_text: str,
-    used_ocr: bool,
-) -> pd.DataFrame:
-    """Map zero or more artifact rows onto the shared extractor contract."""
-
-    normalized_text = _normalize_text(raw_text) or UNKNOWN
-    extractor_rows = [
-        {
-            "source_filename": source_filename,
-            "source_type": SOURCE_TYPE,
-            "raw_event": row.get("Incident_Type", UNKNOWN) or UNKNOWN,
-            "raw_location": row.get("Location", UNKNOWN) or UNKNOWN,
-            "raw_time": row.get("Date", UNKNOWN) or UNKNOWN,
-            "raw_severity": severity_signal(
-                normalized_text, row.get("Incident_Type", UNKNOWN)
-            ),
-            "confidence": _confidence(row, used_ocr),
-            "raw_text": normalized_text,
-        }
-        for row in artifact_rows
-    ]
-    return pd.DataFrame(extractor_rows, columns=EXTRACTOR_COLUMNS)
-
-
-# --- Multi-document segmentation ---------------------------------------------
-# One uploaded PDF can be a bundle of several agencies' stapled letters/
-# proposals. Boundaries are detected from content (a new letterhead, cover
-# letter, or policy/SOP title page that names a *different* agency), never a
-# fixed page count, so agencies of differing lengths each become one row.
-
-_AGENCY_NAME = re.compile(
-    r"([A-Z][A-Za-z.'’]+(?:\s+[A-Z][A-Za-z.'’]+){0,3})\s+"
-    r"(Police Department|Sheriff[’']?s?\s+(?:Office|Department)|County Sheriff)",
-    re.IGNORECASE,
-)
-# Words that are never part of an agency's distinctive place name; stripped when
-# building its identity key so OCR prose like "...for the police department"
-# is not mistaken for a new agency.
-_AGENCY_STOPWORDS = frozenset({
-    "the", "by", "to", "of", "a", "at", "that", "this", "you", "our", "with",
-    "from", "for", "in", "on", "office", "program", "agencies", "duties",
-    "their", "and", "commander", "maintenance", "personnel", "be", "obtained",
-    "members", "all", "general", "policies", "issuing", "local", "mrap",
-    "asst.", "chief", "deputy", "sheriff", "county", "state", "arkansas", "is",
-    "are", "as", "an", "or", "it", "will", "shall", "department", "officers",
-    "officer", "city",
-})
-# Strong "a new stapled document starts here" cues.
-_DOC_START = re.compile(
-    r"To:?\s*Whom\s+it\s+may\s+[Cc]oncern"
-    r"|\b(?:RE|Ref)[:.]?\s*MRAP\b"
-    r"|\bMEMORANDUM\b"
-    r"|POLICIES\s+AND\s+PROCEDURES"
-    r"|DIVISIONAL\s+OPERATING\s+PROCEDURE"
-    r"|Standard\s+Operating\s+Procedure"
-    r"|\bCover\s+Sheet\b",
-    re.IGNORECASE,
-)
-_CONTACT_HINT = re.compile(
-    r"\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}|Tel:|Phone:|Fax", re.IGNORECASE
-)
-# Only the page header (first chars) is trusted for a boundary, so body prose
-# that merely mentions another agency cannot split one long document.
-_HEADER_WINDOW = 400
-
-
-def _agency_identity(name: str) -> tuple[str, str]:
-    """Reduce a matched org name to a ``(place, kind)`` boundary identity."""
-
-    kind = "police" if re.search(r"police", name, re.IGNORECASE) else "sheriff"
-    tokens = [
-        token
-        for token in re.split(r"\s+", name.strip())
-        if token
-        and token.lower() not in _AGENCY_STOPWORDS
-        and not re.fullmatch(
-            r"(?:police|department|sheriff|sheriff's|county|office)",
-            token,
-            re.IGNORECASE,
-        )
-    ]
-    place = re.sub(r"[^a-z ]", "", " ".join(tokens).lower().replace("’", "'")).strip()
-    return place, kind
-
-
-def _first_agency(window: str) -> tuple[str, str] | None:
-    for match in _AGENCY_NAME.finditer(window):
-        place, kind = _agency_identity(match.group(1) + " " + match.group(2))
-        if place:
-            return place, kind
-    return None
-
-
-def _primary_agency(text: str) -> tuple[str, str] | None:
-    """Best-effort agency identity for a page (header first, then whole page)."""
-
-    return _first_agency(text[:_HEADER_WINDOW]) or _first_agency(text)
-
-
-def _header_starts_document(head: str) -> bool:
-    """True when the page header carries a new-document cue (cover/letterhead/title)."""
-
-    if _DOC_START.search(head):
-        return True
-    first_line = head.lstrip().split("\n", 1)[0].strip()
-    match = _AGENCY_NAME.search(first_line)
-    if not match:
-        return False
-    # A letterhead with a phone, or a short line that is essentially just the
-    # agency name (a title/cover page such as "CABOT POLICE DEPARTMENT").
-    return bool(
-        _CONTACT_HINT.search(head)
-        or (match.start() <= 3 and len(first_line) <= 55)
-    )
-
-
-def _header_agency(text: str) -> tuple[str, str] | None:
-    """Agency identity only when the header both names an agency and starts a doc."""
-
-    head = text[:_HEADER_WINDOW]
-    return _first_agency(head) if _header_starts_document(head) else None
-
-
-def _same_agency(
-    a: tuple[str, str] | None, b: tuple[str, str] | None
-) -> bool:
-    if not a or not b:
-        return False
-    if a == b:
-        return True
-    (place_a, kind_a), (place_b, kind_b) = a, b
-    return (
-        kind_a == kind_b
-        and bool(place_a)
-        and bool(place_b)
-        and (place_a in place_b or place_b in place_a)
-    )
-
-
-def segment_pages(pages: list[str]) -> list[list[int]]:
-    """Group page texts into one index list per detected stapled document.
-
-    A new segment begins at a page whose header both starts a new document and
-    names a *different* agency than the running one; every other page (including
-    OCR-only continuation pages) stays with the current segment. A single-page
-    input, or one where no boundary is found, yields one segment covering all
-    pages. Returns ``[]`` for empty input.
-    """
-
-    if len(pages) <= 1:
-        return [list(range(len(pages)))] if pages else []
-
-    groups: list[list[int]] = []
-    current_agency: tuple[str, str] | None = None
-    for index, text in enumerate(pages):
-        header = _header_agency(text)
-        starts_new = header is not None and (
-            not groups or not _same_agency(header, current_agency)
-        )
-        if starts_new or not groups:
-            groups.append([index])
-            current_agency = header or _primary_agency(text)
-        else:
-            if current_agency is None:
-                current_agency = _primary_agency(text)
-            groups[-1].append(index)
-    return groups
-
-
-# --- Text extraction (page-aware: direct per page, OCR scanned pages only) ---
+# --- Text extraction (direct first, OCR fallback) ----------------------------
 
 def _extract_text_direct(pdf_path: str) -> str:
     """Extract embedded text with PyMuPDF, falling back to pdfplumber."""
@@ -822,69 +615,39 @@ def process_pdf_file(
     write_artifact: bool = True,
     output_csv_path: str | Path | None = None,
 ) -> pd.DataFrame:
-    """Process one PDF and return the extractor-contract DataFrame.
+    """Process one PDF and return the six-column PDF draft.
 
-    By default, extraction is page-aware: each page's embedded text is read
-    directly and only pages with no text layer (scanned images) are OCR'd. The
-    per-page text is then segmented into one row per stapled document/agency
-    (see :func:`segment_pages`), and the eight-field pipeline runs independently
-    on each segment, so a bundle of several agencies yields several rows
-    (``RPT_001``, ``RPT_002``, ...) instead of one. OCR is skipped gracefully
-    when its dependencies are missing. When ``write_artifact`` is true the
-    eight-column demo artifact is also written under ``pdf/output/``. The
-    returned DataFrame is the in-memory pipeline contract and is never the
-    primary on-disk output.
-
-    ``report_id`` is honoured only on the injected-extractor path below; the
-    default page-aware path numbers its segments ``RPT_NNN`` automatically.
-
-    Passing ``text_extractor`` and/or ``ocr_extractor`` switches to a
-    document-level path: the whole document is read with ``text_extractor`` and
-    OCR runs only when that result is empty/near-empty. That seam supplies
-    whole-document text with no page boundaries, so it yields a single row and
-    keeps custom pipelines and tests in control of both stages.
+    Direct text extraction is tried first; OCR runs only when direct
+    extraction is empty or near-empty. When ``write_artifact`` is true, the
+    same six-column result is written under ``pdf/output/``.
     """
 
     path = _validate_pdf_path(pdf_path)
 
-    if text_extractor is None and ocr_extractor is None:
-        # Default production path: page-aware extraction split into one row per
-        # stapled document (agency). The whole document is never re-run per
-        # segment; each segment's own page text drives its fields and raw_text.
-        page_texts, page_ocr = _extract_pages_text(str(path))
-        groups = segment_pages(page_texts) or [list(range(len(page_texts)))]
-        artifact_rows = []
-        frames: list[pd.DataFrame] = []
-        for number, indices in enumerate(groups, start=1):
-            segment_text = "\n".join(page_texts[i] for i in indices)
-            segment_used_ocr = any(page_ocr[i] for i in indices)
-            row = analyze_document(f"RPT_{number:03d}", segment_text)
-            artifact_rows.append(row)
-            frames.append(
-                map_to_extractor([row], path.name, segment_text, segment_used_ocr)
-            )
-        extractor_df = (
-            pd.concat(frames, ignore_index=True)
-            if frames
-            else map_to_extractor([], path.name, "", False)
-        )
-        logger.info("Detected %d document segment(s) in %s.", len(groups), path.name)
-    else:
-        # Injected-extractor path: document-level direct, OCR-on-empty fallback.
-        # This seam supplies whole-document text (no page boundaries), so it
-        # intentionally yields a single row and honours ``report_id``.
-        text = (text_extractor or _extract_text_direct)(str(path))
-        used_ocr = False
-        if len(text.strip()) < _MIN_DIRECT_TEXT_CHARS:
-            text = (ocr_extractor or _extract_text_ocr)(str(path))
-            used_ocr = True
-        artifact_rows = [analyze_document(report_id or "RPT_001", text)]
-        extractor_df = map_to_extractor(artifact_rows, path.name, text, used_ocr)
+    text = (text_extractor or _extract_text_direct)(str(path))
+    if len(text.strip()) < _MIN_DIRECT_TEXT_CHARS:
+        text = (ocr_extractor or _extract_text_ocr)(str(path))
+
+    artifact_rows = [analyze_document(report_id or "RPT_001", text)]
 
     if write_artifact:
-        save_artifact(artifact_rows, output_csv_path)
+        return save_artifact(artifact_rows, output_csv_path)
+    return pd.DataFrame(artifact_rows, columns=ARTIFACT_COLUMNS).fillna(UNKNOWN)
 
-    return extractor_df
+
+def process_pdf(
+    pdf_path: str | Path,
+    output_csv_path: str | Path | None = None,
+    report_id: str | None = None,
+) -> pd.DataFrame:
+    """Process one PDF and return the six-column PDF draft contract."""
+
+    return process_pdf_file(
+        str(pdf_path),
+        report_id=report_id,
+        write_artifact=True,
+        output_csv_path=output_csv_path,
+    )
 
 
 def save_artifact(
@@ -926,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
         output_csv_path=args.output,
     )
     print(frame.to_string(index=False))
-    print(f"Returned {len(frame)} extractor row(s) for {Path(args.input).name}")
+    print(f"Returned {len(frame)} PDF row(s) for {Path(args.input).name}")
     return 0
 
 
@@ -936,10 +699,9 @@ if __name__ == "__main__":
 
 __all__ = [
     "ARTIFACT_COLUMNS",
-    "EXTRACTOR_COLUMNS",
     "analyze_document",
     "classify_incident",
-    "map_to_extractor",
+    "process_pdf",
     "process_pdf_file",
     "save_artifact",
     "segment_pages",

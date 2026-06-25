@@ -73,29 +73,16 @@ Incident_ID, Source, Event, Location, Time, Severity
 | incident_summary | Stored in Supabase for dashboard display; not included in the final six-column CSV |
 | summary_method | Stored in Supabase to show whether `llm`, `rule_based`, `disabled`, or `error` produced the summary |
 
-## 4. Extractor DataFrame Rules
+## 4. Modality DataFrame Rules
 
-Every modality extractor must return a pandas DataFrame with exactly these required columns before Integration:
-
-```text
-source_filename, source_type, raw_event, raw_location, raw_time, raw_severity, confidence, raw_text
-```
-
-Rules:
-- A DataFrame can contain zero, one, or many rows.
-- One uploaded file can produce many raw candidate incident rows.
-- Do not write intermediate CSV files as the primary pipeline contract.
-- Extra debug columns are allowed only if Integration ignores or explicitly handles them.
-- Missing values must be converted to `Unknown` or safe defaults before Supabase insertion.
-
-### 4.1 Modality Artifact Rules
-
-Modality CSVs are demonstration artifacts, not the application integration contract.
+Each modality returns its exact documented draft columns. A DataFrame can
+contain zero, one, or many rows. Missing values must use `Unknown` or a safe
+default before Integration.
 
 | **Modality** | **Exact Columns** | **Key Rule** |
 | --- | --- | --- |
 | Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm` or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
-| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Use direct extraction first and OCR only when scanned or text is unavailable |
+| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary` | Use direct extraction first and OCR only when scanned or text is unavailable |
 | Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use supported model labels and confidence from 0.0 to 1.0 |
 | Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, `FRM_NNN`, motion gating, and documented event logic |
 | Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` | Preserve `Raw_Text`; unsupported topics use `Other` |
@@ -107,14 +94,14 @@ Use `Unknown` for unsupported or missing evidence. Never infer facts that are no
 Integration must accept a pandas DataFrame, not a CSV path. The required function contract is:
 
 ```text
-def integrate_records(extractor_df: pandas.DataFrame) -> pandas.DataFrame:
+def integrate_records(draft_df: pandas.DataFrame, source_type: str) -> pandas.DataFrame:
     """Return cleaned incident rows before ID assignment and before Supabase insert."""
 ```
 
 Integration output must include:
 
 ```text
-event, location, time, severity, confidence, raw_text
+source, event, location, time, severity
 ```
 
 It may include additional columns if they are documented and supported. It must not insert directly into Supabase before ID generation and LLM summary enrichment are complete.

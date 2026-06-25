@@ -1,4 +1,9 @@
-"""Validation for integration-ready incident DataFrames."""
+"""Validation for integration-ready incident DataFrames.
+
+``incident_id`` is a unique integer (the Supabase column is ``int8``). The
+human-readable, modality-prefixed label (e.g. ``AUD-001``) is derived for
+display/export by :mod:`integration.integration`; it is not stored.
+"""
 
 import logging
 
@@ -57,5 +62,8 @@ def validate_incidents_df(df: pd.DataFrame) -> None:
 
     if not (numeric_ids == integer_ids).all():
         raise ValueError("Every incident_id must be a whole integer value.")
+
+    if integer_ids.duplicated().any():
+        raise ValueError("Every incident_id must be unique within an upload.")
 
     logger.debug("Validated incidents DataFrame with %d rows.", len(df))

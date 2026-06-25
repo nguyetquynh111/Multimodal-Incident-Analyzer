@@ -1,5 +1,6 @@
 # Core application
 pandas
+altair
 # Intel macOS is limited to PyTorch 2.2, whose wheels use the NumPy 1.x ABI.
 numpy<2
 streamlit
@@ -14,6 +15,7 @@ openai-whisper
 numba==0.62.1
 llvmlite==0.45.1
 torch==2.2.2
+torchvision==0.17.2
 
 # PDF and OCR
 PyMuPDF
@@ -26,10 +28,9 @@ spacy
 cryptography==48.0.1
 
 # Image and video
-# 4.10 is the newest release with an Intel macOS wheel.
-opencv-python==4.10.0.84
-moviepy
-imageio
+# Headless OpenCV avoids desktop GUI libraries that are unavailable on Cloud Run.
+opencv-python-headless==4.10.0.84
+ultralytics==8.4.70
 Pillow
 
 # LLM summarizer

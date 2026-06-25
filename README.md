@@ -2,9 +2,129 @@
 
 Class prototype for converting incident evidence into structured records. The audio module uses local Whisper transcription plus keyword, regex, and urgency rules. It does not use an LLM or download Hugging Face models.
 
+## Pipeline (Stage 1–5)
+
+```text
+one file  ──►  modality processor  ──►  DRAFT csv  ──►  integration  ──►  FINAL 6 cols  ──►  Supabase  ──►  dashboard / CSV export
+(.wav/.pdf/   (audio/pdf/image/      (per-modality   (integration/    Incident_ID,Source,   incidents      (app.py:
+ .png/.mp4/    video/text)            schema)         integration.py)  Event,Location,        table          filter, chart,
+ .txt)                                                                 Time,Severity)                        CRUD, export)
+```
+
+The **Integration & Dashboard Lead (Student 6)** owns `integration/integration.py`
+(Stage 4 merge) and `app.py` (Stage 5 dashboard + CRUD).
+
+## Streamlit App — run it
+
+The app is the demo surface: upload a file, convert it to the final schema,
+insert into Supabase, and explore the dashboard.
+
+```bash
+# 1) create an isolated virtual environment (run once)
+python3 -m venv .venv
+
+# 2) activate it   (bash/zsh shown; fish shell: source .venv/bin/activate.fish)
+source .venv/bin/activate
+
+# 3) install dependencies (covers the app + all five modalities)
+python -m pip install -r requirements.txt
+
+# 4) run the app   (needs a project-root .env — see "Supabase setup" below)
+streamlit run app.py
+```
+
+A single `requirements.txt` covers the app, integration, and every modality
+processor. Real Whisper audio also needs FFmpeg (`brew install ffmpeg`); without
+it audio processing stops with an installation hint. Uploaded audio is always
+transcribed and never replaced with a pasted transcript.
+
+The app has four pages:
+
+- **Ingest & Convert** — upload one file → see the draft output → see the final
+  six columns → download the CSV or insert into Supabase. Try it with the
+  included `samples/social_post.txt`.
+- **Integrate** — UNION every modality's `*/output/*.csv` into the unified master
+  dataset (the assignment's Final Integration Task), then save it to
+  `integration/output/final_incident_dataset.csv` or push it to Supabase.
+- **Dashboard** — KPIs, charts (by source / severity / event), filters, and the
+  six-column CSV export, all read live from Supabase.
+- **Manage Data** — the "add data" buttons: **Add / Edit / Delete** incident rows
+  via the `cloud_deployment` CRUD helpers.
+
+### Test the full integrated pipeline
+
+The repo ships **sample outputs for all five modalities** under each `*/output/`
+folder, so you can demo the complete Stage-4 merge without running every model:
+
+Or build it programmatically with the data-engineering CLI:
+
+```bash
+python -m integration.integration        # merge all */output/*.csv -> final_incident_dataset.csv
+```
+
+In the app: **Integrate** → **Build unified dataset** — all five modalities merge
+into one table (`AUD-`/`DOC-`/`IMG-`/`VID-`/`TXT-`). **Save to repo** writes
+`integration/output/final_incident_dataset.csv`; **Upload all to Supabase** pushes
+the rows live; the **Dashboard** then shows them with charts and filters.
+
+To regenerate a modality's output from raw input, run its processor (each writes
+to its own `*/output/` folder), then re-run the merge:
+
+```bash
+python -m text.processor  samples/social_post.txt --output text/output/text_output.csv
+python -m audio.processor --demo-transcript "There is a fire on Main St" --output audio/output/audio_output.csv
+```
+
+## Supabase setup
+
+Credentials are read from a project-root `.env` (locally) or `st.secrets` (on
+Streamlit Cloud):
+
+```text
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_KEY=<publishable-or-anon-key>
+# Live tests are enabled by default; set this to 0 to keep pytest offline
+RUN_SUPABASE_LIVE_TESTS=1
+```
+
+The existing `incidents` table is used as-is — `incident_id` stays `int8`, so
+**no schema change is required**. To confirm connectivity, open the
+**Dashboard** page, or run the optional live round-trip test:
+
+```bash
+RUN_SUPABASE_LIVE_TESTS=1 python -m pytest cloud_deployment/tests -k insert_exists
+```
+
+With Supabase credentials configured, the live test runs by default and writes
+to the configured database before cleaning up its temporary row. Set
+`RUN_SUPABASE_LIVE_TESTS=0` in `.env` to disable it and keep pytest offline.
+
+### ID and severity scheme (assignment §4)
+
+- **`incident_id`** is stored as a unique integer. The dashboard and final CSV
+  display the derived **modality-prefixed label** `<PREFIX>-<NNN>` (e.g.
+  `AUD-008`), built from `source` + `incident_id`. Prefixes: Audio→`AUD`,
+  PDF→`DOC`, Image→`IMG`, Video→`VID`, Text→`TXT`. Numbering is global, so
+  labels are unique but not reset per modality (you may see `AUD-001`,
+  `DOC-002`). For strictly per-modality numbering (`AUD-001`, `DOC-001`), change
+  the `incident_id` column to `text` and store the labels directly.
+- **Severity** = `score = confidence × 10`, with `0–3 → Low`, `3–7 → Medium`,
+  `7–10 → High`. Modalities without a numeric confidence default to `Medium`.
+
+## Deploy the dashboard (Streamlit Community Cloud)
+
+Push the repo, create an app pointing at `app.py`, add `SUPABASE_URL` and
+`SUPABASE_KEY` in the app's **Secrets** (see
+[`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example)). Note that
+`requirements.txt` includes the heavy AI deps (torch, opencv), so the cloud
+build is large — for a lighter hosted dashboard, trim it to `streamlit`,
+`pandas`, `supabase`, and `python-dotenv`.
+
 ## Setup
 
-Python 3.10 and FFmpeg are required for audio files.
+Python 3.10+ works (tested on 3.13). FFmpeg is required for real audio
+transcription. This installs the same single `requirements.txt` as the app
+above — in fish, activate with `source .venv/bin/activate.fish`.
 
 ```bash
 python -m venv .venv
@@ -51,12 +171,11 @@ Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
 Tickets T-009 / T-010. Extracts structured fields from a PDF police/incident
 report — incident type, date, location, officer, suspect description, and
 outcome — and converts one document into two distinct outputs, per
+Tickets T-009 / T-010. Converts one PDF document into one six-column output, per
 [specs](docs/specs.md) section 5.2:
 
-- An 8-column demo artifact CSV at `pdf/output/pdf_output.csv`
-  (`Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome`).
-- An in-memory extractor DataFrame consumed by Integration
-  (`source_filename, source_type, raw_event, raw_location, raw_time, raw_severity, confidence, raw_text`).
+- A six-column DataFrame and CSV at `pdf/output/pdf_output.csv`
+  (`Report_ID, Incident_Type, Date, Location, Officer, Summary`).
 
 Text is extracted directly first with PyMuPDF (`fitz`), falling back to
 pdfplumber. Extraction is **page-aware**: each page's embedded text layer is
@@ -125,17 +244,14 @@ Run it (Python):
 ```python
 from pdf.processor import process_pdf_file
 
-extractor_df = process_pdf_file("tests/fixtures/LESO2.pdf")  # one row per agency; also writes the CSV
+pdf_df = process_pdf_file("tests/fixtures/LESO2.pdf")
 ```
 
 ### Test status
 
 `tests/test_extractor_schema.py` and `tests/test_modality_output_schemas.py` —
-passing. Coverage includes the extractor-contract columns, the OCR fallback
-path, the artifact CSV schema with no nulls, **deterministic unit tests for the
-multi-document `segment_pages()` splitter and the subject-line summary** (these
-two run without OCR), and an end-to-end run over the real scanned pages of
-`LESO2.pdf` (the full run takes ~5 min because of the ~65 OCR'd pages).
+5 tests passing (PDF draft columns, OCR fallback path, and CSV schema with no
+nulls).
 
 ### Design decision (intentional, not open for debate)
 
@@ -145,105 +261,53 @@ name is real and source-grounded, not fabricated. This is intentional behavior.
 
 ### Open items needing team sign-off
 
-1. **Multi-agency bundle — resolved.** The test PDF bundles ~17 agencies'
-   stapled proposals. The processor now splits it into **one row per agency**
-   via content-based boundary detection (`segment_pages()`), so each agency's
-   fields are broken out instead of only the first. Two OCR-driven caveats
-   remain (Mississippi County merged into the Lonoke row; weaker fields on the
-   Crawford and Little Rock sections) — see "Multi-document bundles" above.
-2. **All-Unknown rows.** Every agency in this bundle classifies as
-   `Training / Administrative` with `severity` = `Unknown`, so the rows carry
-   `Unknown` event/severity at `confidence` ≈ 0.5–0.9. Integration (T-019+)
-   needs to decide whether to insert or drop such rows.
-3. **OCR verified on real scans.** Previously the OCR path was unit-tested with a
-   mocked result only. It has since been exercised end-to-end against the ~65
-   real scanned pages of `LESO2.pdf` with a real pytesseract install (Tesseract
-   5.5.0); the full suite passes. The mocked unit test for the fallback seam
-   remains in `tests/test_extractor_schema.py`.
+1. **Multi-agency bundle.** The current test PDF is a bundle of 5 different agencies'
+   submissions in one file. The processor returns a single row using only the first
+   agency's info; the other 4 agencies remain in the source document but are not broken out
+   into the structured fields. Splitting was deferred given the deadline — documented
+   as a known limitation.
+2. **All-Unknown rows.** This PDF legitimately produces a row with
+   `Incident_Type` / `severity` = `Unknown` and `confidence` = 0.7. Integration
+   (T-019+) needs to decide whether to insert or drop all-Unknown rows.
+3. **OCR not verified on real scans.** The OCR fallback is unit-tested with a mocked
+   OCR result only; it has not yet been verified against a real scanned PDF with a
+   real pytesseract install.
 
-## LLM Summarizer (Bonus / Optional)
+## Text Processor
 
-> **This is the team's optional bonus deliverable** (LLM-based summarization),
-> not a required modality. It is owned by Student 2 alongside the Document
-> Analyst work.
-
-Generates a short, human-readable narrative summary of an incident from the
-**structured** integrated fields (`event`, `location`, `time`, `severity`,
-`source`, `raw_text`) — never from raw unprocessed text. It is a separate
-package (`llm_summarizer/`) called after Integration and before insert, exactly
-one entry point:
-
-```python
-from llm_summarizer.summarizer import summarize_incident
-
-result = summarize_incident(incident_row)  # dict with the integrated fields
-# -> {"incident_summary": str, "summary_method": str, "summary_model": str}
-```
-
-It makes a **real LLM call** — an OpenRouter chat completion
-([`llm_summarizer/summarizer.py`](llm_summarizer/summarizer.py)) — with a strict
-anti-hallucination system prompt and post-hoc validation (rejects empty,
-over-length, or non-prose output). If the LLM is disabled, unavailable, slow, or
-returns invalid output, it falls back to a deterministic, dependency-free
-rule-based summary ([`llm_summarizer/fallback.py`](llm_summarizer/fallback.py)),
-so it always returns a valid result.
-
-### Configuration (env vars)
-
-| Variable | Purpose |
-| --- | --- |
-| `ENABLE_LLM_SUMMARY` | `true` to attempt the real LLM call; otherwise the deterministic fallback is used (`summary_method = disabled`). |
-| `OPENROUTER_API_KEY` | OpenRouter API key for the free-tier model. **Never commit a real key** — `.env` is gitignored; `.env.example` shows the expected format only. |
-| `LLM_MODEL_NAME` | Optional model override (default `openai/gpt-oss-20b:free`). |
-
-No paid API is required: with the LLM disabled or unreachable, the rule-based
-fallback produces a grounded summary on its own.
-
-### Sample input → output
-
-Crime-style row, **real LLM** output (`summary_method = llm`, model
-`openai/gpt-oss-20b:free`):
+Student 5 converts CrimeReport social/news posts into:
 
 ```text
-input:  {event: "Theft / Robbery", location: "Main Street", time: "June 20, 2026",
-         severity: "High", source: "pdf",
-         raw_text: "A robbery occurred near Main Street on June 20, 2026."}
-output: "A high severity theft / robbery event took place on Main Street on
-         June 20, 2026, as reported in a PDF source."
+Text_ID, Source, Raw_Text, Sentiment, Entities, Topic
 ```
 
-The administrative `LESO2.pdf` row, **deterministic fallback** output
-(`summary_method = disabled`, e.g. when no key is configured):
+The processor preserves `Raw_Text`, cleans a separate analysis copy, extracts
+`PERSON`, `LOCATION`, `ORGANIZATION`, and `DATE` groups, then classifies one of
+`Theft / Robbery`, `Assault / Violence`, `Fire / Arson`, `Traffic Accident`,
+`Public Disturbance`, or `Other`. It uses spaCy NER when `en_core_web_sm` is
+available and rule-based fallbacks otherwise, so the demo works offline.
 
-```text
-input:  {event: "Training / Administrative", location: "Benton County",
-         time: "May 26, 2015", severity: "Unknown", source: "pdf", ...}
-output: "A Training / Administrative incident was reported via pdf at Benton
-         County. The reported time was May 26, 2015."
+The Kaggle CrimeReport download is stored at `text/data/crimereport.txt`. The
+download is a JSON Lines `.txt` file: each line is one tweet/news-like record
+with fields such as `text`, `created_at`, `source`, `place`, and `user`. The
+processor detects that format and emits one structured row per JSON line. The
+current dataset produces 115 text rows.
+
+Run the Kaggle dataset:
+
+```bash
+python -m text.processor text/data/crimereport.txt --output text/output/text_output.csv --source CrimeReport
+python -m integration.integration
 ```
 
-### Run it
+This writes `text/output/text_output.csv` and rebuilds
+`integration/output/final_incident_dataset.csv`. The sample
+`samples/social_post.txt` is still useful for a one-row smoke test, but it is
+not the main Student 5 dataset.
 
-```python
-import os
-from dotenv import load_dotenv
-from llm_summarizer.summarizer import summarize_incident
-
-load_dotenv()  # reads ENABLE_LLM_SUMMARY / OPENROUTER_API_KEY / LLM_MODEL_NAME
-print(summarize_incident({
-    "source": "pdf", "source_type": "PDF", "event": "Theft / Robbery",
-    "location": "Main Street", "time": "June 20, 2026", "severity": "High",
-    "confidence": 0.8,
-    "raw_text": "A robbery occurred near Main Street on June 20, 2026.",
-}))
-```
-
-### Test status
-
-`tests/test_llm_summarizer.py` — **8/8 passing**, covering valid LLM output,
-disabled, enabled-but-missing-key, network/exception error, over-length
-rejection, and empty-output rejection. Every test injects a fake `llm_call`, so
-no test makes a network request or needs an API key.
+For CSV variants, pass the file path and optionally `--text-column` if the
+narrative column is not named `Raw_Text`, `text`, `details`, `report`,
+`narrative`, `content`, `post`, `tweet`, `article`, or `summary`.
 
 ## Tests
 
