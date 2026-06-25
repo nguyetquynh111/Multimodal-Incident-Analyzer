@@ -611,39 +611,53 @@ def _show_video_evidence(file_path: str | None, filename: str) -> None:
     cache_key = f"frames_dir_{filename}"
     frames_dir: _Path | None = st.session_state.get(cache_key)
 
-    if frames_dir is None:
-        with st.spinner("Extracting annotated frames…"):
-            try:
-                from video.processor import process_video_file
-                frames_dir = _Path(_tempfile.mkdtemp(prefix="frames_"))
-                process_video_file(file_path, annotated_frames_dir=frames_dir)
-                st.session_state[cache_key] = frames_dir
-            except Exception as exc:
-                st.caption(f"Could not extract frames: {exc}")
-                return
-
-    frame_paths = sorted(_Path(frames_dir).rglob("*.jpg"))
-    if not frame_paths:
-        st.caption("No annotated frames were produced (video may have no motion).")
-        return
-
-    st.caption(f"{len(frame_paths)} annotated frames")
     import base64 as _b64
-    tiles = ""
-    for fp in frame_paths:
-        img_b64 = _b64.b64encode(fp.read_bytes()).decode()
-        tiles += (
-            f'<div style="flex:0 0 30%;min-width:200px">'
-            f'<img src="data:image/jpeg;base64,{img_b64}" style="width:100%;border-radius:6px">'
-            f'<div style="font-size:.75rem;color:#64748B;text-align:center;margin-top:3px">{fp.stem}</div>'
-            f'</div>'
+
+    def _render_gallery(paths):
+        tiles = ""
+        for fp in paths:
+            img_b64 = _b64.b64encode(fp.read_bytes()).decode()
+            tiles += (
+                f'<div style="flex:0 0 30%;min-width:200px">'
+                f'<img src="data:image/jpeg;base64,{img_b64}" style="width:100%;border-radius:6px">'
+                f'<div style="font-size:.75rem;color:#64748B;text-align:center;margin-top:3px">{fp.stem}</div>'
+                f'</div>'
+            )
+        return (
+            f'<div style="display:flex;flex-wrap:wrap;gap:10px;max-height:480px;'
+            f'overflow-y:auto;padding:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px">'
+            f'{tiles}</div>'
         )
-    st.markdown(
-        f'<div style="display:flex;flex-wrap:wrap;gap:10px;max-height:480px;'
-        f'overflow-y:auto;padding:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px">'
-        f'{tiles}</div>',
-        unsafe_allow_html=True,
-    )
+
+    if frames_dir is None:
+        try:
+            from video.processor import process_video_stream
+            frames_dir = _Path(_tempfile.mkdtemp(prefix="frames_"))
+            frame_paths: list[_Path] = []
+            status = st.empty()
+            gallery = st.empty()
+
+            for _row, frame_path in process_video_stream(file_path, annotated_frames_dir=frames_dir):
+                if frame_path:
+                    frame_paths.append(_Path(frame_path))
+                    status.caption(f"Processing… {len(frame_paths)} frames done")
+                    gallery.markdown(_render_gallery(frame_paths), unsafe_allow_html=True)
+                    import time as _time; _time.sleep(0)
+
+            status.caption(f"{len(frame_paths)} annotated frames")
+            if not frame_paths:
+                gallery.caption("No annotated frames were produced (video may have no motion).")
+            st.session_state[cache_key] = frames_dir
+        except Exception as exc:
+            st.caption(f"Could not extract frames: {exc}")
+            return
+    else:
+        frame_paths = sorted(_Path(frames_dir).rglob("*.jpg"))
+        if not frame_paths:
+            st.caption("No annotated frames were produced (video may have no motion).")
+            return
+        st.caption(f"{len(frame_paths)} annotated frames")
+        st.markdown(_render_gallery(frame_paths), unsafe_allow_html=True)
 
 
 def _show_visual_evidence(

@@ -325,6 +325,91 @@ def process_video_file(
     return pd.DataFrame(extractor_rows, columns=DRAFT_COLUMNS)
 
 
+def process_video_stream(
+    video_path: str,
+    annotated_frames_dir: Optional[Path] = None,
+):
+    """Generator version of process_video_file.
+
+    Yields (row_dict, frame_path_or_None) for each sampled frame as it is
+    processed, so callers can update the UI progressively without waiting for
+    the full video to finish.
+    """
+    path = Path(video_path)
+    model = load_yolo_model()
+
+    cap = cv2.VideoCapture(str(path))
+    if not cap.isOpened():
+        return
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or math.isnan(fps) or fps <= 0:
+        fps = 25.0
+
+    total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    if total_frames / fps > _MAX_DURATION_SECONDS:
+        cap.release()
+        return
+
+    sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
+    mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
+    frame_index = 0
+
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+
+        resized = cv2.resize(frame, (640, 360))
+        fgmask = mog2.apply(resized)
+
+        if frame_index % sample_every_frames == 0:
+            score, moving_regions, motion_boxes = apply_mog2(fgmask)
+            enhanced = enhance_frame(resized)
+            objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(model, enhanced)
+
+            if not collapsed and "person" not in objects:
+                for (mx1, my1, mx2, my2) in motion_boxes:
+                    mw, mh = mx2 - mx1, my2 - my1
+                    if mh > 0 and (mw / mh) > 2.0 and mw > 60:
+                        collapsed = True
+                        collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
+                        break
+
+            yolo_ran = model is not None
+            fire_detected, fire_confidence = detect_fire(resized)
+
+            if fire_detected:
+                event, confidence = "Fire detected", fire_confidence
+            elif collapsed:
+                event, confidence = "Person collapsing", max(collapse_confidence, yolo_confidence)
+            else:
+                event, event_confidence = classify_event(score, objects, moving_regions, yolo_ran)
+                confidence = max(event_confidence, yolo_confidence)
+
+            frame_id = f"FRM_{frame_index:03d}"
+            timestamp = format_timestamp(frame_index / fps)
+            objects_str = format_objects(objects, moving_regions)
+
+            frame_path = save_annotated_frame(
+                filtered_boxes, motion_boxes, enhanced,
+                event, round(float(confidence), 2),
+                annotated_frames_dir, path.stem, frame_id,
+            )
+
+            yield {
+                "Timestamp": timestamp,
+                "Frame_ID": frame_id,
+                "Event_Detected": event,
+                "Objects": objects_str,
+                "Confidence": round(float(confidence), 2),
+            }, frame_path
+
+        frame_index += 1
+
+    cap.release()
+
+
 def process_video(
     video_path: str | Path,
     output_csv_path: str | Path = DEFAULT_OUTPUT_PATH,
@@ -343,4 +428,5 @@ __all__ = [
     "DRAFT_COLUMNS",
     "process_video",
     "process_video_file",
+    "process_video_stream",
 ]
