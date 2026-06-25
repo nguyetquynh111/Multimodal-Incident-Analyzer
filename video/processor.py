@@ -181,6 +181,50 @@ def event_to_severity(event: str) -> str:
     return "Low"
 
 
+def save_annotated_frame(
+    filtered_boxes: List[Tuple],
+    motion_boxes: List[Tuple],
+    frame,
+    event: str,
+    confidence: float,
+    output_dir: Optional[Path],
+    clip_id: str,
+    frame_id: str,
+) -> Optional[str]:
+    """Draw bounding boxes and event label on frame and save as JPEG. Returns path or None."""
+    if output_dir is None:
+        return None
+
+    annotated = frame.copy()
+
+    if filtered_boxes:
+        for (x1, y1, x2, y2, label, conf) in filtered_boxes:
+            color = (0, 140, 255) if label == "person" else (255, 200, 0)
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+            box_label = f"{label} {conf:.2f}"
+            (tw, th), _ = cv2.getTextSize(box_label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
+            cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 4, y1), color, -1)
+            cv2.putText(annotated, box_label, (x1 + 2, y1 - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
+    else:
+        for (x1, y1, x2, y2) in motion_boxes:
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 220, 220), 2)
+            cv2.putText(annotated, "motion region", (x1 + 2, y1 - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 220), 1)
+
+    banner = f"{event}  ({confidence:.2f})"
+    (tw, th), _ = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+    cv2.rectangle(annotated, (8, 8), (14 + tw, 22 + th), (0, 0, 0), -1)
+    cv2.putText(annotated, banner, (10, 10 + th),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
+
+    out_dir = output_dir / clip_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{frame_id}.jpg"
+    cv2.imwrite(str(out_path), annotated)
+    return str(out_path)
+
+
 def format_timestamp(seconds: float) -> str:
     seconds = max(0, int(round(seconds)))
     hours = seconds // 3600
@@ -189,11 +233,19 @@ def format_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
-def process_video_file(video_path: str) -> pd.DataFrame:
+def process_video_file(
+    video_path: str,
+    annotated_frames_dir: Optional[Path] = None,
+) -> pd.DataFrame:
     """Analyze one video file and return the five-column video draft.
 
     Rejects clips longer than 5 minutes. Returns an empty DataFrame with
     DRAFT_COLUMNS if the file cannot be read or exceeds the time limit.
+
+    Args:
+        video_path: Path to the video file.
+        annotated_frames_dir: If provided, save annotated JPEG frames to this
+            directory (one sub-folder per clip). Default None (no frames saved).
     """
     path = Path(video_path)
     model = load_yolo_model()
@@ -227,7 +279,7 @@ def process_video_file(video_path: str) -> pd.DataFrame:
         if frame_index % sample_every_frames == 0:
             score, moving_regions, motion_boxes = apply_mog2(fgmask)
             enhanced = enhance_frame(resized)
-            objects, yolo_confidence, collapsed, collapse_confidence, _ = run_yolo(model, enhanced)
+            objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(model, enhanced)
 
             # MOG2 collapse fallback: overhead cameras make lying people invisible to YOLO
             if not collapsed and "person" not in objects:
@@ -249,11 +301,19 @@ def process_video_file(video_path: str) -> pd.DataFrame:
                 event, event_confidence = classify_event(score, objects, moving_regions, yolo_ran)
                 confidence = max(event_confidence, yolo_confidence)
 
+            frame_id = f"FRM_{frame_index:03d}"
             timestamp = format_timestamp(frame_index / fps)
             objects_str = format_objects(objects, moving_regions)
+
+            save_annotated_frame(
+                filtered_boxes, motion_boxes, enhanced,
+                event, round(float(confidence), 2),
+                annotated_frames_dir, path.stem, frame_id,
+            )
+
             extractor_rows.append({
                 "Timestamp": timestamp,
-                "Frame_ID": f"FRM_{frame_index:03d}",
+                "Frame_ID": frame_id,
                 "Event_Detected": event,
                 "Objects": objects_str,
                 "Confidence": round(float(confidence), 2),
@@ -268,10 +328,11 @@ def process_video_file(video_path: str) -> pd.DataFrame:
 def process_video(
     video_path: str | Path,
     output_csv_path: str | Path = DEFAULT_OUTPUT_PATH,
+    annotated_frames_dir: Optional[Path] = None,
 ) -> pd.DataFrame:
     """Analyze one video and return the five-column video draft contract."""
 
-    frame = process_video_file(str(video_path))
+    frame = process_video_file(str(video_path), annotated_frames_dir=annotated_frames_dir)
     output = Path(output_csv_path).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output, index=False)

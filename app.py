@@ -346,6 +346,326 @@ def _timeline(view: pd.DataFrame):
 
 
 # --------------------------------------------------------------------------- #
+# Visual evidence helpers
+# --------------------------------------------------------------------------- #
+def _sentiment_badge(sentiment: str) -> str:
+    colors = {
+        "Negative": ("#FEE2E2", "#991B1B"),
+        "Positive": ("#DCFCE7", "#166534"),
+        "Distressed": ("#FEE2E2", "#991B1B"),
+        "Concerned": ("#FEF3C7", "#92400E"),
+        "Calm": ("#DCFCE7", "#166534"),
+        "Neutral": ("#EEF2FF", "#4338CA"),
+    }
+    bg, fg = colors.get(sentiment, ("#F1F5F9", "#334155"))
+    return (
+        f'<span style="background:{bg};color:{fg};padding:3px 10px;'
+        f'border-radius:999px;font-size:.8rem;font-weight:700">{sentiment}</span>'
+    )
+
+
+def _show_audio_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> None:
+    import re as _re
+    if file_path:
+        st.audio(file_path)
+    if draft_df.empty:
+        return
+    row = draft_df.iloc[0]
+
+    score = float(row.get("Urgency_Score", 0) or 0)
+    label = "Distressed" if score >= 0.65 else "Concerned" if score >= 0.40 else "Calm"
+    color = SEV_COLORS["High"] if score >= 0.65 else SEV_COLORS["Medium"] if score >= 0.40 else SEV_COLORS["Low"]
+    sentiment = str(row.get("Sentiment", ""))
+
+    col_u, col_s = st.columns(2)
+    with col_u:
+        st.markdown(f'**Urgency — <span style="color:{color}">{label}</span>** `{score:.2f}`', unsafe_allow_html=True)
+        st.progress(min(1.0, score))
+    with col_s:
+        st.markdown("**Sentiment**")
+        st.markdown(_sentiment_badge(sentiment), unsafe_allow_html=True)
+
+    transcript = str(row.get("Transcript", ""))
+    if transcript and transcript.lower() not in ("unknown", "nan", ""):
+        incident_words = [
+            "fire", "shot", "shots", "fight", "accident", "robbery", "assault",
+            "emergency", "help", "police", "ambulance", "knife", "gun", "dead",
+            "injured", "hurt", "bleeding", "attack", "stolen", "crash",
+        ]
+        highlighted = transcript
+        for word in incident_words:
+            highlighted = _re.sub(
+                rf"\b({_re.escape(word)})\b",
+                r'<mark style="background:#FEF08A;border-radius:3px;padding:0 2px">\1</mark>',
+                highlighted,
+                flags=_re.IGNORECASE,
+            )
+        st.markdown("**Transcript**")
+        st.markdown(
+            f'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;'
+            f'padding:12px;font-size:.9rem;line-height:1.7">{highlighted}</div>',
+            unsafe_allow_html=True,
+        )
+
+
+def _show_pdf_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> None:
+    if draft_df.empty:
+        return
+    row = draft_df.iloc[0]
+
+    fields = [
+        ("Incident_Type", "Incident type"),
+        ("Date", "Date"),
+        ("Location", "Location"),
+        ("Officer", "Officer"),
+    ]
+    cols = st.columns(4)
+    for col, (field, label) in zip(cols, fields):
+        val = str(row.get(field, "Unknown"))
+        col.metric(label, val if val not in ("Unknown", "nan", "") else "—")
+
+    # Show full extracted text from the file, falling back to the 240-char Summary
+    full_text = ""
+    if file_path:
+        try:
+            import fitz as _fitz
+            doc = _fitz.open(file_path)
+            full_text = "\n\n".join(page.get_text() for page in doc).strip()
+            doc.close()
+        except Exception:
+            pass
+    if not full_text:
+        full_text = str(row.get("Summary", ""))
+
+    if full_text and full_text.lower() not in ("unknown", "nan", ""):
+        import html as _html, re as _re
+
+        pdf_entities = []
+        for etype, val in [
+            ("LOCATION", row.get("Location", "")),
+            ("DATE",     row.get("Date", "")),
+            ("PERSON",   row.get("Officer", "")),
+        ]:
+            val = str(val).strip()
+            if val and val.lower() not in ("unknown", "nan", ""):
+                pdf_entities.append(f"{etype}: {val}")
+        highlighted = (
+            _highlight_entities_in_text(full_text, "; ".join(pdf_entities))
+            if pdf_entities
+            else _html.escape(full_text)
+        )
+
+        # Highlight the exact trigger keywords the processor matched — same patterns
+        # as pdf/processor.py's _INCIDENT_KEYWORDS so the highlight proves the label
+        _PDF_TRIGGER_PATTERNS = {
+            "Theft / Robbery":    r"\b(?:robber(?:y|ies)|robbed|burglar(?:y|ies|s)?|theft|stolen|shoplift(?:ing|ed)?|larceny)\b",
+            "Assault / Violence": r"\b(?:assault(?:s|ed)?|battery|stabb(?:ing|ed)|shooting|shots fired|homicide|murder)\b",
+            "Fire / Arson":       r"\barson(?:ist)?\b",
+            "Traffic Accident":   r"\b(?:collision|traffic accident|car crash|vehicle crash|hit[- ]and[- ]run)\b",
+            "Public Disturbance": r"\b(?:riot(?:ing|s)?|vandalism|disturbance|trespass(?:ing)?)\b",
+        }
+        pattern = _PDF_TRIGGER_PATTERNS.get(str(row.get("Incident_Type", "")))
+        if pattern:
+            highlighted = _re.sub(
+                pattern,
+                lambda m: (
+                    f'<span style="background:#FED7AA;color:#9A3412;'
+                    f'border-radius:4px;padding:1px 4px;font-weight:600">'
+                    f'{m.group(0)}</span>'
+                ),
+                highlighted,
+                flags=_re.IGNORECASE,
+            )
+
+        st.markdown("**Extracted text**")
+        st.markdown(
+            f'<div style="background:#F8FAFC;border-left:4px solid {ACCENT};'
+            f'border-radius:0 8px 8px 0;padding:12px 16px;font-size:.9rem;'
+            f'line-height:1.7;color:#334155;white-space:pre-wrap">{highlighted}</div>',
+            unsafe_allow_html=True,
+        )
+
+
+_ENTITY_COLORS: dict[str, tuple[str, str]] = {
+    "LOCATION":     ("#DBEAFE", "#1D4ED8"),
+    "PERSON":       ("#FCE7F3", "#9D174D"),
+    "ORGANIZATION": ("#D1FAE5", "#065F46"),
+    "DATE":         ("#FEF3C7", "#92400E"),
+}
+
+
+def _entity_chip(etype: str, value: str) -> str:
+    bg, fg = _ENTITY_COLORS.get(etype.upper(), ("#F1F5F9", "#334155"))
+    return (
+        f'<span style="display:inline-block;background:{bg};color:{fg};'
+        f'padding:2px 8px;margin:2px 3px;border-radius:6px;'
+        f'font-size:.8rem;font-weight:600">{etype}: {value}</span>'
+    )
+
+
+def _highlight_entities_in_text(text: str, entities_raw: str) -> str:
+    """Return HTML of text with entity values wrapped in colored spans."""
+    import re as _re
+    import html as _html
+
+    # Parse into [(type, value), ...]
+    pairs: list[tuple[str, str]] = []
+    for group in entities_raw.split(";"):
+        group = group.strip()
+        if ":" in group:
+            etype, _, values = group.partition(":")
+            etype = etype.strip().upper()
+            for v in values.split(","):
+                v = v.strip()
+                if v and len(v) > 2:
+                    pairs.append((etype, v))
+
+    # Sort longest value first to avoid partial-match clobbering
+    pairs.sort(key=lambda p: len(p[1]), reverse=True)
+
+    # Escape HTML in source text first
+    escaped = _html.escape(text)
+
+    # Replace each entity value with a highlighted span (case-insensitive, whole-word preferred)
+    used: set[str] = set()
+    for etype, value in pairs:
+        key = value.lower()
+        if key in used:
+            continue
+        used.add(key)
+        bg, fg = _ENTITY_COLORS.get(etype, ("#F1F5F9", "#334155"))
+        span = (
+            f'<span style="background:{bg};color:{fg};border-radius:4px;'
+            f'padding:1px 4px;font-weight:600">{_html.escape(value)}</span>'
+        )
+        escaped = _re.sub(
+            rf"(?i)({_re.escape(_html.escape(value))})",
+            span,
+            escaped,
+            count=1,
+        )
+    return escaped
+
+
+def _show_text_evidence(draft_df: pd.DataFrame) -> None:
+    if draft_df.empty:
+        return
+
+    for _, row in draft_df.head(5).iterrows():
+        sentiment = str(row.get("Sentiment", ""))
+        topic = str(row.get("Topic", ""))
+        entities_raw = str(row.get("Entities", ""))
+        raw_text = str(row.get("Raw_Text", ""))
+
+        badges = _sentiment_badge(sentiment)
+        if topic and topic.lower() not in ("unknown", "nan", ""):
+            badges += (
+                f'&nbsp;<span style="background:#EDE9FE;color:#5B21B6;padding:3px 10px;'
+                f'border-radius:999px;font-size:.8rem;font-weight:700">{topic}</span>'
+            )
+        st.markdown(badges, unsafe_allow_html=True)
+
+        if raw_text and raw_text.lower() not in ("unknown", "nan", ""):
+            if entities_raw and entities_raw.lower() not in ("unknown", "nan", ""):
+                highlighted = _highlight_entities_in_text(raw_text, entities_raw)
+            else:
+                import html as _html
+                highlighted = _html.escape(raw_text)
+            st.markdown(
+                f'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;'
+                f'padding:12px 14px;font-size:.88rem;line-height:1.8;color:#334155;'
+                f'white-space:pre-wrap;margin-top:6px">{highlighted}</div>',
+                unsafe_allow_html=True,
+            )
+        st.write("")
+
+
+def _show_video_evidence(file_path: str | None, filename: str) -> None:
+    from pathlib import Path as _Path
+    import tempfile as _tempfile
+
+    if not file_path or not _Path(file_path).exists():
+        st.caption("Source file is no longer available for frame extraction.")
+        return
+
+    # Transcode to H.264 MP4 so any input format plays in the browser
+    cache_key = f"video_bytes_{filename}"
+    video_bytes = st.session_state.get(cache_key)
+    if video_bytes is None:
+        import subprocess as _sp, tempfile as _tf
+        with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp_path = tmp.name
+        result = _sp.run(
+            ["ffmpeg", "-y", "-i", file_path,
+             "-vcodec", "libx264", "-acodec", "aac",
+             "-movflags", "+faststart", tmp_path],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            video_bytes = _Path(tmp_path).read_bytes()
+        else:
+            video_bytes = _Path(file_path).read_bytes()
+        st.session_state[cache_key] = video_bytes
+    st.video(video_bytes)
+
+    cache_key = f"frames_dir_{filename}"
+    frames_dir: _Path | None = st.session_state.get(cache_key)
+
+    if frames_dir is None:
+        with st.spinner("Extracting annotated frames…"):
+            try:
+                from video.processor import process_video_file
+                frames_dir = _Path(_tempfile.mkdtemp(prefix="frames_"))
+                process_video_file(file_path, annotated_frames_dir=frames_dir)
+                st.session_state[cache_key] = frames_dir
+            except Exception as exc:
+                st.caption(f"Could not extract frames: {exc}")
+                return
+
+    frame_paths = sorted(_Path(frames_dir).rglob("*.jpg"))
+    if not frame_paths:
+        st.caption("No annotated frames were produced (video may have no motion).")
+        return
+
+    st.caption(f"{len(frame_paths)} annotated frames")
+    import base64 as _b64
+    tiles = ""
+    for fp in frame_paths:
+        img_b64 = _b64.b64encode(fp.read_bytes()).decode()
+        tiles += (
+            f'<div style="flex:0 0 30%;min-width:200px">'
+            f'<img src="data:image/jpeg;base64,{img_b64}" style="width:100%;border-radius:6px">'
+            f'<div style="font-size:.75rem;color:#64748B;text-align:center;margin-top:3px">{fp.stem}</div>'
+            f'</div>'
+        )
+    st.markdown(
+        f'<div style="display:flex;flex-wrap:wrap;gap:10px;max-height:480px;'
+        f'overflow-y:auto;padding:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px">'
+        f'{tiles}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _show_visual_evidence(
+    source_type: str,
+    draft_df: pd.DataFrame,
+    file_path: str | None,
+    filename: str,
+) -> None:
+    with st.expander("Visual evidence", expanded=True):
+        if source_type == "audio":
+            _show_audio_evidence(draft_df, file_path)
+        elif source_type == "pdf":
+            _show_pdf_evidence(draft_df, file_path)
+        elif source_type == "video":
+            _show_video_evidence(file_path, filename)
+        elif source_type == "text":
+            _show_text_evidence(draft_df)
+        else:
+            st.caption("Visual evidence is not available for this modality yet.")
+
+
+# --------------------------------------------------------------------------- #
 # View 1: Ingest & Convert
 # --------------------------------------------------------------------------- #
 def view_ingest() -> None:
@@ -388,6 +708,7 @@ def view_ingest() -> None:
                     "final": final_df,
                     "filename": uploaded.name,
                     "source_type": source_type,
+                    "path": str(path),
                 }
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Evidence processing failed")
@@ -406,6 +727,14 @@ def view_ingest() -> None:
     with c2:
         _section("Incident record")
         st.dataframe(_style_table(ig.to_final_csv_frame(final_df)), width="stretch", hide_index=True)
+
+    _section("Visual evidence")
+    _show_visual_evidence(
+        result.get("source_type", source_type),
+        result["draft"],
+        result.get("path"),
+        uploaded.name,
+    )
 
     d1, d2 = st.columns(2)
     d1.download_button(
