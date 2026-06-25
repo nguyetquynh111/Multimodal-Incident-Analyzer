@@ -166,18 +166,80 @@ Audio CSV columns are exactly:
 Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
 ```
 
-## PDF Processor
+## PDF Processor (Student 2 — Document Analyst)
 
+Tickets T-009 / T-010. Extracts structured fields from a PDF police/incident
+report — incident type, date, location, officer, suspect description, and
+outcome — and converts one document into two distinct outputs, per
 Tickets T-009 / T-010. Converts one PDF document into one six-column output, per
 [specs](docs/specs.md) section 5.2:
 
 - A six-column DataFrame and CSV at `pdf/output/pdf_output.csv`
   (`Report_ID, Incident_Type, Date, Location, Officer, Summary`).
 
-Text is extracted directly first (PyMuPDF, then pdfplumber); OCR (pytesseract) runs
-only when direct extraction is empty or near-empty.
+Text is extracted directly first with PyMuPDF (`fitz`), falling back to
+pdfplumber. Extraction is **page-aware**: each page's embedded text layer is
+read directly, and OCR (pytesseract) is applied **only to the scanned, text-less
+pages** — pages that already carry a text layer are never re-OCR'd. When
+pytesseract or its system binary is unavailable, the scanned pages are skipped
+with a logged warning rather than crashing. Field details and the design
+rationale are documented in
+[docs/student2-document-analyst.md](docs/student2-document-analyst.md).
 
-Run it:
+The document `Summary` field describes the document's *substance*: it prefers
+the subject/`RE:` line when present (e.g. "Mine Resistant Ambush Protected
+vehicle acquired through 1033 Program") and otherwise the first body sentence,
+skipping the letterhead block of names, address, and phone numbers.
+
+### Multi-document bundles (one row per agency)
+
+`LESO2.pdf` is not a single report — it is a **bundle of ~17 agencies' stapled
+1033/MRAP proposals** in one file. The processor detects document boundaries
+**from content, not a fixed page count**: a new letterhead, cover letter, or
+policy/SOP title page that names a *different* agency starts a new segment
+(`segment_pages()`), and the eight-field pipeline runs independently on each
+segment. So the bundle produces **one `RPT_NNN` row per agency** (Benton County
+Sheriff = `RPT_001`, Benton PD = `RPT_002`, Bryant PD = `RPT_003`, …), each with
+a `Location`/`Officer`/`Summary` drawn only from that agency's pages and a
+segment-scoped `raw_text`.
+
+Known boundary-detection / extraction caveats (OCR-driven, documented honestly):
+- **Mississippi County Sheriff** shares a row with Lonoke County, because its
+  OCR'd letterhead reads "County of Mississippi / State of Arkansas / SHERIFF'S
+  DEPARTMENT" — a form the agency-name matcher does not catch.
+- **RPT_012 (Little Rock) has the weakest extraction in the dataset.** Its
+  source is a 30-page aviation SOP — an aircraft procedure structurally unlike
+  the other agencies' MRAP letters — so *both* of its free-text fields are
+  degraded: `Officer` reads "Sergeant Responsibilities" and `Summary` is the
+  bare fragment "to the following restrictions". (The Crawford cover page also
+  yields a noisier `Summary` than the cleaner agencies.)
+- Three rows leak a leading article into `Location` from OCR — RPT_011
+  ("The Jefferson"), RPT_015 ("The Rogers"), and RPT_016 ("The Union County").
+  Cosmetic and harmless; the agency identity is still correct.
+
+### Source document
+
+The sample document is `tests/fixtures/LESO2.pdf` — a MuckRock FOIA bundle of
+Arkansas law-enforcement agencies' 1033 / MRAP training proposals (Benton
+County, Fort Smith, Hot Springs, Jacksonville, Little Rock, Lonoke, Union, …).
+Every agency is correctly classified as `Training / Administrative` (not a crime
+report), so `Suspect_Description` and `Outcome` are `Unknown` by design.
+
+### Performance note (read before a live demo)
+
+This document is **75 pages, of which ~65 are scanned images** with no text
+layer. Those pages go through OCR at 300 DPI, so a full run takes **several
+minutes** (~5 min on a typical laptop). This is expected — do **not** mistake it
+for a hang during a presentation. Pre-generate `pdf/output/pdf_output.csv`
+before demoing rather than running OCR live.
+
+Run it (CLI):
+
+```bash
+python -m pdf.processor --input tests/fixtures/LESO2.pdf
+```
+
+Run it (Python):
 
 ```python
 from pdf.processor import process_pdf_file
@@ -256,3 +318,5 @@ pytest
 ## Documentation
 
 See [PRD](docs/PRD.md), [specifications](docs/specs.md), [technical design](docs/tech.md), [rules](docs/rules.md), and [tickets](docs/tickets.md).
+
+Per-student design notes: [Student 2 — Document Analyst + LLM Summarizer bonus](docs/student2-document-analyst.md).
