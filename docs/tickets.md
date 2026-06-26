@@ -6,7 +6,7 @@
 
 ## 1. Sprint Goal
 
-Build a working class prototype that uploads one evidence file at a time through Streamlit, processes it synchronously, sends extractor output through Integration, lets Integration standardize rows, call the separate LLM summarizer, generate IDs, return final rows, insert one or more incident rows into a Supabase `incidents` table, and display/filter/export the approved nine-field incident CSV by June 28, 2026.
+Build a working class prototype that uploads one evidence file at a time through Streamlit, processes it synchronously, sends extractor output through Integration, lets Integration standardize rows, call the separate LLM summarizer, generate IDs, return final rows, insert one or more confirmed incident rows into a Supabase `incidents` table, and display/filter/export the approved nine-field incident CSV by June 28, 2026.
 
 ## 2. Ticket Board
 
@@ -17,19 +17,19 @@ Build a working class prototype that uploads one evidence file at a time through
 | T-003 | Add requirements.txt and .env.example | Group 2 | High | Dependencies install and env variables are documented |
 | T-004 | Configure Supabase incidents table | Quynh | High | Protected connection settings point at the required `incidents` table |
 | T-005 | Build Streamlit single-file upload UI | JN | High | User can upload exactly one supported file |
-| T-006 | Build file type detector | JN | High | Extensions map to AUD, PDF, IMG, VID, TXT; CSV and JSON route to TXT |
+| T-006 | Build file type detector | JN | High | Extensions map to AUD, PDF, IMG, VID, TXT; CSV routes to TXT; JSON uploads are rejected |
 | T-007 | Build audio processor | Quynh | High | Produces the six-column audio artifact and extractor mapping |
 | T-008 | Extract audio event/location/urgency | Quynh | Medium | Sentiment is Calm/Distressed; urgency is independently bounded 0–1 |
 | T-009 | Build PDF processor | Rodney | High | Produces the eight-column PDF draft and integration mapping |
-| T-010 | Add PDF OCR fallback | Rodney | Medium | OCR runs only when scanned/direct text is unavailable; failures use Unknown |
+| T-010 | Add PDF OCR fallback | Rodney | Medium | OCR runs only for scanned or near-empty pages; failures use Unknown |
 | T-011 | Build image processor | Zainab | High | Produces the five-column image artifact with supported labels and confidence |
-| T-012 | Add image OCR/object mapping | Zainab | Medium | Supported evidence maps to the image draft; missing evidence uses Unknown |
+| T-012 | Add image OCR/object mapping | Zainab | Medium | Supported evidence maps to the image draft; no detected objects may use `None`, empty OCR may use `N/A`, and Roboflow failure uses Unknown fallback |
 | T-013 | Build video processor | Alex | High | Rejects long clips and produces formatted timestamps/frame IDs at a regular interval |
 | T-014 | Extract video event signals | Alex | Medium | Motion gates detection; documented logic produces the five-column event log |
 | T-015 | Build text processor | Anh | High | Preserves Raw_Text and produces the six-column text artifact |
 | T-016 | Extract text entities/sentiment/topic | Anh | Medium | Entities and sentiment are present; topic uses the approved labels or Other |
 | T-017 | Handle CSV text input | Group 2 | Medium | CSV content maps through the `text/` folder to its documented draft or Unknown fallback |
-| T-018 | Handle JSON text input | JN | Medium | JSON content maps through the `text/` folder to its documented draft or Unknown fallback |
+| T-018 | Reject JSON text input | JN | Medium | `.json` uploads show a clear unsupported-file message and do not insert rows |
 | T-019 | Build integration function | JN | High | `integrate_records(draft_df, source_type)` returns final rows with `Incident_ID, Source, Event, Location, Time, Severity, Incident_Summary` |
 | T-020 | Build severity classifier | JN | High | Severity is always Low, Medium, High, or Unknown |
 | T-021 | Build schema validators | JN | High | Modality draft, integration, Supabase payload, and export schemas are validated |
@@ -39,14 +39,14 @@ Build a working class prototype that uploads one evidence file at a time through
 | T-025 | Connect integration to LLM summarizer | JN | High | Integration calls the summary function after row standardization and before ID generation/Supabase insert |
 | T-026 | Build INC_TYPE_NUMBER ID generator | JN | High | Generates INC_AUD_001 style IDs based on Supabase existing rows |
 | T-027 | Build Supabase client wrapper | JN | High | App can insert and query `incidents` table |
-| T-028 | Auto insert after processing | JN | High | Processed integrated summarized rows insert without manual preview/save step |
+| T-028 | Insert after confirmation | JN | High | Processed integrated summarized rows insert only after the user confirms the final Integration result |
 | T-029 | Build dashboard table and filters | JN | High | Dashboard shows Supabase rows and filters |
 | T-030 | Show selected incident summary in dashboard | JN | Medium | Dashboard displays `incident_summary` from Supabase |
 | T-031 | Build final CSV export | JN | High | Download contains exactly `id, created_at, incident_id, source, event, location, time, severity, incident_summary` |
 | T-032 | Add unit tests | Group 2 | High | Core pytest tests pass, including `test_modality_output_schemas.py` |
 | T-033 | Create architecture and data-flow diagrams | Zainab | Medium | Both diagrams show the approved pipeline and distinguish artifact/DataFrame/export schemas |
 | T-034 | Write project report | Alex | High | Report explains implemented models, flow, Supabase table, summary module, results, and limitations |
-| T-035 | Record demo | Anh | High | Demo shows upload to Supabase insert to dashboard/export with summary |
+| T-035 | Record demo | Anh | High | Demo shows upload, Integration preview, confirmation, Supabase insert, dashboard/export, and summary |
 | T-036 | Deploy and validate class demo | Quynh | High | Hosted app connects to Supabase with protected credentials and passes a fresh-account test |
 | T-037 | Freeze final submission | Group 2 | High | Repo, docs, report, diagram, CSV export, and demo are ready |
 
@@ -62,7 +62,7 @@ Build a working class prototype that uploads one evidence file at a time through
 | 6 | Connect Integration workflow to the LLM summary function |
 | 7 | Build schema validators and ID generator used by Integration |
 | 8 | Build Supabase insert/query wrapper |
-| 9 | Connect full upload -> process -> integrate -> summarize -> ID -> insert flow |
+| 9 | Connect full upload -> process -> integrate -> summarize -> ID -> confirm -> insert flow |
 | 10 | Build dashboard filters, selected incident summary display, and final CSV export |
 | 11 | Add tests for modality artifacts, schemas, LLM fallback, IDs, Supabase mapping, and dashboard smoke run |
 | 12 | Create both diagrams, write report, deploy/test setup, and record final demo |
@@ -75,9 +75,9 @@ Build a working class prototype that uploads one evidence file at a time through
 | Public function | `summarize_incident(incident_row: dict) -> dict` |
 | Required output | `incident_summary`, `summary_method`, `summary_model` |
 | Caller | `integrate_records(...)` calls it during the Integration workflow |
-| Timing | Before ID generation and Supabase insert is required |
+| Timing | Before ID generation and confirmed Supabase insert is required |
 | Fallback | Rule-based fallback must work without any LLM model |
-| Database update | `incident_summary` is included in the payload inserted into the `incidents` table |
+| Database update | `incident_summary` is included in the confirmed payload inserted into the `incidents` table |
 | Final CSV | Export contains `id, created_at, incident_id, source, event, location, time, severity, incident_summary` |
 
 ## 5. Removed / Not Required Tickets
@@ -90,4 +90,5 @@ Build a working class prototype that uploads one evidence file at a time through
 | Build merge script that writes local `data/final/final_incidents.csv` as source of truth | Replaced by Supabase table and export from Supabase |
 | Add upload or watch-folder flow | Replaced by required Streamlit upload only |
 | Prepare an AWS-specific plan | Removed; only a simple hosted class demo with Supabase is required |
+| Handle `.json` structured text input | Removed; `.json` uploads are unsupported in the MVP and should be rejected clearly |
 | Duplicate summary code inside integration | Removed; LLM summary code must stay in the separate `llm_summarizer/` folder, and Integration calls that function instead of reimplementing it |

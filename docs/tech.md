@@ -47,15 +47,15 @@ multimodal-incident-analyzer/
 | --- | --- |
 | app.py | Streamlit UI, upload flow, synchronous processing, dashboard, and CSV download |
 | integration/integration.py | Run the full Integration workflow through `integrate_records(draft_df, source_type)`: standardize rows, call `llm_summarizer`, generate IDs, and return final incident rows |
-| cloud_deployment/supabase_client.py | Create Supabase client and upload/query approved incident rows; final returned rows use the nine-field table schema |
+| cloud_deployment/supabase_client.py | Create Supabase client and upload/query user-confirmed incident rows; final returned rows use the nine-field table schema |
 | cloud_deployment/validators.py | Validate Supabase insert payloads |
 | cloud_deployment/exporter.py | Query Supabase and export the final approved nine-field CSV |
 | audio/ | Transcribe audio and output `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` |
-| pdf/ | Extract document fields with conditional OCR and output `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` |
-| images/ | Detect supported scene/object signals, run OCR, and output `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` |
+| pdf/ | Extract document fields with page-aware conditional OCR and output `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` |
+| images/ | Use the Roboflow Inference SDK for supported scene/object signals, run OCR, and output `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` |
 | video/ | Sample frames, gate detection by motion, and output `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` |
 | text/ | Preserve source text, run NLP analysis, and output `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` |
-| Structured text files | CSV and JSON are parsed as text evidence; conventional outputs live under `text/output/` |
+| Structured text files | CSV is parsed as text evidence; JSON uploads are unsupported; conventional outputs live under `text/output/` |
 | llm_summarizer/summarizer.py | Public `summarize_incident(row)` function called by Integration after row standardization and before ID generation/Supabase insert |
 | llm_summarizer/prompts.py | Prompt template for OpenRouter summary generation |
 | llm_summarizer/fallback.py | Rule-based deterministic summary when OpenRouter fails or is disabled |
@@ -98,6 +98,7 @@ for row in final_df.to_dict(orient="records"):
     }
     rows_to_insert.append(payload)
 
+# Called only after the user confirms the final Integration result.
 insert_incidents(rows_to_insert)
 ```
 
@@ -111,7 +112,7 @@ The LLM summarizer uses OpenRouter when `ENABLE_LLM_SUMMARY=True` and `OPENROUTE
 | Supabase | supabase |
 | Audio | openai-whisper, torch, and the FFmpeg system command |
 | PDF | pymupdf, pdfplumber, pytesseract |
-| Image | opencv-python, pillow, pytesseract, ultralytics |
+| Image | opencv-python, pillow, pytesseract, inference-sdk |
 | Video | opencv-python, ultralytics, moviepy, imageio |
 | NLP/LLM optional | spacy, nltk, transformers, and an optional local LLM client |
 | Testing | pytest |
@@ -126,6 +127,8 @@ The LLM summarizer uses OpenRouter when `ENABLE_LLM_SUMMARY=True` and `OPENROUTE
 | SUPABASE_TABLE | No | Defaults to incidents |
 | ENABLE_LLM_SUMMARY | No | Turn OpenRouter summary generation on or off |
 | OPENROUTER_API_KEY | No | Required only when OpenRouter summaries are enabled |
+| ROBOFLOW_API_KEY | No | Optional/free-tier Roboflow key for image inference; must come from environment variables, never committed |
+| ROBOFLOW_MODEL_ID | No | Optional Roboflow model id; defaults to `fire-detection-data-pre/4` when used |
 | LLM_MODEL_NAME | No | Optional OpenRouter model label for summary module |
 | LLM_TIMEOUT_SECONDS | No | Optional timeout for summary generation before fallback |
 | ENABLE_RULE_SUMMARY_FALLBACK | No | Keep summary fallback enabled; should default to true |
@@ -156,7 +159,7 @@ The Supabase stored row and final CSV export use exactly these nine fields in or
 id, created_at, incident_id, source, event, location, time, severity, incident_summary
 ```
 
-The insert payload sent by the app contains only the seven app-provided fields: `incident_id, source, event, location, time, severity, incident_summary`. Supabase generates `id` and `created_at`.
+After user confirmation, the insert payload sent by the app contains only the seven app-provided fields: `incident_id, source, event, location, time, severity, incident_summary`. Supabase generates `id` and `created_at`.
 
 ## 7. Technical Risks
 
@@ -170,6 +173,7 @@ The insert payload sent by the app contains only the seven app-provided fields: 
 | ID collision if multiple users insert at the same time | For class demo, query current max per type before insert; document single-user assumption |
 | OCR setup is difficult | Use text-based PDF for main demo and keep OCR fallback optional |
 | Video processing is slow | Reject long videos, use a documented sample interval, and run detection only on motion frames |
+| Roboflow image API unavailable, quota exhausted, or key missing | Treat Roboflow as optional/free-tier external inference; load the API key from environment variables and fall back to Unknown without crashing |
 | Object detections are mistaken for activities | Require documented temporal or rule-based evidence for video event labels |
 | Extractor returns nulls | Validators convert missing values to Unknown and severity to Low/Medium/High/Unknown |
 | Dashboard reads local stale data | Dashboard must query Supabase directly |

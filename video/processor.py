@@ -37,7 +37,7 @@ VEHICLE_CONF_THRESHOLD = 0.40
 def load_yolo_model():
     try:
         from ultralytics import YOLO
-        return YOLO("yolov8s.pt")
+        return YOLO("video/yolov8s.pt")
     except Exception:
         return None
 

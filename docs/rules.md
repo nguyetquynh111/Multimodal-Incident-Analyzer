@@ -13,7 +13,7 @@
 | No paid APIs | Do not require paid LLM, paid OCR, paid speech, or paid cloud inference APIs |
 | No committed secrets | Do not commit Supabase keys, API keys, credentials, or private data |
 | Single-file upload | The MVP processes exactly one uploaded file per Streamlit processing run |
-| Synchronous processing | Processing occurs inside the Streamlit session and inserts automatically when complete |
+| Synchronous processing | Processing occurs inside the Streamlit session; rows are inserted only after the user confirms the final Integration result |
 | Supabase source of truth | After insert, dashboard and export must read from Supabase `incidents` table |
 | One main table | Use one Supabase table named `incidents` for structured incident rows and the `incident_summary` column |
 | LLM summary is separate | LLM summary code must live in `llm_summarizer/`, not inside extractors or hidden inside Integration |
@@ -83,17 +83,17 @@ default before Integration.
 | **Modality** | **Exact Columns** | **Key Rule** |
 | --- | --- | --- |
 | Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm` or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
-| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Use direct extraction first and OCR only when scanned or text is unavailable |
-| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use supported model labels and confidence from 0.0 to 1.0 |
+| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Use direct extraction first and page-aware OCR only for scanned or near-empty pages |
+| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use supported Roboflow model labels and confidence from 0.0 to 1.0; no detected objects may be represented as the string `None`, and empty OCR text may be represented as `N/A` |
 | Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, `FRM_NNN`, motion gating, and documented event logic |
 | Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` | Preserve `Raw_Text`; unsupported topics use `Other` |
 
-Use `Unknown` for unsupported or missing evidence. Never infer facts that are not present in the source or model output.
+Use `Unknown` for unsupported or missing final evidence. For the image artifact only, no detected objects may be represented as the string `None` and empty OCR text may be represented as `N/A`; Integration must still map final missing fields safely. Never infer facts that are not present in the source or model output.
 
 Structured text inputs may also arrive as CSV
-(`Event, Location, Time, Severity, Summary, Confidence`) or JSON
-(`event, location, time, severity, summary, confidence`). They are handled
+(`Event, Location, Time, Severity, Summary, Confidence`). They are handled
 under `text/`, may produce many rows, and use `Unknown` for missing values.
+JSON file uploads are not supported in the MVP and must be rejected with a clear message.
 
 ## 5. Integration Rules
 
@@ -109,7 +109,7 @@ The lower-case Supabase insert payload is produced only at the cloud upload boun
 incident_id, source, event, location, time, severity, incident_summary
 ```
 
-It must not include extra fields at insert time. After insertion, Supabase stored rows and final CSV export contain the full nine-field schema including database-generated `id` and `created_at`. Supabase insert happens only after Integration produces `Incident_Summary` and `Incident_ID`, which are mapped to `incident_summary` and `incident_id`.
+It must not include extra fields at insert time. After insertion, Supabase stored rows and final CSV export contain the full nine-field schema including database-generated `id` and `created_at`. Supabase insert happens only after Integration produces `Incident_Summary` and `Incident_ID`, the user confirms the final rows, and the app maps them to `incident_summary` and `incident_id`.
 
 ## 6. LLM Summarizer Rules
 
@@ -163,8 +163,8 @@ When multiple signals disagree, choose the highest severity. Severity must alway
 
 | **Field** | **Priority** |
 | --- | --- |
-| Time | PDF/text/CSV/JSON explicit time first, then audio transcript, then video timestamp, then image OCR, then `Unknown` |
-| Location | PDF/text/CSV/JSON explicit location first, then audio transcript, then image OCR, then `Unknown` |
+| Time | PDF/text/CSV explicit time first, then audio transcript, then video timestamp, then image OCR, then `Unknown` |
+| Location | PDF/text/CSV explicit location first, then audio transcript, then image OCR, then `Unknown` |
 | Event | Highest-confidence or highest-severity integrated signal first |
 | Severity | Highest severity across available signals |
 | Summary | Use integrated final fields first; raw text is supporting context only |
@@ -178,7 +178,9 @@ When multiple signals disagree, choose the highest severity. Severity must alway
 | Failed audio transcription | Use Unknown transcript-derived fields and continue if possible |
 | PDF text extraction empty | Try OCR fallback when enabled |
 | OCR unavailable or failed | Use Unknown fields and continue |
-| Image/video model detects nothing | Use OCR or Unknown fields |
+| Image model detects no supported objects | Keep image artifact values such as `Objects_Detected = None` and `Text_Extracted = N/A` when appropriate; Integration must still map final missing fields safely |
+| Roboflow unavailable, quota exhausted, or API key missing | Use Unknown fallback and do not crash |
+| Video model detects nothing | Use Unknown fields |
 | Video frame has no qualifying motion | Skip model inference for that frame and do not invent an event |
 | Text has no supported topic | Use `Other` |
 | Integration schema mismatch | Stop before Supabase insert and show validation error |
@@ -194,7 +196,7 @@ Each processing run must log or display:
 - Number of raw extractor rows.
 - Number of integrated incident rows.
 - Whether LLM summary or rule-based summary was used.
-- Number of Supabase rows inserted.
+- Number of Supabase rows inserted after confirmation.
 - Error messages and fallback behavior.
 
 ## 11. Testing Rules
@@ -203,7 +205,7 @@ Minimum required tests:
 
 | **Test** | **Purpose** |
 | --- | --- |
-| test_file_type_detector.py | Extensions map to AUD/PDF/IMG/VID/TXT; CSV and JSON extensions route to TXT |
+| test_file_type_detector.py | Extensions map to AUD/PDF/IMG/VID/TXT; CSV routes to TXT; JSON uploads are rejected |
 | test_extractor_schema.py | Each processor returns required extractor DataFrame columns |
 | test_modality_output_schemas.py | Modality artifacts use their exact columns and bounded numeric scores |
 | test_integration_schema.py | Integration returns final `Incident_ID, Source, Event, Location, Time, Severity, Incident_Summary` columns |

@@ -12,7 +12,7 @@
 7. Integration calls the separate LLM summarizer function for each standardized row.
 8. Integration adds `Incident_Summary` to each row.
 9. Integration generates INC_TYPE_NUMBER `Incident_ID` values and returns final rows.
-10. App maps final Integration rows to the Supabase insert payload and automatically inserts them.
+10. App shows final Integration rows for confirmation, then maps confirmed rows to the Supabase insert payload and inserts them.
 11. Dashboard and final CSV export read from Supabase only.
 ```
 
@@ -21,10 +21,10 @@
 | **Input Type** | **Extensions** | **Source Abbreviation** | **MVP Behavior** |
 | --- | --- | --- | --- |
 | Audio | .wav, .mp3, .m4a | AUD | Transcribe or fallback, then extract event/location/time/severity signals |
-| PDF | .pdf | PDF | Extract text directly; use OCR only when scanned or text is unavailable |
+| PDF | .pdf | PDF | Extract text directly; use page-aware OCR only for scanned or near-empty pages |
 | Image | .jpg, .jpeg, .png | IMG | Run OCR/object detection if available, then extract incident signals |
 | Video | .mp4, .mov, .mpg, .mpeg | VID | Reject videos longer than 5 minutes; sample frames and analyze motion frames |
-| Text | .txt, .csv, .json | TXT | Read free text; parse CSV rows or JSON objects/arrays as structured text evidence |
+| Text | .txt, .csv | TXT | Read free text; parse CSV rows as structured text evidence; `.json` uploads are unsupported |
 
 Rules:
 - The Streamlit uploader accepts exactly one file per processing run.
@@ -53,7 +53,7 @@ Integration maps event and location directly; urgency determines severity.
 
 ### 4.2 PDF Processor
 
-The PDF processor extracts text directly from one official document and uses OCR only when the document is scanned or direct extraction is unavailable. Missing fields use `Unknown`.
+The PDF processor extracts text directly from one official document and uses page-aware OCR only for scanned or near-empty pages. Missing fields use `Unknown`.
 
 ```text
 Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome
@@ -64,7 +64,7 @@ and Time. Document `Summary` remains source-grounded supporting context.
 
 ### 4.3 Image Processor
 
-The image processor analyzes one scene image with pretrained detection/classification and OCR. It reports only supported labels, uses a confidence from `0.0` to `1.0`, and uses `Unknown` when no supported evidence is found.
+The image processor analyzes one scene image with the Roboflow Inference SDK and OCR. It reports only supported labels, uses a confidence from `0.0` to `1.0`, and may use the artifact values `Objects_Detected = None` when no supported object is found and `Text_Extracted = N/A` when OCR text is empty. If Roboflow is unavailable, quota is exhausted, or the API key is missing, the processor must use a safe Unknown fallback instead of crashing.
 
 ```text
 Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score
@@ -103,15 +103,9 @@ draft rows. Unknown values must be handled explicitly.
 Event, Location, Time, Severity, Summary, Confidence
 ```
 
-### 4.7 Structured JSON Text Input
+### 4.7 Unsupported JSON Input
 
-JSON is handled by the `text/` folder as structured text evidence. The processor
-must parse one uploaded JSON file. If the JSON contains a list of incident-like
-objects, each object may become one draft row.
-
-```text
-event, location, time, severity, summary, confidence
-```
+JSON file uploads are not supported in the MVP. If a user uploads a `.json` file, the app must show a clear unsupported-file message and must not insert rows into Supabase.
 
 ## 5. Integration Contract
 
@@ -140,7 +134,7 @@ Integration responsibilities:
 - Generate `Incident_ID` using the approved `INC_TYPE_NUMBER` rule.
 - Return zero, one, or many final incident rows.
 
-Integration must complete `Incident_Summary` and `Incident_ID` before any Supabase insert happens. Summary generation happens before ID generation. Supabase insertion itself is handled by the cloud/app layer after Integration returns final rows.
+Integration must complete `Incident_Summary` and `Incident_ID` before any Supabase insert happens. Summary generation happens before ID generation. Supabase insertion itself is handled by the cloud/app layer after Integration returns final rows and the user confirms them.
 
 ## 6. LLM Summarizer Contract
 
@@ -195,7 +189,7 @@ The MVP uses one table named `incidents`. Required columns:
 | --- | --- |
 | id | Database-generated row id |
 | created_at | Supabase insert timestamp |
-| incident_id | Primary key, generated as INC_TYPE_NUMBER |
+| incident_id | Unique synthetic project ID, generated as INC_TYPE_NUMBER |
 | source | Modality/source value: Audio, PDF, Image, Video, or Text |
 | event | Final normalized event or Unknown |
 | location | Final normalized location or Unknown |
@@ -219,7 +213,7 @@ The Streamlit dashboard must:
 - Upload exactly one supported file.
 - Show processing status and errors.
 - Show number of extractor rows and integrated rows.
-- Auto insert successful rows into Supabase.
+- Preview successful rows and insert them into Supabase after user confirmation.
 - Display Supabase `incidents` table rows.
 - Filter by user-friendly dashboard labels: Incident_ID, Source, Event, Location, and Severity. These are display labels and may map to lower-case Supabase columns in code.
 - Show `incident_summary` for selected rows.
@@ -231,14 +225,14 @@ The Streamlit dashboard must:
 | --- | --- | --- |
 | AC-001 | User uploads one supported file | Correct extractor route is selected |
 | AC-002 | Audio processor runs | Extractor DataFrame is returned or safe Unknown fallback appears |
-| AC-003 | PDF processor runs | Direct extraction or conditional OCR produces the eight-column PDF artifact and extractor mapping |
+| AC-003 | PDF processor runs | Direct extraction or page-aware conditional OCR produces the eight-column PDF artifact and extractor mapping |
 | AC-004 | Image processor runs | Supported scene/object/OCR results use the five-field artifact and extractor mapping |
 | AC-005 | Video processor runs | Motion-gated sampled frames produce correctly formatted event rows |
-| AC-006 | Text processor runs | Text, CSV, and JSON inputs map through the text modality contract |
+| AC-006 | Text processor runs | Text and CSV inputs map through the text modality contract; `.json` uploads are rejected |
 | AC-007 | Integration runs | Final DataFrame has `Incident_ID, Source, Event, Location, Time, Severity, Incident_Summary` |
 | AC-008 | LLM summary module runs | Integration gives each row `Incident_Summary`, with fallback if needed |
 | AC-009 | ID generation runs | Integration gives each row valid `INC_TYPE_NUMBER` `Incident_ID` |
-| AC-010 | Supabase insert runs | Rows appear in Supabase `incidents` table automatically |
+| AC-010 | Supabase insert runs | Confirmed rows appear in Supabase `incidents` table |
 | AC-011 | Dashboard launches | Dataset table, filters, and summaries appear |
 | AC-012 | Final export runs | CSV has exactly nine approved fields and no null values |
 | AC-013 | Hosted demo runs | App connects to Supabase without exposing credentials |
@@ -249,12 +243,13 @@ The Streamlit dashboard must:
 | --- | --- |
 | PDF has no extractable text | Attempt OCR if enabled; otherwise Unknown |
 | Audio transcription fails | Use Unknown transcript-derived fields and continue |
-| Image model detects no objects | Use OCR or Unknown fields |
+| Image model detects no supported objects | Keep image artifact values such as `Objects_Detected = None` and `Text_Extracted = N/A` when appropriate; final Integration fields still map safely |
 | Video exceeds 5 minutes | Reject with clear message and no insert |
 | Sampled video frame has no qualifying motion | Skip detection and do not create an unsupported event |
 | Text has no location | Set Location = Unknown |
 | Text has no supported topic | Set Topic = Other |
-| CSV/JSON contains many rows | One file may produce multiple incident rows |
+| CSV contains many rows | One file may produce multiple incident rows |
+| User uploads `.json` | Reject with a clear unsupported-file message and no insert |
 | Integration returns empty DataFrame | Insert nothing and show no incidents found |
 | LLM unavailable | Use rule-based summary in `incident_summary` |
 | Supabase insert fails | Show error and do not pretend rows were saved |
