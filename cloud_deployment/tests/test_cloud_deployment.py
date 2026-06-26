@@ -1,6 +1,6 @@
 """Tests for validation, payload creation, and optional Supabase round trips.
 
-``incident_id`` is a unique integer (the Supabase column is ``int8``). The live
+``incident_id`` is the documented ``INC_TYPE_NUMBER`` text key. The live
 round-trip test runs by default when Supabase credentials are configured. Set
 ``RUN_SUPABASE_LIVE_TESTS=0`` to keep a ``pytest`` run offline.
 """
@@ -24,7 +24,7 @@ from cloud_deployment.validators import INCIDENT_COLUMNS, validate_incidents_df
 load_dotenv(supabase_client.PROJECT_ROOT / ".env", override=False)
 
 
-def _incident_frame(incident_id: object = 101) -> pd.DataFrame:
+def _incident_frame(incident_id: object = "INC_TXT_101") -> pd.DataFrame:
     """Return one valid integration-ready incident row."""
     return pd.DataFrame(
         [
@@ -32,20 +32,21 @@ def _incident_frame(incident_id: object = 101) -> pd.DataFrame:
                 "incident_id": incident_id,
                 "source": "pytest-cloud-deployment",
                 "event": "test event",
-                "location": None,
+                "location": "Unknown",
                 "time": "2026-06-20T00:00:00Z",
                 "severity": "Low",
+                "summary_by_llm": "A Low-severity test event incident was reported via pytest-cloud-deployment.",
             }
         ]
     )
 
 
 def test_validate_incidents_df_accepts_valid_input() -> None:
-    validate_incidents_df(_incident_frame("101"))
+    validate_incidents_df(_incident_frame("INC_TXT_101"))
 
 
 def _duplicate_id_frame() -> pd.DataFrame:
-    return pd.concat([_incident_frame(101), _incident_frame(101)], ignore_index=True)
+    return pd.concat([_incident_frame("INC_TXT_101"), _incident_frame("INC_TXT_101")], ignore_index=True)
 
 
 @pytest.mark.parametrize(
@@ -54,8 +55,8 @@ def _duplicate_id_frame() -> pd.DataFrame:
         (pd.DataFrame(), "empty"),
         (_incident_frame().drop(columns="event"), "missing required columns"),
         (_incident_frame(None), "null values"),
-        (_incident_frame("not-an-integer"), "convertible"),
-        (_incident_frame(1.5), "whole integer"),
+        (_incident_frame("not-an-id"), "INC_TYPE_NUMBER"),
+        (_incident_frame("INC_DOC_001"), "INC_TYPE_NUMBER"),
         (_duplicate_id_frame(), "unique"),
     ],
 )
@@ -73,13 +74,13 @@ def test_insert_incidents_sends_only_allowed_columns(monkeypatch: pytest.MonkeyP
     client.table.return_value.insert.return_value.execute.return_value = response
     monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: client)
 
-    summary = supabase_client.insert_incidents(_incident_frame("101"))
+    summary = supabase_client.insert_incidents(_incident_frame("INC_TXT_101"))
 
     client.table.assert_called_once_with("incidents")
     records = client.table.return_value.insert.call_args.args[0]
     assert list(records[0]) == list(INCIDENT_COLUMNS)
-    assert records[0]["incident_id"] == 101
-    assert records[0]["location"] is None
+    assert records[0]["incident_id"] == "INC_TXT_101"
+    assert records[0]["location"] == "Unknown"
     assert "id" not in records[0]
     assert "created_at" not in records[0]
     assert summary["success"] is True
@@ -122,19 +123,46 @@ def test_upload_incidents_validates_before_insert(monkeypatch: pytest.MonkeyPatc
     assert summary["inserted_count"] == 1
 
 
+def test_upload_incidents_accepts_integration_output_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    insert = MagicMock(return_value={"success": True, "inserted_count": 1, "data": []})
+    monkeypatch.setattr(upload_service, "insert_incidents", insert)
+    frame = pd.DataFrame(
+        [
+            {
+                "Incident_ID": "INC_TXT_101",
+                "Source": "Text",
+                "Event": "test event",
+                "Location": "Unknown",
+                "Time": "2026-06-20T00:00:00Z",
+                "Severity": "Low",
+                "LLM_Summary": "A Low-severity test event incident was reported via Text.",
+            }
+        ]
+    )
+
+    upload_service.upload_incidents(frame)
+
+    payload = insert.call_args.args[0]
+    assert list(payload.columns) == list(INCIDENT_COLUMNS)
+    assert payload.loc[0, "incident_id"] == "INC_TXT_101"
+    assert payload.loc[0, "summary_by_llm"].startswith("A Low-severity")
+
+
 def test_query_incidents_applies_filters_and_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client = MagicMock()
     query = MagicMock()
-    response = SimpleNamespace(data=[{"id": 7, "incident_id": 101}])
+    response = SimpleNamespace(data=[{"id": 7, "incident_id": "INC_TXT_101"}])
     client.table.return_value.select.return_value = query
     query.eq.return_value = query
     query.limit.return_value.execute.return_value = response
     monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: client)
 
     rows = supabase_client.query_incidents(
-        {"incident_id": "101", "severity": "Low"},
+        {"incident_id": "INC_TXT_101", "severity": "Low"},
         limit=10,
     )
 
@@ -143,7 +171,7 @@ def test_query_incidents_applies_filters_and_limit(
         ",".join(supabase_client.SELECT_COLUMNS)
     )
     assert query.eq.call_args_list == [
-        call("incident_id", 101),
+        call("incident_id", "INC_TXT_101"),
         call("severity", "Low"),
     ]
     query.limit.assert_called_once_with(10)
@@ -151,14 +179,14 @@ def test_query_incidents_applies_filters_and_limit(
 
 
 def test_get_incident_returns_row_or_none(monkeypatch: pytest.MonkeyPatch) -> None:
-    query = MagicMock(return_value=[{"id": 12, "incident_id": 7}])
+    query = MagicMock(return_value=[{"id": 12, "incident_id": "INC_TXT_007"}])
     monkeypatch.setattr(supabase_client, "query_incidents", query)
 
-    assert supabase_client.get_incident(7) == {"id": 12, "incident_id": 7}
-    query.assert_called_once_with({"incident_id": 7}, limit=1)
+    assert supabase_client.get_incident("INC_TXT_007") == {"id": 12, "incident_id": "INC_TXT_007"}
+    query.assert_called_once_with({"incident_id": "INC_TXT_007"}, limit=1)
 
     query.return_value = []
-    assert supabase_client.get_incident(8) is None
+    assert supabase_client.get_incident("INC_TXT_008") is None
 
 
 def test_update_incident_uses_incident_key(
@@ -171,10 +199,10 @@ def test_update_incident_uses_incident_key(
     query.eq.return_value.execute.return_value = response
     monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: client)
 
-    summary = supabase_client.update_incident(7, {"severity": "High"})
+    summary = supabase_client.update_incident("INC_TXT_007", {"severity": "High"})
 
     client.table.return_value.update.assert_called_once_with({"severity": "High"})
-    query.eq.assert_called_once_with("incident_id", 7)
+    query.eq.assert_called_once_with("incident_id", "INC_TXT_007")
     assert summary["updated_count"] == 1
     assert summary["data"] == response.data
 
@@ -189,9 +217,9 @@ def test_delete_incident_uses_incident_key(
     query.eq.return_value.execute.return_value = response
     monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: client)
 
-    summary = supabase_client.delete_incident(7)
+    summary = supabase_client.delete_incident("INC_TXT_007")
 
-    query.eq.assert_called_once_with("incident_id", 7)
+    query.eq.assert_called_once_with("incident_id", "INC_TXT_007")
     assert summary["deleted_count"] == 1
     assert summary["data"] == response.data
 
@@ -199,13 +227,13 @@ def test_delete_incident_uses_incident_key(
 @pytest.mark.parametrize("column", ["id", "created_at", "unknown"])
 def test_update_incident_rejects_protected_columns(column: str) -> None:
     with pytest.raises(ValueError, match="Unsupported update columns"):
-        supabase_client.update_incident(7, {column: "value"})
+        supabase_client.update_incident("INC_TXT_007", {column: "value"})
 
 
 def test_crud_rejects_invalid_identifiers_and_filters() -> None:
-    with pytest.raises(ValueError, match="convertible"):
+    with pytest.raises(ValueError, match="INC_TYPE_NUMBER"):
         supabase_client.get_incident("not-an-id")  # type: ignore[arg-type]
-    with pytest.raises(ValueError, match="whole integer"):
+    with pytest.raises(ValueError, match="INC_TYPE_NUMBER"):
         supabase_client.delete_incident(1.5)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="Unsupported query columns"):
         supabase_client.query_incidents({"not_a_column": "value"})
@@ -233,7 +261,7 @@ def test_supabase_insert_exists_then_delete() -> None:
     ):
         pytest.skip("Live CRUD test requires a configured Supabase key.")
 
-    incident_id = time.time_ns()
+    incident_id = f"INC_TXT_{time.time_ns()}"
     source = "pytest-cloud-deployment"
     frame = _incident_frame(incident_id)
     client = supabase_client.get_supabase_client()

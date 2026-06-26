@@ -39,7 +39,15 @@ st.set_page_config(
 SEVERITY_ORDER = list(ig.SEVERITY_LEVELS)  # Low, Medium, High
 SEV_COLORS = {"Low": "#16A34A", "Medium": "#D97706", "High": "#DC2626"}
 # Material Symbol names per modality.
-SOURCE_ICON = {"Audio": "mic", "PDF": "description", "Image": "image", "Video": "movie", "Text": "forum"}
+SOURCE_ICON = {
+    "Audio": "mic",
+    "PDF": "description",
+    "Image": "image",
+    "Video": "movie",
+    "Text": "forum",
+    "CSV": "table",
+    "JSON": "data_object",
+}
 FINAL_COLS = list(ig.FINAL_CSV_COLUMNS)
 
 ACCENT = "#4F46E5"
@@ -186,6 +194,8 @@ def _style_table(display_df: pd.DataFrame):
     styler = display_df.style
     if "Severity" in display_df.columns:
         styler = styler.map(sev, subset=["Severity"])
+    if "severity" in display_df.columns:
+        styler = styler.map(sev, subset=["severity"])
     return styler
 
 
@@ -238,16 +248,24 @@ def _queued_review_status() -> dict[str, int]:
 def _build_queued_incidents(existing_ids: list) -> pd.DataFrame:
     saved_frames = []
     pending_frames = []
-    for item in _review_queue().values():
+    for filename, item in _review_queue().items():
         if item.get("saved"):
             if item.get("final") is not None:
                 saved_frames.append(item["final"].copy())
             continue
-        pending_frames.append(ig.integrate_records(item["draft"], item["source_type"]))
+        pending_frames.append(
+            ig.integrate_records(
+                item["draft"],
+                item["source_type"],
+                source_filename=filename,
+            )
+        )
 
     if pending_frames:
         pending = pd.concat(pending_frames, ignore_index=True)
-        pending = ig.assign_incident_ids(pending, ig.next_incident_number(existing_ids))
+        pending = ig.add_incident_summaries(pending)
+        pending = ig.assign_incident_ids(pending, existing_ids)
+        pending = ig.to_integration_output_frame(pending)
     else:
         pending = pd.DataFrame(columns=ig.INCIDENT_COLUMNS)
 
@@ -687,12 +705,12 @@ def view_ingest() -> None:
 
     uploaded = st.file_uploader("Choose an evidence file", type=ig.supported_extensions())
     if uploaded is None:
-        st.info("You can add an audio recording, document, image, video, or text file.")
+        st.info("You can add an audio recording, document, image, video, text file, CSV, or JSON file.")
         return
 
     source_type = ig.detect_source_type(uploaded.name)
     if source_type is None:
-        st.error("We can't review this file type yet. Please choose an audio, document, image, video, or text file.")
+        st.error("We can't review this file type yet. Please choose an audio, document, image, video, text, CSV, or JSON file.")
         return
 
     label = ig.source_label(source_type)
@@ -709,7 +727,12 @@ def view_ingest() -> None:
             try:
                 path = _save_upload_to_tempdir(uploaded)
                 draft_df = ig.run_modality(source_type, path)
-                final_df = ig.build_incidents(draft_df, source_type, existing_incident_ids())
+                final_df = ig.build_incidents(
+                    draft_df,
+                    source_type,
+                    existing_incident_ids(),
+                    source_filename=uploaded.name,
+                )
                 _queue_review(
                     uploaded.name,
                     source_type,
@@ -808,10 +831,11 @@ def view_integrate() -> None:
         return
 
     final_view = ig.to_final_csv_frame(master)
+    payload_view = ig.to_supabase_payload_frame(master)
     k = st.columns(3)
-    _stat(k[0], "Total incidents", len(master), icon="summarize")
-    _stat(k[1], "Evidence types", master["source"].nunique(), color=ACCENT, icon="hub")
-    _stat(k[2], "High severity", int(master["severity"].value_counts().get("High", 0)),
+    _stat(k[0], "Total incidents", len(payload_view), icon="summarize")
+    _stat(k[1], "Evidence types", payload_view["source"].nunique(), color=ACCENT, icon="hub")
+    _stat(k[2], "High severity", int(payload_view["severity"].value_counts().get("High", 0)),
           color=SEV_COLORS["High"], icon="priority_high")
 
     st.write("")
@@ -820,10 +844,10 @@ def view_integrate() -> None:
     cc1, cc2 = st.columns(2)
     with cc1:
         _section("Records per source")
-        st.altair_chart(_hbar(master["source"].value_counts(), "Source"), width="stretch")
+        st.altair_chart(_hbar(payload_view["source"].value_counts(), "Source"), width="stretch")
     with cc2:
         _section("Severity by source")
-        st.altair_chart(_severity_by_source(master), width="stretch")
+        st.altair_chart(_severity_by_source(payload_view), width="stretch")
 
     st.download_button(
         "Download combined report", final_view.to_csv(index=False).encode("utf-8"),
@@ -923,7 +947,7 @@ def view_dashboard() -> None:
 
     with tab_records:
         final_view = ig.to_final_csv_frame(view)
-        high = final_view[final_view["Severity"] == "High"]
+        high = final_view[final_view["severity"] == "High"]
         if not high.empty:
             _section(f"High-priority queue · {len(high)}")
             st.dataframe(_style_table(high), width="stretch", hide_index=True)
@@ -940,8 +964,7 @@ def view_dashboard() -> None:
 @st.dialog("Add incident")
 def _add_incident_dialog(existing_ids: list) -> None:
     source_type = st.selectbox("Source", list(ig.MODALITIES.keys()), format_func=ig.source_label)
-    next_number = ig.next_incident_number(existing_ids)
-    next_label = ig.display_id(ig.source_label(source_type), next_number)
+    next_label = ig.generate_next_incident_id(source_type, existing_ids)
     st.caption(f"New incident ID: `{next_label}`")
     event = st.text_input("Event", "Unknown")
     location = st.text_input("Location", "Unknown")
@@ -949,9 +972,16 @@ def _add_incident_dialog(existing_ids: list) -> None:
     severity = st.selectbox("Severity", SEVERITY_ORDER, index=1)
     if st.button("Save", type="primary", icon=":material/save:"):
         row = pd.DataFrame([{
-            "incident_id": next_number, "source": ig.source_label(source_type),
+            "incident_id": next_label,
+            "source": ig.source_label(source_type),
             "event": ig.normalize_event(event), "location": location or "Unknown",
-            "time": time_val or "Unknown", "severity": severity}])
+            "time": time_val or "Unknown", "severity": severity,
+            "source_type": ig.source_prefix(source_type),
+            "confidence": 0.0,
+            "raw_text": "Unknown",
+        }])
+        row = ig.add_incident_summaries(row)
+        row = ig.to_integration_output_frame(row)
         try:
             upload_incidents(row)
             st.success(f"Added {next_label}")
@@ -1082,7 +1112,7 @@ def view_manage() -> None:
             label = str(target["Incident_ID"])
             try:
                 if do_bulk_remove:
-                    delete_incident(int(target["incident_id"]))
+                    delete_incident(target["incident_id"])
                 else:
                     payload = {
                         field: (
@@ -1092,7 +1122,7 @@ def view_manage() -> None:
                         )
                         for field, value in bulk_values.items()
                     }
-                    update_incident(int(target["incident_id"]), payload)
+                    update_incident(target["incident_id"], payload)
                 succeeded += 1
             except Exception:  # noqa: BLE001
                 logger.exception("Bulk incident action failed for %s", label)
@@ -1166,7 +1196,7 @@ def view_manage() -> None:
     for _, row in edited.iterrows():
         label = str(row["Incident_ID"])
         current = original.loc[label]
-        incident_id = int(current["incident_id"])
+        incident_id = current["incident_id"]
         try:
             if bool(row["remove"]):
                 delete_incident(incident_id)

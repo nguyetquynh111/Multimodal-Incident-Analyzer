@@ -1,11 +1,7 @@
-"""Validation for integration-ready incident DataFrames.
-
-``incident_id`` is a unique integer (the Supabase column is ``int8``). The
-human-readable, modality-prefixed label (e.g. ``AUD-001``) is derived for
-display/export by :mod:`integration.integration`; it is not stored.
-"""
+"""Validation for integration-ready incident DataFrames."""
 
 import logging
+import re
 
 import pandas as pd
 
@@ -18,7 +14,11 @@ INCIDENT_COLUMNS = (
     "location",
     "time",
     "severity",
+    "summary_by_llm",
 )
+
+ID_PATTERN = re.compile(r"^INC_(AUD|PDF|IMG|VID|TXT)_\d{3,}$")
+SEVERITY_LEVELS = {"Low", "Medium", "High"}
 
 
 def validate_incidents_df(df: pd.DataFrame) -> None:
@@ -33,7 +33,7 @@ def validate_incidents_df(df: pd.DataFrame) -> None:
     Raises:
         TypeError: If ``df`` is not a pandas DataFrame.
         ValueError: If the DataFrame is empty, has missing required columns, or
-            contains invalid incident identifiers.
+            contains invalid incident identifiers or enum values.
     """
     if not isinstance(df, pd.DataFrame):
         raise TypeError("Expected a pandas DataFrame for incident upload.")
@@ -52,18 +52,20 @@ def validate_incidents_df(df: pd.DataFrame) -> None:
     if incident_ids.isna().any():
         raise ValueError("The incident_id column contains null values.")
 
-    try:
-        numeric_ids = pd.to_numeric(incident_ids, errors="raise")
-        integer_ids = numeric_ids.astype("int64")
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError(
-            "Every incident_id must be convertible to a 64-bit integer."
-        ) from exc
+    id_text = incident_ids.astype(str)
+    if not id_text.map(lambda value: bool(ID_PATTERN.match(value))).all():
+        raise ValueError("Every incident_id must follow INC_TYPE_NUMBER, such as INC_PDF_001.")
 
-    if not (numeric_ids == integer_ids).all():
-        raise ValueError("Every incident_id must be a whole integer value.")
-
-    if integer_ids.duplicated().any():
+    if id_text.duplicated().any():
         raise ValueError("Every incident_id must be unique within an upload.")
+
+    for column in ("source", "event", "location", "time", "summary_by_llm"):
+        if df[column].isna().any():
+            raise ValueError(f"The {column} column contains null values.")
+        if df[column].astype(str).str.strip().eq("").any():
+            raise ValueError(f"The {column} column contains blank values.")
+
+    if not df["severity"].isin(SEVERITY_LEVELS).all():
+        raise ValueError("Severity must be Low, Medium, or High.")
 
     logger.debug("Validated incidents DataFrame with %d rows.", len(df))

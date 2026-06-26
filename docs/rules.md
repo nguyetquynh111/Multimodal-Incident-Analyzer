@@ -2,7 +2,7 @@
 
 | **Owner** | **Project Type** | **Date** | **Submission** |
 | --- | --- | --- | --- |
-| Group 2 | Class prototype only | June 19, 2026 | June 26, 2026 |
+| Group 2 | Class prototype only | June 19, 2026 | June 28, 2026 |
 
 ## 1. Core Project Rules
 
@@ -15,8 +15,8 @@
 | Single-file upload | The MVP processes exactly one uploaded file per Streamlit processing run |
 | Synchronous processing | Processing occurs inside the Streamlit session and inserts automatically when complete |
 | Supabase source of truth | After insert, dashboard and export must read from Supabase `incidents` table |
-| One main table | Use one Supabase table named `incidents` for structured incident rows and summary columns |
-| LLM summary is separate | LLM summary code must live in `src/llm_summarizer/`, not inside extractors or hidden inside Integration |
+| One main table | Use one Supabase table named `incidents` for structured incident rows and the `incident_summary` column |
+| LLM summary is separate | LLM summary code must live in `llm_summarizer/`, not inside extractors or hidden inside Integration |
 | No raw Supabase Storage in MVP | Do not upload raw evidence files to Supabase Storage as a required MVP feature |
 | No watch-folder flow | Do not implement local watch-folder monitoring as the main pipeline |
 | No SQLite source of truth | Do not use SQLite or local CSV files as the persistent source of truth |
@@ -29,7 +29,7 @@ Synthetic incident IDs must use this format:
 INC_TYPE_NUMBER
 ```
 
-`TYPE` must be an approved abbreviation. `NUMBER` must be zero-padded to three digits within each type. The app generates IDs after Integration, after summary fields are produced, and before Supabase insertion.
+`TYPE` must be an approved abbreviation. `NUMBER` must be zero-padded to three digits within each type. Integration generates IDs after row standardization and after `Incident_Summary` is produced, but before Supabase insertion.
 
 ### 2.1 Approved Type Abbreviations
 
@@ -40,8 +40,6 @@ INC_TYPE_NUMBER
 | Image | IMG | INC_IMG_001, INC_IMG_002 |
 | Video | VID | INC_VID_001, INC_VID_002 |
 | Text | TXT | INC_TXT_001, INC_TXT_002 |
-| CSV | CSV | INC_CSV_001, INC_CSV_002 |
-| JSON | JSON | INC_JSON_001, INC_JSON_002 |
 
 ### 2.2 ID Generation Behavior
 
@@ -56,22 +54,25 @@ INC_TYPE_NUMBER
 
 ## 3. Schema Rules
 
-The main Supabase table is named `incidents`. It can contain operational columns, but the final CSV export must contain only these columns:
+The main Supabase table is named `incidents`. The stored Supabase row and final CSV export must contain these fields:
 
 ```text
-Incident_ID, Source, Event, Location, Time, Severity
+id, created_at, incident_id, source, event, location, time, severity, incident_summary
 ```
 
 | **Field** | **Rule** |
 | --- | --- |
-| Incident_ID | Must come from `incident_id` and follow `INC_TYPE_NUMBER` |
-| Source | Must identify the modality/source such as `audio`, `pdf`, `image`, `video`, `text`, `csv`, or `json` |
-| Event | No null values; use `Unknown` when not found |
-| Location | No null values; use `Unknown` when not found |
-| Time | No null values; use `Unknown` when not found |
-| Severity | Must be exactly `Low`, `Medium`, or `High` |
-| incident_summary | Stored in Supabase for dashboard display; not included in the final six-column CSV |
-| summary_method | Stored in Supabase to show whether `llm`, `rule_based`, `disabled`, or `error` produced the summary |
+| id | Database-generated row id |
+| created_at | Database-generated insert timestamp |
+| incident_id | Must follow `INC_TYPE_NUMBER` |
+| source | Must identify the modality/source: `Audio`, `PDF`, `Image`, `Video`, or `Text` |
+| event | No null values; use `Unknown` when not found |
+| location | No null values; use `Unknown` when not found |
+| time | No null values; use `Unknown` when not found |
+| severity | Must be exactly `Low`, `Medium`, `High`, or `Unknown` |
+| incident_summary | OpenRouter/fallback incident summary for dashboard display and export |
+
+Dashboard labels may be user-friendly and title-cased for readability, such as Incident_ID, Source, Event, Location, and Severity. These labels map to the lower-case Supabase columns in code.
 
 ## 4. Modality DataFrame Rules
 
@@ -82,36 +83,40 @@ default before Integration.
 | **Modality** | **Exact Columns** | **Key Rule** |
 | --- | --- | --- |
 | Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm` or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
-| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary` | Use direct extraction first and OCR only when scanned or text is unavailable |
+| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Use direct extraction first and OCR only when scanned or text is unavailable |
 | Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use supported model labels and confidence from 0.0 to 1.0 |
 | Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, `FRM_NNN`, motion gating, and documented event logic |
 | Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` | Preserve `Raw_Text`; unsupported topics use `Other` |
 
 Use `Unknown` for unsupported or missing evidence. Never infer facts that are not present in the source or model output.
 
+Structured text inputs may also arrive as CSV
+(`Event, Location, Time, Severity, Summary, Confidence`) or JSON
+(`event, location, time, severity, summary, confidence`). They are handled
+under `text/`, may produce many rows, and use `Unknown` for missing values.
+
 ## 5. Integration Rules
 
-Integration must accept a pandas DataFrame, not a CSV path. The required function contract is:
+Integration must accept a pandas DataFrame and `source_type`, not a CSV path. The public function is `integrate_records(draft_df, source_type)`. The public Integration workflow output contract is:
 
 ```text
-def integrate_records(draft_df: pandas.DataFrame, source_type: str) -> pandas.DataFrame:
-    """Return cleaned incident rows before ID assignment and before Supabase insert."""
+Incident_ID, Source, Event, Location, Time, Severity, Incident_Summary
 ```
 
-Integration output must include:
+The lower-case Supabase insert payload is produced only at the cloud upload boundary. It contains seven app-provided fields because `id` and `created_at` are generated by Supabase:
 
 ```text
-source, event, location, time, severity
+incident_id, source, event, location, time, severity, incident_summary
 ```
 
-It may include additional columns if they are documented and supported. It must not insert directly into Supabase before ID generation and LLM summary enrichment are complete.
+It must not include extra fields at insert time. After insertion, Supabase stored rows and final CSV export contain the full nine-field schema including database-generated `id` and `created_at`. Supabase insert happens only after Integration produces `Incident_Summary` and `Incident_ID`, which are mapped to `incident_summary` and `incident_id`.
 
 ## 6. LLM Summarizer Rules
 
 The LLM summarizer is required as a separate folder:
 
 ```text
-src/llm_summarizer/
+llm_summarizer/
 ├── __init__.py
 ├── summarizer.py
 ├── prompts.py
@@ -119,29 +124,26 @@ src/llm_summarizer/
 └── schemas.py
 ```
 
-Platform must call this module after `integrate_records(...)` returns cleaned rows and before Supabase insertion. The required public function is:
+Integration must call this module during `integrate_records(...)` after row standardization and before ID generation and Supabase insertion. The required public function is:
 
 ```text
-from src.llm_summarizer.summarizer import summarize_incident
+from llm_summarizer.summarizer import summarize_incident
 
 summary_result = summarize_incident(incident_row: dict)
 
-# Required return keys:
-# incident_summary: str
-# summary_method: "llm" | "rule_based" | "disabled" | "error"
-# summary_model: str
+# Integration stores result["incident_summary"] as Incident_Summary, then the app maps it to Supabase incident_summary.
 ```
 
 LLM summary rules:
 
 | **Rule** | **Requirement** |
 | --- | --- |
-| Separate responsibility | The summarizer only creates a readable summary; it must not compute final severity, rewrite IDs, insert database rows, or override platform's normalized fields |
-| Use integrated fields | The prompt/function must summarize from `event`, `location`, `time`, `severity`, `source`, and `raw_text` when available |
+| Separate responsibility | The summarizer only creates a readable summary; it must not compute final severity, rewrite IDs, insert database rows, or override Integration's normalized fields |
+| Use integrated fields | The prompt/function must summarize from required fields `event`, `location`, `time`, `severity`, `source`, and `raw_text`; use `Unknown` when supporting raw text is unavailable |
 | No hallucination | If a detail is missing, write `Unknown` or omit that detail; do not invent people, places, weapons, dates, or outcomes |
 | Length | Keep `incident_summary` short: one to three sentences, preferably under 80 words |
-| Fallback required | If the LLM is disabled, unavailable, slow, or invalid, use deterministic rule-based fallback |
-| No paid API requirement | Local/free model or fallback only; no required paid LLM API |
+| Fallback required | If OpenRouter is disabled, unavailable, slow, or invalid, use deterministic rule-based fallback |
+| OpenRouter provider | Use OpenRouter when `ENABLE_LLM_SUMMARY=True` and `OPENROUTER_API_KEY` is configured |
 | Safe output | The summary is for dashboard review, not official investigation or legal conclusions |
 | Validation | Validate required keys, types, and length before accepting model output |
 
@@ -153,9 +155,9 @@ LLM summary rules:
 | Distressed audio sentiment or urgency score >= 0.75 | High |
 | Theft, robbery, public disturbance, property damage | Medium |
 | Neutral report or low-confidence non-violent event | Low |
-| No reliable signal | Low with Event = Unknown |
+| No reliable signal | Unknown with Event = Unknown |
 
-When multiple signals disagree, choose the highest severity. Severity must always be normalized to exactly `Low`, `Medium`, or `High` before Supabase insertion.
+When multiple signals disagree, choose the highest severity. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. Use `Unknown` only when there is no reliable severity signal.
 
 ## 8. Source Priority Rules
 
@@ -172,7 +174,7 @@ When multiple signals disagree, choose the highest severity. Severity must alway
 | **Failure** | **Required Fallback** |
 | --- | --- |
 | Unsupported file type | Show clear Streamlit error and do not insert rows |
-| Extractor returns empty DataFrame | Show no incident found message; insert nothing unless demo rules require an Unknown row |
+| Extractor returns empty DataFrame | Show no incident found message; insert nothing |
 | Failed audio transcription | Use Unknown transcript-derived fields and continue if possible |
 | PDF text extraction empty | Try OCR fallback when enabled |
 | OCR unavailable or failed | Use Unknown fields and continue |
@@ -180,7 +182,7 @@ When multiple signals disagree, choose the highest severity. Severity must alway
 | Video frame has no qualifying motion | Skip model inference for that frame and do not invent an event |
 | Text has no supported topic | Use `Other` |
 | Integration schema mismatch | Stop before Supabase insert and show validation error |
-| Local/free LLM fails | Use rule-based summary from `src/llm_summarizer/fallback.py` |
+| OpenRouter fails | Use rule-based summary from `llm_summarizer/fallback.py` |
 | Supabase credentials missing | Show setup guidance and do not crash |
 
 ## 10. Logging Rules
@@ -201,18 +203,12 @@ Minimum required tests:
 
 | **Test** | **Purpose** |
 | --- | --- |
-| test_file_type_detector.py | Extensions map to AUD/PDF/IMG/VID/TXT/CSV/JSON |
+| test_file_type_detector.py | Extensions map to AUD/PDF/IMG/VID/TXT; CSV and JSON extensions route to TXT |
 | test_extractor_schema.py | Each processor returns required extractor DataFrame columns |
 | test_modality_output_schemas.py | Modality artifacts use their exact columns and bounded numeric scores |
-| test_integration_schema.py | Integration returns required cleaned incident columns |
+| test_integration_schema.py | Integration returns final `Incident_ID, Source, Event, Location, Time, Severity, Incident_Summary` columns |
 | test_llm_summarizer.py | LLM summarizer returns required keys and fallback works |
 | test_id_generator.py | IDs follow `INC_TYPE_NUMBER` and increment by source type |
 | test_supabase_mapping.py | Supabase payload maps all required table columns |
-| test_final_export_schema.py | Final CSV export has exact six columns and no null values |
+| test_final_export_schema.py | Final CSV export has exact nine fields and no null values |
 | test_dashboard_smoke.py | Streamlit app can load without crashing |
-
-## 12. Demo Rules
-
-Keep sample data small. Use `FAST_DEMO_MODE=True` for presentation safety. The demo should show: one raw uploaded file, extracted DataFrame count, Integration result, LLM/fallback summary, Supabase insertion, dashboard filtering, and final six-column CSV export.
-
-The hosted demo must keep credentials private and clearly distinguish modality artifacts from the shared DataFrame and final export.

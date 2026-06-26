@@ -96,3 +96,32 @@ def test_process_text_json_lines_txt_creates_one_row_per_record() -> None:
     assert frame["Topic"].tolist() == ["Assault / Violence", "Theft / Robbery"]
     assert "DATE:" in frame.iloc[0]["Entities"]
     assert "New Orleans" in frame.iloc[0]["Entities"]
+
+
+def test_process_text_json_file_creates_one_row_per_record() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        input_path = Path(directory) / "incidents.json"
+        input_path.write_text(
+            json.dumps(
+                {
+                    "incidents": [
+                        {
+                            "event": "fire",
+                            "summary": "Fire reported near Main Street.",
+                            "created_at": "2026-06-25",
+                        },
+                        {
+                            "event": "robbery",
+                            "description": "Robbery reported downtown.",
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        frame = process_text(input_path, output_csv_path=None, source="JSON")
+
+    assert list(frame.columns) == ARTIFACT_COLUMNS
+    assert frame["Text_ID"].tolist() == ["TXT_001", "TXT_002"]
+    assert frame["Source"].tolist() == ["JSON", "JSON"]

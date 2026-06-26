@@ -7,20 +7,21 @@ final dataset.
 
 Pipeline position::
 
-    raw file -> modality processor -> DRAFT df -> integrate_records() -> FINAL df
-             -> assign_incident_ids() -> Supabase insert -> dashboard / CSV export
+    raw file -> modality processor -> DRAFT df -> integrate_records()
+             -> build_incidents() -> Supabase insert -> dashboard / CSV export
 
-Final (Supabase) columns are lower-case::
+Integration output columns are title-case::
 
-    incident_id, source, event, location, time, severity
+    Incident_ID, Source, Event, Location, Time, Severity, LLM_Summary
 
-The final CSV export uses the assignment's title-case headers::
+Supabase upload/export uses the dashboard/Supabase field names::
 
-    Incident_ID, Source, Event, Location, Time, Severity
+    id, created_at, incident_id, source, event, location, time, severity,
+    summary_by_llm
 
-Incident IDs are modality-prefixed strings (assignment section 4, step 1)::
+Incident IDs are generated in the project-documented format::
 
-    AUD-001  DOC-001  IMG-001  VID-001  TXT-001
+    INC_AUD_001  INC_PDF_001  INC_IMG_001  INC_VID_001  INC_TXT_001
 
 Severity is graded Low / Medium / High from a 0-10 score (assignment section 4,
 step 4). The documented rule used here is ``score = confidence * 10`` with
@@ -30,6 +31,7 @@ numeric confidence default to ``Medium``.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -41,35 +43,74 @@ logger = logging.getLogger(__name__)
 
 UNKNOWN = "Unknown"
 
-# Final Supabase column order (lower-case). Mirrors validators.INCIDENT_COLUMNS.
+# Public integration output column order.
 INCIDENT_COLUMNS: tuple[str, ...] = (
-    "incident_id",
-    "source",
-    "event",
-    "location",
-    "time",
-    "severity",
-)
-
-# Headers required by the assignment's final dataset / CSV export.
-FINAL_CSV_COLUMNS: tuple[str, ...] = (
     "Incident_ID",
     "Source",
     "Event",
     "Location",
     "Time",
     "Severity",
+    "LLM_Summary",
+)
+INTEGRATION_OUTPUT_COLUMNS = INCIDENT_COLUMNS
+
+# App-owned Supabase payload column order (lower-case). Mirrors validators.INCIDENT_COLUMNS.
+SUPABASE_PAYLOAD_COLUMNS: tuple[str, ...] = (
+    "incident_id",
+    "source",
+    "event",
+    "location",
+    "time",
+    "severity",
+    "summary_by_llm",
 )
 
-# One canonical record per modality: human-readable source label + ID prefix.
-# Prefixes follow the assignment (PDF uses the DOC- prefix).
+INTEGRATION_COLUMNS: tuple[str, ...] = (
+    "source",
+    "event",
+    "location",
+    "time",
+    "severity",
+    "source_filename",
+    "source_type",
+    "confidence",
+    "raw_text",
+)
+
+# Columns required by the dashboard/export contract.
+FINAL_CSV_COLUMNS: tuple[str, ...] = (
+    "id",
+    "created_at",
+    "incident_id",
+    "source",
+    "event",
+    "location",
+    "time",
+    "severity",
+    "summary_by_llm",
+)
+
+_SUPABASE_ALIASES: dict[str, tuple[str, ...]] = {
+    "incident_id": ("incident_id", "Incident_ID"),
+    "source": ("source", "Source"),
+    "event": ("event", "Event"),
+    "location": ("location", "Location"),
+    "time": ("time", "Time"),
+    "severity": ("severity", "Severity"),
+    "summary_by_llm": ("summary_by_llm", "LLM_Summary"),
+}
+
+# One canonical record per modality: human-readable source label + ID type.
 MODALITIES: dict[str, dict[str, Any]] = {
     "audio": {"label": "Audio", "prefix": "AUD", "extensions": {".wav", ".mp3", ".m4a", ".flac"}},
-    "pdf": {"label": "PDF", "prefix": "DOC", "extensions": {".pdf"}},
+    "pdf": {"label": "PDF", "prefix": "PDF", "extensions": {".pdf"}},
     "image": {"label": "Image", "prefix": "IMG", "extensions": {".jpg", ".jpeg", ".png"}},
     "video": {"label": "Video", "prefix": "VID", "extensions": {".mp4", ".mov", ".mpg", ".mpeg"}},
-    "text": {"label": "Text", "prefix": "TXT", "extensions": {".txt"}},
+    "text": {"label": "Text", "prefix": "TXT", "extensions": {".txt", ".csv", ".json"}},
 }
+
+ID_PATTERN = re.compile(r"^INC_([A-Z]+)_(\d{3,})$")
 
 def _to_float(value: Any) -> float | None:
     """Best-effort float conversion; returns ``None`` for blanks/non-numbers."""
@@ -112,12 +153,27 @@ def supported_extensions() -> list[str]:
 
 def source_label(source_type: str) -> str:
     """Human-readable Source value, e.g. ``audio`` -> ``Audio``."""
-    return MODALITIES[source_type]["label"]
+    return MODALITIES[normalize_source_type(source_type)]["label"]
 
 
 def source_prefix(source_type: str) -> str:
     """Incident-ID prefix, e.g. ``audio`` -> ``AUD``."""
-    return MODALITIES[source_type]["prefix"]
+    return MODALITIES[normalize_source_type(source_type)]["prefix"]
+
+
+def normalize_source_type(source_type: str) -> str:
+    """Accept either code keys (``pdf``) or documented types (``PDF``)."""
+
+    candidate = str(source_type).strip()
+    if candidate.casefold() in {"csv", "json"}:
+        return "text"
+    if candidate in MODALITIES:
+        return candidate
+    upper = candidate.upper()
+    for key, meta in MODALITIES.items():
+        if meta["prefix"] == upper:
+            return key
+    raise ValueError(f"Unsupported source_type {source_type!r}.")
 
 
 # --------------------------------------------------------------------------- #
@@ -227,6 +283,8 @@ def _map_audio(row: Mapping[str, Any]) -> dict[str, Any]:
         "event": normalize_event(_first_known(row, "Extracted_Event")),
         "location": _first_known(row, "Location"),
         "time": _first_known(row, "Time", "Timestamp"),
+        "confidence": _confidence(row, "Urgency_Score"),
+        "raw_text": _first_known(row, "Transcript"),
         "severity": _mapped_severity(
             row,
             explicit=("Severity",),
@@ -236,10 +294,18 @@ def _map_audio(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _map_pdf(row: Mapping[str, Any]) -> dict[str, Any]:
+    raw_text_parts = [
+        _first_known(row, "Summary"),
+        _first_known(row, "Suspect_Description"),
+        _first_known(row, "Outcome"),
+    ]
+    raw_text = " | ".join(part for part in raw_text_parts if part != UNKNOWN) or UNKNOWN
     return {
         "event": normalize_event(_first_known(row, "Incident_Type")),
         "location": _first_known(row, "Location"),
         "time": _first_known(row, "Date"),
+        "confidence": _confidence(row, "Confidence", default=0.0),
+        "raw_text": raw_text,
         "severity": _mapped_severity(
             row,
             explicit=("Severity",),
@@ -259,6 +325,8 @@ def _map_image(row: Mapping[str, Any]) -> dict[str, Any]:
         # keeps it Unknown, so we default to Unknown here.
         "location": _first_known(row, "Location"),
         "time": _first_known(row, "Time", "Timestamp"),
+        "confidence": _confidence(row, "Confidence_Score"),
+        "raw_text": _first_known(row, "Text_Extracted", "Objects_Detected"),
         "severity": _mapped_severity(
             row,
             explicit=("Severity",),
@@ -272,6 +340,8 @@ def _map_video(row: Mapping[str, Any]) -> dict[str, Any]:
         "event": normalize_event(_first_known(row, "Event_Detected")),
         "location": _first_known(row, "Location"),
         "time": _first_known(row, "Timestamp"),
+        "confidence": _confidence(row, "Confidence"),
+        "raw_text": _first_known(row, "Objects", "Event_Detected"),
         "severity": _mapped_severity(
             row,
             explicit=("Severity",),
@@ -281,6 +351,9 @@ def _map_video(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _map_text(row: Mapping[str, Any]) -> dict[str, Any]:
+    if _looks_like_structured_text(row):
+        return _map_structured(row)
+
     entities = row.get("Entities")
     location = _first_known(row, "Location")
     if location == UNKNOWN:
@@ -296,12 +369,85 @@ def _map_text(row: Mapping[str, Any]) -> dict[str, Any]:
         "event": normalize_event(_first_known(row, "Topic")),
         "location": location,
         "time": time,
+        "confidence": _confidence(row, "Confidence", default=0.0),
+        "raw_text": _first_known(row, "Raw_Text"),
         "severity": _mapped_severity(
             row,
             explicit=("Severity",),
             confidence=("Confidence",),
         ),
     }
+
+
+def _confidence(row: Mapping[str, Any], *columns: str, default: float = 0.0) -> float:
+    value = _first_known(row, *columns)
+    score = _to_float(value)
+    if score is None:
+        return default
+    return max(0.0, min(1.0, score if score <= 1.0 else score / 10.0))
+
+
+def _json_text(row: Mapping[str, Any]) -> str:
+    try:
+        return json.dumps(dict(row), ensure_ascii=False, default=str)
+    except TypeError:
+        return str(dict(row))
+
+
+def _map_structured(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Map CSV/JSON records that already carry incident-like fields."""
+
+    raw_text = _first_known(
+        row,
+        "raw_text",
+        "Raw_Text",
+        "summary",
+        "Summary",
+        "description",
+        "Description",
+        "details",
+        "Details",
+        "text",
+        "Text",
+    )
+    if raw_text == UNKNOWN:
+        raw_text = _json_text(row)
+    return {
+        "event": normalize_event(
+            _first_known(row, "event", "Event", "incident_type", "Incident_Type", "type", "Type", "category", "Category")
+        ),
+        "location": _first_known(row, "location", "Location", "place", "Place", "address", "Address"),
+        "time": _first_known(row, "time", "Time", "date", "Date", "timestamp", "Timestamp", "created_at", "Created_At"),
+        "confidence": _confidence(row, "confidence", "Confidence", "score", "Score"),
+        "raw_text": raw_text,
+        "severity": _mapped_severity(row, explicit=("severity", "Severity"), confidence=("confidence", "Confidence")),
+    }
+
+
+_STRUCTURED_TEXT_COLUMNS = {
+    "event",
+    "Event",
+    "incident_type",
+    "Incident_Type",
+    "location",
+    "Location",
+    "time",
+    "Time",
+    "date",
+    "Date",
+    "severity",
+    "Severity",
+}
+
+
+def _looks_like_structured_text(row: Mapping[str, Any]) -> bool:
+    """Return true for CSV/JSON text inputs that already carry incident fields."""
+
+    return any(column in row for column in _STRUCTURED_TEXT_COLUMNS)
+
+
+def _looks_like_structured_text_frame(frame: pd.DataFrame) -> bool:
+    return any(column in frame.columns for column in _STRUCTURED_TEXT_COLUMNS)
 
 
 _MAPPERS = {
@@ -313,73 +459,184 @@ _MAPPERS = {
 }
 
 
-def integrate_records(draft_df: pd.DataFrame, source_type: str) -> pd.DataFrame:
+def integrate_records(
+    draft_df: pd.DataFrame,
+    source_type: str,
+    *,
+    source_filename: str | None = None,
+) -> pd.DataFrame:
     """Normalise one modality's draft DataFrame into the final schema.
 
     Args:
         draft_df: The DataFrame returned by a modality processor.
-        source_type: One of ``audio, pdf, image, video, text``.
+        source_type: One of ``audio, pdf, image, video, text``. CSV and JSON
+            files are structured text inputs and normalize to ``text``.
 
     Returns:
-        A DataFrame with columns ``source, event, location, time, severity``
-        (one row per draft row). ``incident_id`` is added later by
-        :func:`assign_incident_ids`. An empty input yields an empty,
+        A DataFrame with the required integration columns plus documented
+        metadata needed by the summarizer/Supabase payload. ``incident_id`` and
+        summary fields are added later. An empty input yields an empty,
         correctly-typed frame so the app never crashes.
     """
-    if source_type not in _MAPPERS:
-        raise ValueError(f"Unsupported source_type {source_type!r}.")
+    source_type = normalize_source_type(source_type)
     if not isinstance(draft_df, pd.DataFrame):
         raise TypeError("draft_df must be a pandas DataFrame.")
 
     label = source_label(source_type)
     mapper = _MAPPERS[source_type]
-    rows = [{"source": label, **mapper(record)} for record in draft_df.to_dict("records")]
-    columns = ["source", "event", "location", "time", "severity"]
-    return pd.DataFrame(rows, columns=columns)
+    source_code = source_prefix(source_type)
+    filename = source_filename or UNKNOWN
+    rows = []
+    for record in draft_df.to_dict("records"):
+        mapped = mapper(record)
+        rows.append(
+            {
+                "source": label,
+                "event": mapped["event"],
+                "location": mapped["location"],
+                "time": mapped["time"],
+                "severity": mapped["severity"],
+                "source_filename": _first_known(record, "source_filename", "Source_Filename") if source_filename is None else filename,
+                "source_type": source_code,
+                "confidence": mapped.get("confidence", 0.0),
+                "raw_text": mapped.get("raw_text", UNKNOWN),
+            }
+        )
+    return pd.DataFrame(rows, columns=list(INTEGRATION_COLUMNS))
 
 
 # --------------------------------------------------------------------------- #
-# Incident-ID assignment (stored as a unique integer; the Supabase column is
-# int8). The modality-prefixed label such as "AUD-005" is derived for display
-# and CSV export from (source, incident_id) -- it is not stored.
+# Incident-ID assignment. Rows store the documented INC_TYPE_NUMBER string.
 # --------------------------------------------------------------------------- #
 _PREFIX_BY_LABEL = {meta["label"]: meta["prefix"] for meta in MODALITIES.values()}
 
 
-def next_incident_number(existing_ids: Iterable[Any]) -> int:
-    """Return the next free integer incident_id given the IDs already stored."""
+def _source_type_from_row(row: Mapping[str, Any]) -> str:
+    value = row.get("source_type")
+    if value and _clean(value) != UNKNOWN:
+        return normalize_source_type(str(value))
+    return normalize_source_type(str(row.get("source", "")))
+
+
+def next_incident_number(existing_ids: Iterable[Any], source_type: str | None = None) -> int:
+    """Return the next number, optionally scoped to one source type."""
+
+    source_key = normalize_source_type(source_type) if source_type is not None else None
+    source_code = source_prefix(source_key) if source_key else None
     highest = 0
     for value in existing_ids:
-        try:
-            highest = max(highest, int(value))
-        except (TypeError, ValueError):
-            continue
+        text = str(value or "").strip()
+        match = ID_PATTERN.match(text)
+        if match:
+            if source_code is None or match.group(1) == source_code:
+                highest = max(highest, int(match.group(2)))
     return highest + 1
 
 
-def assign_incident_ids(df: pd.DataFrame, start_number: int = 1) -> pd.DataFrame:
-    """Prepend a unique integer incident_id (start_number, +1, +2, ...)."""
+def generate_incident_id(source_type: str, number: int) -> str:
+    """Format one documented incident ID."""
+
+    return f"INC_{source_prefix(normalize_source_type(source_type))}_{number:03d}"
+
+
+def generate_next_incident_id(source_type: str, existing_ids: Iterable[Any] = ()) -> str:
+    """Return the next ``INC_TYPE_NUMBER`` ID for one source type."""
+
+    return generate_incident_id(source_type, next_incident_number(existing_ids, source_type))
+
+
+def assign_incident_ids(df: pd.DataFrame, existing_ids: Iterable[Any] = ()) -> pd.DataFrame:
+    """Prepend documented incident IDs, incrementing independently by source type."""
+
     out = df.copy()
-    out.insert(0, "incident_id", [start_number + i for i in range(len(df))])
+    counters = {
+        source_type: next_incident_number(existing_ids, source_type) - 1
+        for source_type in MODALITIES
+    }
+    incident_ids = []
+    for row in out.to_dict("records"):
+        source_type = _source_type_from_row(row)
+        counters[source_type] += 1
+        incident_ids.append(generate_incident_id(source_type, counters[source_type]))
+    out.insert(0, "incident_id", incident_ids)
     return out
+
+
+def add_incident_summaries(df: pd.DataFrame) -> pd.DataFrame:
+    """Call the separate summarizer for every integrated row."""
+
+    if df.empty:
+        out = df.copy()
+        out["summary_by_llm"] = []
+        return out
+
+    from llm_summarizer.summarizer import summarize_incident
+
+    rows = []
+    for row in df.to_dict("records"):
+        enriched = dict(row)
+        enriched["summary_by_llm"] = summarize_incident(enriched)["incident_summary"]
+        rows.append(enriched)
+    return pd.DataFrame(rows)
+
+
+def _first_present_column(frame: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
+    for column in candidates:
+        if column in frame.columns:
+            return column
+    return None
+
+
+def to_supabase_payload_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.DataFrame:
+    """Return the seven lower-case app-owned fields accepted by Supabase upload."""
+
+    frame = pd.DataFrame(rows) if not isinstance(rows, pd.DataFrame) else rows.copy()
+    out = pd.DataFrame(index=frame.index)
+    for target, aliases in _SUPABASE_ALIASES.items():
+        source = _first_present_column(frame, aliases)
+        out[target] = frame[source] if source is not None else UNKNOWN
+    out["event"] = out["event"].map(normalize_event)
+    out["severity"] = out["severity"].map(lambda value: str(value).strip().title())
+    return out.loc[:, list(SUPABASE_PAYLOAD_COLUMNS)].copy()
+
+
+def to_integration_output_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.DataFrame:
+    """Return the seven public Integration output columns."""
+
+    payload = to_supabase_payload_frame(rows)
+    return pd.DataFrame(
+        {
+            "Incident_ID": payload["incident_id"],
+            "Source": payload["source"],
+            "Event": payload["event"],
+            "Location": payload["location"],
+            "Time": payload["time"],
+            "Severity": payload["severity"],
+            "LLM_Summary": payload["summary_by_llm"],
+        },
+        columns=list(INTEGRATION_OUTPUT_COLUMNS),
+    )
 
 
 def build_incidents(
     draft_df: pd.DataFrame,
     source_type: str,
     existing_ids: Iterable[Any] = (),
+    *,
+    source_filename: str | None = None,
 ) -> pd.DataFrame:
-    """End-to-end: draft DataFrame -> final incident rows with integer IDs.
+    """End-to-end: draft DataFrame -> summarized incident rows with IDs.
 
     Args:
         draft_df: Modality processor output.
         source_type: Modality key.
-        existing_ids: integer incident_id values already in Supabase, used to
-            continue numbering without collisions.
+        existing_ids: incident_id values already in Supabase, used to continue
+            numbering without collisions.
     """
-    records = integrate_records(draft_df, source_type)
-    start = next_incident_number(existing_ids)
-    return assign_incident_ids(records, start)
+    records = integrate_records(draft_df, source_type, source_filename=source_filename)
+    summarized = add_incident_summaries(records)
+    with_ids = assign_incident_ids(summarized, existing_ids)
+    return to_integration_output_frame(with_ids)
 
 
 # --------------------------------------------------------------------------- #
@@ -393,16 +650,15 @@ def prefix_for_source(source_value: Any) -> str:
 
 
 def display_id(source_value: Any, incident_id: Any, *, pad: int = 3) -> str:
-    """Modality-prefixed label, e.g. ``display_id("Audio", 5) == "AUD-005"``."""
-    try:
-        number = int(incident_id)
-    except (TypeError, ValueError):
-        return str(incident_id)
-    return f"{prefix_for_source(source_value)}-{number:0{pad}d}"
+    """Display label for a documented incident ID."""
+    text = str(incident_id)
+    if ID_PATTERN.match(text):
+        return text
+    return str(incident_id)
 
 
 def with_display_ids(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.DataFrame:
-    """Return Supabase rows with an extra title-case ``Incident_ID`` label column."""
+    """Return Supabase rows with an extra display ``Incident_ID`` label column."""
     frame = pd.DataFrame(rows) if not isinstance(rows, pd.DataFrame) else rows.copy()
     if frame.empty:
         return frame
@@ -412,28 +668,24 @@ def with_display_ids(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.Dat
         display_id(s, i)
         for s, i in zip(frame.get("source"), frame.get("incident_id"))
     ]
-    frame.insert(0, "Incident_ID", labels)
+    if "Incident_ID" in frame.columns:
+        frame["Incident_ID"] = labels
+    else:
+        frame.insert(0, "Incident_ID", labels)
     return frame
 
 
 def to_final_csv_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.DataFrame:
-    """Return the six assignment columns with title-case headers.
-
-    The ``Incident_ID`` column holds the derived modality-prefixed label
-    (e.g. ``AUD-005``). Accepts Supabase rows (list of dicts) or a final-schema
-    DataFrame.
-    """
+    """Return the nine dashboard/export columns."""
     frame = pd.DataFrame(rows) if not isinstance(rows, pd.DataFrame) else rows.copy()
-    for column in INCIDENT_COLUMNS:
-        if column not in frame.columns:
-            frame[column] = UNKNOWN
-    labels = [
-        display_id(s, i) for s, i in zip(frame["source"], frame["incident_id"])
-    ]
-    out = frame.loc[:, list(INCIDENT_COLUMNS)].copy()
+    payload = to_supabase_payload_frame(frame)
+    out = pd.DataFrame(index=frame.index)
+    out["id"] = frame["id"] if "id" in frame.columns else UNKNOWN
+    out["created_at"] = frame["created_at"] if "created_at" in frame.columns else UNKNOWN
+    for column in SUPABASE_PAYLOAD_COLUMNS:
+        out[column] = payload[column]
+    out = out.loc[:, list(FINAL_CSV_COLUMNS)].copy()
     out["event"] = out["event"].map(normalize_event)
-    out["incident_id"] = labels
-    out.columns = list(FINAL_CSV_COLUMNS)
     return out
 
 
@@ -486,21 +738,23 @@ def build_master_dataset(
 
     Implements the Final Integration Task: read each modality output CSV,
     normalise it to the common schema, ``pandas.concat`` them (one row per
-    source record), then assign continuous integer incident IDs.
+    source record), then assign documented ``INC_TYPE_NUMBER`` incident IDs.
     """
     outputs = outputs or MODALITY_OUTPUTS
     frames = [
         integrate_records(frame, source_type)
-        for source_type in MODALITIES  # stable order: audio, pdf, image, video, text
+        for source_type in MODALITIES  # stable order follows the MODALITIES mapping
         if (frame := read_modality_output(source_type, outputs.get(source_type))) is not None
     ]
     columns = ["source", "event", "location", "time", "severity"]
     master = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=columns)
-    return assign_incident_ids(master, next_incident_number(existing_ids))
+    summarized = add_incident_summaries(master)
+    with_ids = assign_incident_ids(summarized, existing_ids)
+    return to_integration_output_frame(with_ids)
 
 
 def write_final_dataset(df: pd.DataFrame, path: str | Path | None = None) -> Path:
-    """Write the title-case final dataset CSV (the assignment deliverable)."""
+    """Write the nine-field final dataset CSV (the assignment deliverable)."""
     target = Path(path) if path is not None else FINAL_DATASET_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     to_final_csv_frame(df).to_csv(target, index=False)
@@ -526,6 +780,7 @@ def run_modality(
     """
     if input_path is None:
         raise ValueError(f"{source_type} processing requires a file path.")
+    source_type = normalize_source_type(source_type)
 
     if source_type == "audio":
         from audio.config import OUTPUT_COLUMNS
@@ -554,6 +809,22 @@ def run_modality(
     if source_type == "text":
         from text.processor import process_text
 
+        suffix = Path(input_path).suffix.lower()
+        if suffix == ".csv":
+            frame = pd.read_csv(input_path, keep_default_na=False)
+            if _looks_like_structured_text_frame(frame):
+                return frame
+        if suffix == ".json":
+            path = Path(input_path)
+            text = path.read_text(encoding="utf-8-sig", errors="replace")
+            payload = json.loads(text)
+            if isinstance(payload, list):
+                rows = payload
+            elif isinstance(payload, dict):
+                rows = payload.get("incidents") if isinstance(payload.get("incidents"), list) else [payload]
+            else:
+                rows = [{"raw_text": str(payload)}]
+            return pd.DataFrame(rows)
         return process_text(input_path, output_csv) if output_csv else process_text(input_path)
 
     raise ValueError(f"Unsupported source_type {source_type!r}.")
@@ -575,11 +846,12 @@ def main(argv: list[str] | None = None) -> int:
     status = modality_output_status()
     master = build_master_dataset()
     path = write_final_dataset(master, args.output)
+    payload = to_supabase_payload_frame(master)
 
     for source_type, count in status.items():
         print(f"  {source_label(source_type):6} {count:>3} rows")
     print(
-        f"Merged {len(master)} incidents from {master['source'].nunique()} "
+        f"Merged {len(master)} incidents from {payload['source'].nunique()} "
         f"modalities -> {path}"
     )
     return 0
@@ -591,9 +863,12 @@ if __name__ == "__main__":
 
 __all__ = [
     "INCIDENT_COLUMNS",
+    "INTEGRATION_OUTPUT_COLUMNS",
+    "SUPABASE_PAYLOAD_COLUMNS",
     "FINAL_CSV_COLUMNS",
     "MODALITIES",
     "SEVERITY_LEVELS",
+    "INTEGRATION_COLUMNS",
     "detect_source_type",
     "supported_extensions",
     "source_label",
@@ -602,8 +877,13 @@ __all__ = [
     "normalize_event",
     "integrate_records",
     "next_incident_number",
+    "generate_incident_id",
+    "generate_next_incident_id",
     "assign_incident_ids",
+    "add_incident_summaries",
     "build_incidents",
+    "to_supabase_payload_frame",
+    "to_integration_output_frame",
     "prefix_for_source",
     "display_id",
     "with_display_ids",

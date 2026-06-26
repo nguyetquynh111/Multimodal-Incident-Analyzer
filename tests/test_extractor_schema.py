@@ -7,7 +7,7 @@ import unittest
 
 import pandas as pd
 
-from pdf.processor import ARTIFACT_COLUMNS, UNKNOWN, process_pdf_file
+from pdf.processor import ARTIFACT_COLUMNS, ADMIN_INCIDENT_LABEL, UNKNOWN, process_pdf_file
 
 
 FIXTURE_PDF = Path(__file__).resolve().parent / "fixtures" / "LESO2.pdf"
@@ -18,6 +18,12 @@ class PdfDraftSchemaTests(unittest.TestCase):
         frame = process_pdf_file(
             str(FIXTURE_PDF),
             report_id="RPT_001",
+            text_extractor=lambda _: (
+                "Officer Rivera\n"
+                "June 23, 2026\n"
+                "RE: Burglary reported near Main Street.\n"
+                "A burglary was reported near Main Street."
+            ),
             write_artifact=False,
         )
 
@@ -58,7 +64,7 @@ class PdfDraftSchemaTests(unittest.TestCase):
         )
 
         self.assertFalse(frame.isnull().values.any())
-        self.assertEqual(frame.iloc[0]["Incident_Type"], UNKNOWN)
+        self.assertEqual(frame.iloc[0]["Incident_Type"], ADMIN_INCIDENT_LABEL)
 
 
 if __name__ == "__main__":

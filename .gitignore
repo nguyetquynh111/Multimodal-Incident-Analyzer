@@ -54,6 +54,14 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Generated modality/integration outputs
+audio/output/
+images/output/
+integration/output/
+pdf/output/
+text/output/
+video/output/
+
 # Translations
 *.mo
 *.pot

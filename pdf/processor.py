@@ -1,7 +1,8 @@
 """Public PDF processing API.
 
-Produces the exact six-column PDF draft used by Integration:
-``Report_ID, Incident_Type, Date, Location, Officer, Summary``.
+Produces the exact eight-column PDF draft used by Integration:
+``Report_ID, Incident_Type, Date, Location, Officer, Summary,
+Suspect_Description, Outcome``.
 
 Text is extracted directly first (PyMuPDF, then pdfplumber). OCR
 (pytesseract) is applied *page by page* and only to pages that have no
@@ -43,6 +44,8 @@ ARTIFACT_COLUMNS = [
     "Location",
     "Officer",
     "Summary",
+    "Suspect_Description",
+    "Outcome",
 ]
 
 UNKNOWN = "Unknown"
@@ -383,6 +386,55 @@ def summarize_document(text: str, *, max_chars: int = 240) -> str:
     return _truncate_summary(flat, max_chars)
 
 
+def _extract_keyword_sentence(text: str, keywords: tuple[str, ...], *, max_chars: int = 180) -> str:
+    """Return the first sentence containing one of the requested keywords."""
+
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not normalized:
+        return UNKNOWN
+    sentences = re.split(r"(?<=[.!?])\s+", normalized)
+    pattern = re.compile("|".join(keywords), re.IGNORECASE)
+    for sentence in sentences:
+        clean = sentence.strip(" ;:-")
+        if clean and pattern.search(clean):
+            return _truncate_summary(clean, max_chars)
+    return UNKNOWN
+
+
+def extract_suspect_description(text: str) -> str:
+    """Extract a source-grounded suspect description sentence when present."""
+
+    return _extract_keyword_sentence(
+        text,
+        (
+            r"\bsuspect\b",
+            r"\bsuspects\b",
+            r"\boffender\b",
+            r"\bperpetrator\b",
+            r"\bdescription\b",
+        ),
+    )
+
+
+def extract_outcome(text: str) -> str:
+    """Extract a source-grounded outcome/disposition sentence when present."""
+
+    return _extract_keyword_sentence(
+        text,
+        (
+            r"\boutcome\b",
+            r"\bdisposition\b",
+            r"\barrest(?:ed)?\b",
+            r"\bcharged\b",
+            r"\bcited\b",
+            r"\bcleared\b",
+            r"\brecovered\b",
+            r"\btransported\b",
+            r"\bclosed\b",
+        ),
+    )
+
+
 def analyze_document(report_id: str, text: str) -> dict[str, Any]:
     """Convert one document's text into the exact eight-field PDF artifact row."""
 
@@ -400,6 +452,10 @@ def analyze_document(report_id: str, text: str) -> dict[str, Any]:
         "Location": extract_location(normalized),
         "Officer": extract_officer(normalized),
         "Summary": summarize_document(normalized),
+        "Suspect_Description": (
+            extract_suspect_description(normalized) if is_crime_report else UNKNOWN
+        ),
+        "Outcome": extract_outcome(normalized) if is_crime_report else UNKNOWN,
     }
 
 
@@ -615,11 +671,11 @@ def process_pdf_file(
     write_artifact: bool = True,
     output_csv_path: str | Path | None = None,
 ) -> pd.DataFrame:
-    """Process one PDF and return the six-column PDF draft.
+    """Process one PDF and return the eight-column PDF draft.
 
     Direct text extraction is tried first; OCR runs only when direct
     extraction is empty or near-empty. When ``write_artifact`` is true, the
-    same six-column result is written under ``pdf/output/``.
+    same eight-column result is written under ``pdf/output/``.
     """
 
     path = _validate_pdf_path(pdf_path)
@@ -640,7 +696,7 @@ def process_pdf(
     output_csv_path: str | Path | None = None,
     report_id: str | None = None,
 ) -> pd.DataFrame:
-    """Process one PDF and return the six-column PDF draft contract."""
+    """Process one PDF and return the eight-column PDF draft contract."""
 
     return process_pdf_file(
         str(pdf_path),
