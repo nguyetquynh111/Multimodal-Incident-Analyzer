@@ -135,7 +135,7 @@ The stored Supabase row and final CSV export must contain exactly these nine fie
 id, created_at, incident_id, source, event, location, time, severity, incident_summary
 ```
 
-`id` and `created_at` are database-generated. Therefore, the insert payload sent by the app contains the other seven fields only: `incident_id, source, event, location, time, severity, incident_summary`. Missing text fields must be filled with `Unknown`. Severity must always be `Low`, `Medium`, `High`, or `Unknown`. No final exported CSV row may contain null values.
+`id` and `created_at` are database-generated. Therefore, the insert payload sent by the app contains the other seven fields only: `incident_id, source, event, location, time, severity, incident_summary`. Missing text fields must be filled with `Unknown`. Severity must always be `Low`, `Medium`, `High`, or `Unknown`; when Event is `Unknown`, Severity must be `Low`. No final exported CSV row may contain null values.
 
 ## 10. LLM Summarizer Requirement
 

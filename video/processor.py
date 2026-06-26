@@ -178,7 +178,7 @@ def event_to_severity(event: str) -> str:
         return "High"
     if any(k in event_lower for k in ["running", "multiple persons", "unclear motion", "vehicle movement"]):
         return "Medium"
-    return "Low"
+    return "Unknown" if event_lower == "no activity" else "Low"
 
 
 def save_annotated_frame(
@@ -239,8 +239,8 @@ def process_video_file(
 ) -> pd.DataFrame:
     """Analyze one video file and return the five-column video draft.
 
-    Rejects clips longer than 5 minutes. Returns an empty DataFrame with
-    DRAFT_COLUMNS if the file cannot be read or exceeds the time limit.
+    Rejects clips longer than 5 minutes with a clear ``ValueError``. Returns an
+    empty DataFrame with ``DRAFT_COLUMNS`` only when the file cannot be read.
 
     Args:
         video_path: Path to the video file.
@@ -261,7 +261,7 @@ def process_video_file(
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     if total_frames / fps > _MAX_DURATION_SECONDS:
         cap.release()
-        return pd.DataFrame(columns=DRAFT_COLUMNS)
+        raise ValueError("Video exceeds the five-minute MVP limit.")
 
     sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
     mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
@@ -278,8 +278,17 @@ def process_video_file(
 
         if frame_index % sample_every_frames == 0:
             score, moving_regions, motion_boxes = apply_mog2(fgmask)
+            fire_detected, fire_confidence = detect_fire(resized)
+            qualifies_for_detection = moving_regions > 0 and score >= 0.02
+            if not qualifies_for_detection and not fire_detected:
+                frame_index += 1
+                continue
+
             enhanced = enhance_frame(resized)
-            objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(model, enhanced)
+            if qualifies_for_detection:
+                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(model, enhanced)
+            else:
+                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
 
             # MOG2 collapse fallback: overhead cameras make lying people invisible to YOLO
             if not collapsed and "person" not in objects:
@@ -290,8 +299,7 @@ def process_video_file(
                         collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
                         break
 
-            yolo_ran = model is not None
-            fire_detected, fire_confidence = detect_fire(resized)
+            yolo_ran = qualifies_for_detection and model is not None
 
             if fire_detected:
                 event, confidence = "Fire detected", fire_confidence
@@ -349,7 +357,7 @@ def process_video_stream(
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     if total_frames / fps > _MAX_DURATION_SECONDS:
         cap.release()
-        return
+        raise ValueError("Video exceeds the five-minute MVP limit.")
 
     sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
     mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
@@ -365,8 +373,17 @@ def process_video_stream(
 
         if frame_index % sample_every_frames == 0:
             score, moving_regions, motion_boxes = apply_mog2(fgmask)
+            fire_detected, fire_confidence = detect_fire(resized)
+            qualifies_for_detection = moving_regions > 0 and score >= 0.02
+            if not qualifies_for_detection and not fire_detected:
+                frame_index += 1
+                continue
+
             enhanced = enhance_frame(resized)
-            objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(model, enhanced)
+            if qualifies_for_detection:
+                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(model, enhanced)
+            else:
+                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
 
             if not collapsed and "person" not in objects:
                 for (mx1, my1, mx2, my2) in motion_boxes:
@@ -376,8 +393,7 @@ def process_video_stream(
                         collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
                         break
 
-            yolo_ran = model is not None
-            fire_detected, fire_confidence = detect_fire(resized)
+            yolo_ran = qualifies_for_detection and model is not None
 
             if fire_detected:
                 event, confidence = "Fire detected", fire_confidence

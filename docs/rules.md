@@ -69,7 +69,7 @@ id, created_at, incident_id, source, event, location, time, severity, incident_s
 | event | No null values; use `Unknown` when not found |
 | location | No null values; use `Unknown` when not found |
 | time | No null values; use `Unknown` when not found |
-| severity | Must be exactly `Low`, `Medium`, `High`, or `Unknown` |
+| severity | Must be exactly `Low`, `Medium`, `High`, or `Unknown`; an `Unknown` event must be `Low` |
 | incident_summary | OpenRouter/fallback incident summary for dashboard display and export |
 
 Dashboard labels may be user-friendly and title-cased for readability, such as Incident_ID, Source, Event, Location, and Severity. These labels map to the lower-case Supabase columns in code.
@@ -143,7 +143,7 @@ LLM summary rules:
 | No hallucination | If a detail is missing, write `Unknown` or omit that detail; do not invent people, places, weapons, dates, or outcomes |
 | Length | Keep `incident_summary` short: one to three sentences, preferably under 80 words |
 | Fallback required | If OpenRouter is disabled, unavailable, slow, or invalid, use deterministic rule-based fallback |
-| OpenRouter provider | Use OpenRouter when `ENABLE_LLM_SUMMARY=True` and `OPENROUTER_API_KEY` is configured |
+| OpenRouter provider | Use OpenRouter when `OPENROUTER_API_KEY` is configured |
 | Safe output | The summary is for dashboard review, not official investigation or legal conclusions |
 | Validation | Validate required keys, types, and length before accepting model output |
 
@@ -155,9 +155,9 @@ LLM summary rules:
 | Distressed audio sentiment or urgency score >= 0.75 | High |
 | Theft, robbery, public disturbance, property damage | Medium |
 | Neutral report or low-confidence non-violent event | Low |
-| No reliable signal | Unknown with Event = Unknown |
+| No reliable signal | Low with Event = Unknown |
 
-When multiple signals disagree, choose the highest severity. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. Use `Unknown` only when there is no reliable severity signal.
+When multiple signals disagree, choose the highest severity. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. When Event is `Unknown`, Severity must be `Low`, even if an upstream value says otherwise.
 
 ## 8. Source Priority Rules
 
@@ -206,8 +206,8 @@ Minimum required tests:
 | **Test** | **Purpose** |
 | --- | --- |
 | test_file_type_detector.py | Extensions map to AUD/PDF/IMG/VID/TXT; CSV routes to TXT; JSON uploads are rejected |
-| test_extractor_schema.py | Each processor returns required extractor DataFrame columns |
-| test_modality_output_schemas.py | Modality artifacts use their exact columns and bounded numeric scores |
+| test_extractor_schema.py plus modality-specific tests | Each processor returns its required extractor DataFrame columns |
+| test_modality_output_schemas.py plus audio/image/video/text tests | Modality artifacts use their exact columns and bounded numeric scores |
 | test_integration_schema.py | Integration returns final `Incident_ID, Source, Event, Location, Time, Severity, Incident_Summary` columns |
 | test_llm_summarizer.py | LLM summarizer returns required keys and fallback works |
 | test_id_generator.py | IDs follow `INC_TYPE_NUMBER` and increment by source type |

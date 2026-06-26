@@ -146,7 +146,7 @@ inside the Integration workflow as `INC_PDF_001`, `INC_PDF_002`, … and stored 
 ## 5. Open handoff items for the Integration Lead
 
 1. **Low-signal administrative rows.** Every agency in `LESO2.pdf`
-   classifies as `Training / Administrative` with `severity` = `Low`, because these are administrative/training documents with source-grounded content but no violent, urgent, or criminal event signal. Use `Unknown` only when there is no reliable severity signal and the event itself is `Unknown`.
+   classifies as `Training / Administrative` with `severity` = `Low`, because these are administrative/training documents with source-grounded content but no violent, urgent, or criminal event signal. An `Unknown` event also uses `Low` severity.
    Rodney's PDF processor should return the extracted PDF rows only. Integration decides whether rows are valid final incidents, must not invent crime facts, and must never insert rows for demo-only visibility exceptions.
 
 ---
@@ -167,7 +167,7 @@ The required summary module lives in [`llm_summarizer/`](../llm_summarizer/).
   [`fallback.py`](../llm_summarizer/fallback.py) whenever the LLM is disabled,
   unavailable, slow, or invalid — so a valid result is always returned and no
   paid API is required.
-- **Config:** `ENABLE_LLM_SUMMARY`, `OPENROUTER_API_KEY`, `LLM_MODEL_NAME`
+- **Config:** `OPENROUTER_API_KEY`, `LLM_MODEL_NAME`
   (see `.env.example`; real keys must never be committed — `.env` is gitignored).
 - **Tests:** [`tests/test_llm_summarizer.py`](../tests/test_llm_summarizer.py),
   8/8 passing (valid output, disabled, missing-key, network error, over-length,

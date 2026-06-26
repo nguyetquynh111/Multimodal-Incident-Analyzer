@@ -1,37 +1,13 @@
-"""Stage 4 integration: merge modality draft outputs into the final schema.
+"""Integration utilities for the documented multimodal incident pipeline.
 
-This module is owned by the Integration & Dashboard Lead (Student 6). It takes
-the per-modality "draft" CSV that each processor produces and normalises it into
-the single unified incident schema that is stored in Supabase and exported as the
-final dataset.
-
-Pipeline position::
-
-    raw file -> modality processor -> DRAFT df -> integrate_records()
-             -> build_incidents() -> Supabase insert -> dashboard / CSV export
-
-Integration output columns are title-case::
-
-    Incident_ID, Source, Event, Location, Time, Severity, LLM_Summary
-
-Supabase upload/export uses the dashboard/Supabase field names::
-
-    id, created_at, incident_id, source, event, location, time, severity,
-    summary_by_llm
-
-Incident IDs are generated in the project-documented format::
-
-    INC_AUD_001  INC_PDF_001  INC_IMG_001  INC_VID_001  INC_TXT_001
-
-Severity is graded Low / Medium / High from a 0-10 score (assignment section 4,
-step 4). The documented rule used here is ``score = confidence * 10`` with
-thresholds ``0-3 Low, 3-7 Medium, 7-10 High``. Modalities that do not expose a
-numeric confidence default to ``Medium``.
+``integrate_records`` is the public in-memory workflow: it standardizes one
+extractor DataFrame, calls the separate summary module, assigns IDs, and returns
+the seven documented display fields. Supabase conversion remains at the cloud
+boundary and the final CSV is derived from Supabase rows.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from pathlib import Path
@@ -51,7 +27,7 @@ INCIDENT_COLUMNS: tuple[str, ...] = (
     "Location",
     "Time",
     "Severity",
-    "LLM_Summary",
+    "Incident_Summary",
 )
 INTEGRATION_OUTPUT_COLUMNS = INCIDENT_COLUMNS
 
@@ -63,7 +39,7 @@ SUPABASE_PAYLOAD_COLUMNS: tuple[str, ...] = (
     "location",
     "time",
     "severity",
-    "summary_by_llm",
+    "incident_summary",
 )
 
 INTEGRATION_COLUMNS: tuple[str, ...] = (
@@ -88,7 +64,7 @@ FINAL_CSV_COLUMNS: tuple[str, ...] = (
     "location",
     "time",
     "severity",
-    "summary_by_llm",
+    "incident_summary",
 )
 
 _SUPABASE_ALIASES: dict[str, tuple[str, ...]] = {
@@ -98,16 +74,16 @@ _SUPABASE_ALIASES: dict[str, tuple[str, ...]] = {
     "location": ("location", "Location"),
     "time": ("time", "Time"),
     "severity": ("severity", "Severity"),
-    "summary_by_llm": ("summary_by_llm", "LLM_Summary"),
+    "incident_summary": ("incident_summary", "Incident_Summary"),
 }
 
 # One canonical record per modality: human-readable source label + ID type.
 MODALITIES: dict[str, dict[str, Any]] = {
-    "audio": {"label": "Audio", "prefix": "AUD", "extensions": {".wav", ".mp3", ".m4a", ".flac"}},
+    "audio": {"label": "Audio", "prefix": "AUD", "extensions": {".wav", ".mp3", ".m4a"}},
     "pdf": {"label": "PDF", "prefix": "PDF", "extensions": {".pdf"}},
     "image": {"label": "Image", "prefix": "IMG", "extensions": {".jpg", ".jpeg", ".png"}},
     "video": {"label": "Video", "prefix": "VID", "extensions": {".mp4", ".mov", ".mpg", ".mpeg"}},
-    "text": {"label": "Text", "prefix": "TXT", "extensions": {".txt", ".csv", ".json"}},
+    "text": {"label": "Text", "prefix": "TXT", "extensions": {".txt", ".csv"}},
 }
 
 ID_PATTERN = re.compile(r"^INC_([A-Z]+)_(\d{3,})$")
@@ -127,11 +103,11 @@ def _to_float(value: Any) -> float | None:
         return None
 
 
-SEVERITY_LEVELS: tuple[str, ...] = ("Low", "Medium", "High")
+SEVERITY_LEVELS: tuple[str, ...] = ("Low", "Medium", "High", "Unknown")
 # score < LOW_MAX -> Low, score < MEDIUM_MAX -> Medium, else High (score on 0-10).
 SEVERITY_LOW_MAX = 3.0
 SEVERITY_MEDIUM_MAX = 7.0
-DEFAULT_SEVERITY = "Medium"  # used when a modality has no numeric confidence
+DEFAULT_SEVERITY = "Unknown"
 
 
 # --------------------------------------------------------------------------- #
@@ -165,13 +141,13 @@ def normalize_source_type(source_type: str) -> str:
     """Accept either code keys (``pdf``) or documented types (``PDF``)."""
 
     candidate = str(source_type).strip()
-    if candidate.casefold() in {"csv", "json"}:
+    if candidate.casefold() == "csv":
         return "text"
     if candidate in MODALITIES:
         return candidate
     upper = candidate.upper()
     for key, meta in MODALITIES.items():
-        if meta["prefix"] == upper:
+        if meta["prefix"] == upper or meta["label"].casefold() == candidate.casefold():
             return key
     raise ValueError(f"Unsupported source_type {source_type!r}.")
 
@@ -183,7 +159,7 @@ def severity_from_confidence(confidence: Any) -> str:
     """Map a 0-1 confidence/urgency value to Low / Medium / High.
 
     Uses ``score = confidence * 10`` with the documented thresholds. Invalid or
-    missing values fall back to the default severity.
+    missing values fall back to ``Unknown``.
     """
     score = _to_float(confidence)
     if score is None:
@@ -211,6 +187,37 @@ def _clean(value: Any) -> str:
         pass
     text = str(value).strip()
     return text if text else UNKNOWN
+
+
+def normalize_severity(value: Any) -> str:
+    """Return one documented severity label, defaulting to ``Unknown``."""
+
+    text = _clean(value).title()
+    return text if text in SEVERITY_LEVELS else UNKNOWN
+
+
+def _severity_from_event(event: str, current: str) -> str:
+    """Apply documented event safety rules without downgrading evidence."""
+
+    normalized = normalize_severity(current)
+    if event == UNKNOWN:
+        # An unknown event is explicitly treated as the lowest-risk fallback.
+        # Do this before preserving an upstream severity so a stale or inferred
+        # High/Medium value cannot contradict the normalized event.
+        return "Low"
+    text = event.casefold()
+    if any(token in text for token in (
+        "fire", "weapon", "gun", "knife", "trapped", "collapse",
+        "collapsing", "fight", "altercation", "severe crash",
+    )):
+        return "High"
+    if normalized != UNKNOWN:
+        return normalized
+    if any(token in text for token in (
+        "theft", "robbery", "disturbance", "property damage",
+    )):
+        return "Medium"
+    return "Low"
 
 
 def normalize_event(value: Any) -> str:
@@ -271,8 +278,8 @@ def _mapped_severity(
     """Prefer a valid explicit severity, then derive one from confidence."""
 
     value = _first_known(row, *explicit)
-    canonical = value.title()
-    if canonical in SEVERITY_LEVELS:
+    canonical = normalize_severity(value)
+    if canonical != UNKNOWN:
         return canonical
     score = _first_known(row, *confidence)
     return severity_from_confidence(score) if score != UNKNOWN else default
@@ -387,15 +394,8 @@ def _confidence(row: Mapping[str, Any], *columns: str, default: float = 0.0) -> 
     return max(0.0, min(1.0, score if score <= 1.0 else score / 10.0))
 
 
-def _json_text(row: Mapping[str, Any]) -> str:
-    try:
-        return json.dumps(dict(row), ensure_ascii=False, default=str)
-    except TypeError:
-        return str(dict(row))
-
-
 def _map_structured(row: Mapping[str, Any]) -> dict[str, Any]:
-    """Map CSV/JSON records that already carry incident-like fields."""
+    """Map CSV records that already carry incident-like fields."""
 
     raw_text = _first_known(
         row,
@@ -411,7 +411,7 @@ def _map_structured(row: Mapping[str, Any]) -> dict[str, Any]:
         "Text",
     )
     if raw_text == UNKNOWN:
-        raw_text = _json_text(row)
+        raw_text = str(dict(row))
     return {
         "event": normalize_event(
             _first_known(row, "event", "Event", "incident_type", "Incident_Type", "type", "Type", "category", "Category")
@@ -441,7 +441,7 @@ _STRUCTURED_TEXT_COLUMNS = {
 
 
 def _looks_like_structured_text(row: Mapping[str, Any]) -> bool:
-    """Return true for CSV/JSON text inputs that already carry incident fields."""
+    """Return true for CSV text inputs that already carry incident fields."""
 
     return any(column in row for column in _STRUCTURED_TEXT_COLUMNS)
 
@@ -459,25 +459,14 @@ _MAPPERS = {
 }
 
 
-def integrate_records(
+def _standardize_records(
     draft_df: pd.DataFrame,
     source_type: str,
     *,
     source_filename: str | None = None,
 ) -> pd.DataFrame:
-    """Normalise one modality's draft DataFrame into the final schema.
+    """Normalize one modality draft into internal standardized records."""
 
-    Args:
-        draft_df: The DataFrame returned by a modality processor.
-        source_type: One of ``audio, pdf, image, video, text``. CSV and JSON
-            files are structured text inputs and normalize to ``text``.
-
-    Returns:
-        A DataFrame with the required integration columns plus documented
-        metadata needed by the summarizer/Supabase payload. ``incident_id`` and
-        summary fields are added later. An empty input yields an empty,
-        correctly-typed frame so the app never crashes.
-    """
     source_type = normalize_source_type(source_type)
     if not isinstance(draft_df, pd.DataFrame):
         raise TypeError("draft_df must be a pandas DataFrame.")
@@ -489,13 +478,14 @@ def integrate_records(
     rows = []
     for record in draft_df.to_dict("records"):
         mapped = mapper(record)
+        event = mapped["event"]
         rows.append(
             {
                 "source": label,
-                "event": mapped["event"],
+                "event": event,
                 "location": mapped["location"],
                 "time": mapped["time"],
-                "severity": mapped["severity"],
+                "severity": _severity_from_event(event, mapped["severity"]),
                 "source_filename": _first_known(record, "source_filename", "Source_Filename") if source_filename is None else filename,
                 "source_type": source_code,
                 "confidence": mapped.get("confidence", 0.0),
@@ -503,6 +493,31 @@ def integrate_records(
             }
         )
     return pd.DataFrame(rows, columns=list(INTEGRATION_COLUMNS))
+
+
+def integrate_records(
+    draft_df: pd.DataFrame,
+    source_type: str,
+    existing_ids: Iterable[Any] = (),
+    *,
+    source_filename: str | None = None,
+) -> pd.DataFrame:
+    """Run the documented Integration workflow and return final incident rows.
+
+    Args:
+        draft_df: The DataFrame returned by a modality processor.
+        source_type: One of ``audio, pdf, image, video, text``. CSV files are
+            structured text inputs and normalize to ``text``.
+        existing_ids: Current Supabase incident IDs used to avoid collisions.
+
+    Returns:
+        ``Incident_ID, Source, Event, Location, Time, Severity,
+        Incident_Summary`` in documented order.
+    """
+    standardized = _standardize_records(
+        draft_df, source_type, source_filename=source_filename
+    )
+    return _finalize_records(standardized, existing_ids)
 
 
 # --------------------------------------------------------------------------- #
@@ -567,7 +582,7 @@ def add_incident_summaries(df: pd.DataFrame) -> pd.DataFrame:
 
     if df.empty:
         out = df.copy()
-        out["summary_by_llm"] = []
+        out["incident_summary"] = []
         return out
 
     from llm_summarizer.summarizer import summarize_incident
@@ -575,7 +590,12 @@ def add_incident_summaries(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for row in df.to_dict("records"):
         enriched = dict(row)
-        enriched["summary_by_llm"] = summarize_incident(enriched)["incident_summary"]
+        result = summarize_incident(enriched)
+        enriched["incident_summary"] = result["incident_summary"]
+        logger.info(
+            "Generated incident summary with method=%s model=%s.",
+            result["summary_method"], result["summary_model"],
+        )
         rows.append(enriched)
     return pd.DataFrame(rows)
 
@@ -595,8 +615,11 @@ def to_supabase_payload_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) 
     for target, aliases in _SUPABASE_ALIASES.items():
         source = _first_present_column(frame, aliases)
         out[target] = frame[source] if source is not None else UNKNOWN
+    for column in ("incident_id", "source", "location", "time", "incident_summary"):
+        out[column] = out[column].map(_clean)
     out["event"] = out["event"].map(normalize_event)
-    out["severity"] = out["severity"].map(lambda value: str(value).strip().title())
+    out["severity"] = out["severity"].map(normalize_severity)
+    out.loc[out["event"] == UNKNOWN, "severity"] = "Low"
     return out.loc[:, list(SUPABASE_PAYLOAD_COLUMNS)].copy()
 
 
@@ -612,10 +635,21 @@ def to_integration_output_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame
             "Location": payload["location"],
             "Time": payload["time"],
             "Severity": payload["severity"],
-            "LLM_Summary": payload["summary_by_llm"],
+            "Incident_Summary": payload["incident_summary"],
         },
         columns=list(INTEGRATION_OUTPUT_COLUMNS),
     )
+
+
+def _finalize_records(
+    standardized_df: pd.DataFrame,
+    existing_ids: Iterable[Any] = (),
+) -> pd.DataFrame:
+    """Add summaries and IDs to standardized records in documented order."""
+
+    summarized = add_incident_summaries(standardized_df)
+    with_ids = assign_incident_ids(summarized, existing_ids)
+    return to_integration_output_frame(with_ids)
 
 
 def build_incidents(
@@ -633,10 +667,12 @@ def build_incidents(
         existing_ids: incident_id values already in Supabase, used to continue
             numbering without collisions.
     """
-    records = integrate_records(draft_df, source_type, source_filename=source_filename)
-    summarized = add_incident_summaries(records)
-    with_ids = assign_incident_ids(summarized, existing_ids)
-    return to_integration_output_frame(with_ids)
+    return integrate_records(
+        draft_df,
+        source_type,
+        existing_ids,
+        source_filename=source_filename,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -664,6 +700,9 @@ def with_display_ids(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.Dat
         return frame
     if "event" in frame.columns:
         frame["event"] = frame["event"].map(normalize_event)
+        if "severity" in frame.columns:
+            frame["severity"] = frame["severity"].map(normalize_severity)
+            frame.loc[frame["event"] == UNKNOWN, "severity"] = "Low"
     labels = [
         display_id(s, i)
         for s, i in zip(frame.get("source"), frame.get("incident_id"))
@@ -685,80 +724,10 @@ def to_final_csv_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.D
     for column in SUPABASE_PAYLOAD_COLUMNS:
         out[column] = payload[column]
     out = out.loc[:, list(FINAL_CSV_COLUMNS)].copy()
+    out["id"] = out["id"].map(_clean)
+    out["created_at"] = out["created_at"].map(_clean)
     out["event"] = out["event"].map(normalize_event)
     return out
-
-
-# --------------------------------------------------------------------------- #
-# Stage 4 (Final Integration Task): UNION every modality's output CSV into one
-# unified master dataset -- the assignment's central deliverable.
-# --------------------------------------------------------------------------- #
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-# Conventional output CSV that each modality processor writes.
-MODALITY_OUTPUTS: dict[str, Path] = {
-    "audio": PROJECT_ROOT / "audio" / "output" / "audio_output.csv",
-    "pdf": PROJECT_ROOT / "pdf" / "output" / "pdf_output.csv",
-    "image": PROJECT_ROOT / "images" / "output" / "image_output.csv",
-    "video": PROJECT_ROOT / "video" / "output" / "video_output.csv",
-    "text": PROJECT_ROOT / "text" / "output" / "text_output.csv",
-}
-FINAL_DATASET_PATH = PROJECT_ROOT / "integration" / "output" / "final_incident_dataset.csv"
-
-
-def read_modality_output(source_type: str, path: str | Path | None = None) -> pd.DataFrame | None:
-    """Read one modality's output CSV, or ``None`` if missing/empty."""
-    target = Path(path) if path is not None else MODALITY_OUTPUTS[source_type]
-    if not target.exists():
-        return None
-    try:
-        frame = pd.read_csv(target)
-    except (pd.errors.EmptyDataError, OSError):
-        return None
-    return frame if not frame.empty else None
-
-
-def modality_output_status(outputs: Mapping[str, Path] | None = None) -> dict[str, int]:
-    """Return ``{source_type: row_count}`` for each modality output (0 if absent)."""
-    outputs = outputs or MODALITY_OUTPUTS
-    return {
-        source_type: (
-            0 if (frame := read_modality_output(source_type, outputs.get(source_type))) is None
-            else len(frame)
-        )
-        for source_type in MODALITIES
-    }
-
-
-def build_master_dataset(
-    existing_ids: Iterable[Any] = (),
-    outputs: Mapping[str, Path] | None = None,
-) -> pd.DataFrame:
-    """UNION every available modality output into one unified incident dataset.
-
-    Implements the Final Integration Task: read each modality output CSV,
-    normalise it to the common schema, ``pandas.concat`` them (one row per
-    source record), then assign documented ``INC_TYPE_NUMBER`` incident IDs.
-    """
-    outputs = outputs or MODALITY_OUTPUTS
-    frames = [
-        integrate_records(frame, source_type)
-        for source_type in MODALITIES  # stable order follows the MODALITIES mapping
-        if (frame := read_modality_output(source_type, outputs.get(source_type))) is not None
-    ]
-    columns = ["source", "event", "location", "time", "severity"]
-    master = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=columns)
-    summarized = add_incident_summaries(master)
-    with_ids = assign_incident_ids(summarized, existing_ids)
-    return to_integration_output_frame(with_ids)
-
-
-def write_final_dataset(df: pd.DataFrame, path: str | Path | None = None) -> Path:
-    """Write the nine-field final dataset CSV (the assignment deliverable)."""
-    target = Path(path) if path is not None else FINAL_DATASET_PATH
-    target.parent.mkdir(parents=True, exist_ok=True)
-    to_final_csv_frame(df).to_csv(target, index=False)
-    return target
 
 
 # --------------------------------------------------------------------------- #
@@ -814,46 +783,16 @@ def run_modality(
             frame = pd.read_csv(input_path, keep_default_na=False)
             if _looks_like_structured_text_frame(frame):
                 return frame
-        if suffix == ".json":
-            path = Path(input_path)
-            text = path.read_text(encoding="utf-8-sig", errors="replace")
-            payload = json.loads(text)
-            if isinstance(payload, list):
-                rows = payload
-            elif isinstance(payload, dict):
-                rows = payload.get("incidents") if isinstance(payload.get("incidents"), list) else [payload]
-            else:
-                rows = [{"raw_text": str(payload)}]
-            return pd.DataFrame(rows)
         return process_text(input_path, output_csv) if output_csv else process_text(input_path)
 
     raise ValueError(f"Unsupported source_type {source_type!r}.")
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Data-engineering entry point: merge every modality output into the final dataset.
+    """Explain that the MVP integration workflow runs through Streamlit."""
 
-        python -m integration.integration [--output PATH]
-    """
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Merge all modality output CSVs into the unified incident dataset."
-    )
-    parser.add_argument("--output", default=str(FINAL_DATASET_PATH), help="Destination CSV path")
-    args = parser.parse_args(argv)
-
-    status = modality_output_status()
-    master = build_master_dataset()
-    path = write_final_dataset(master, args.output)
-    payload = to_supabase_payload_frame(master)
-
-    for source_type, count in status.items():
-        print(f"  {source_label(source_type):6} {count:>3} rows")
-    print(
-        f"Merged {len(master)} incidents from {payload['source'].nunique()} "
-        f"modalities -> {path}"
-    )
+    del argv
+    print("Use the Streamlit single-file upload workflow; local batch merging is not part of this MVP.")
     return 0
 
 
@@ -874,6 +813,7 @@ __all__ = [
     "source_label",
     "source_prefix",
     "severity_from_confidence",
+    "normalize_severity",
     "normalize_event",
     "integrate_records",
     "next_incident_number",
@@ -888,12 +828,6 @@ __all__ = [
     "display_id",
     "with_display_ids",
     "to_final_csv_frame",
-    "MODALITY_OUTPUTS",
-    "FINAL_DATASET_PATH",
-    "read_modality_output",
-    "modality_output_status",
-    "build_master_dataset",
-    "write_final_dataset",
     "run_modality",
     "main",
 ]

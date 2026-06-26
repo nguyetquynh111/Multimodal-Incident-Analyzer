@@ -45,7 +45,7 @@ TOPIC_LABELS = (
 SENTIMENT_LABELS = ("Negative", "Neutral", "Positive")
 UNKNOWN = "Unknown"
 
-SUPPORTED_TEXT_EXTENSIONS = {".txt", ".csv", ".json"}
+SUPPORTED_TEXT_EXTENSIONS = {".txt", ".csv"}
 DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "output" / "text_output.csv"
 
 _CSV_TEXT_COLUMNS = (
@@ -654,21 +654,17 @@ def process_text(
     source: str | None = None,
     text_column: str | None = None,
 ) -> pd.DataFrame:
-    """Process one text/CSV/JSON file into the six-column draft.
+    """Process one text or CSV file into the six-column draft.
 
     ``.txt`` inputs produce one row unless they contain JSON Lines. ``.csv``
     inputs produce one row per record using a recognized text column such as
     ``Raw_Text``, ``text``, ``details``, or a user-provided ``text_column``.
-    ``.json`` inputs accept one object, a list of objects, or an ``incidents``
-    list.
     """
 
     path = _validate_text_path(input_path)
     rows = (
         _rows_from_csv(path, source, text_column)
         if path.suffix.lower() == ".csv"
-        else _rows_from_json_file(path, source)
-        if path.suffix.lower() == ".json"
         else _rows_from_txt(path, source)
     )
     if output_csv_path is not None:
@@ -686,7 +682,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Extract entities, sentiment, and incident topic from text evidence."
     )
-    parser.add_argument("input", help="A .txt social/news post, .csv text dataset, or .json text records")
+    parser.add_argument("input", help="A .txt social/news post or .csv text dataset")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH), help="Destination CSV path")
     parser.add_argument("--source", default=None, help="Override Source value")
     parser.add_argument("--text-column", default=None, help="CSV column containing raw text")

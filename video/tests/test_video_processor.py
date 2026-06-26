@@ -97,9 +97,8 @@ class VideoDraftSchemaTests(unittest.TestCase):
     def test_video_over_five_minutes_is_rejected(self) -> None:
         long_video = Path(self._tmpdir.name) / "long_clip.mp4"
         _make_synthetic_video(long_video, duration_seconds=301)
-        df = process_video_file(str(long_video))
-        self.assertEqual(list(df.columns), DRAFT_COLUMNS)
-        self.assertEqual(len(df), 0)
+        with self.assertRaisesRegex(ValueError, "five-minute MVP limit"):
+            process_video_file(str(long_video))
 
 
 class ClassifyEventTests(unittest.TestCase):
@@ -159,8 +158,8 @@ class SeverityMappingTests(unittest.TestCase):
     def test_walking_is_low(self) -> None:
         self.assertEqual(event_to_severity("Person walking"), "Low")
 
-    def test_no_activity_is_low(self) -> None:
-        self.assertEqual(event_to_severity("No activity"), "Low")
+    def test_no_activity_is_unknown(self) -> None:
+        self.assertEqual(event_to_severity("No activity"), "Unknown")
 
 
 class FormatObjectsTests(unittest.TestCase):

@@ -1,5 +1,7 @@
 """Supabase client setup and CRUD helpers for incidents."""
 
+from __future__ import annotations
+
 import logging
 import os
 import re
@@ -82,6 +84,13 @@ def get_supabase_client() -> Client:
         raise RuntimeError("Could not create the Supabase client.") from exc
 
 
+def get_table_name() -> str:
+    """Return the configured incidents table, defaulting to ``incidents``."""
+
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
+    return os.getenv("SUPABASE_TABLE", "").strip() or TABLE_NAME
+
+
 def insert_incidents(df: pd.DataFrame) -> dict[str, Any]:
     """Insert integration-ready incidents into the Supabase incidents table.
 
@@ -108,9 +117,14 @@ def insert_incidents(df: pd.DataFrame) -> dict[str, Any]:
     client = get_supabase_client()
 
     try:
-        response = client.table(TABLE_NAME).insert(records).execute()
+        response = client.table(get_table_name()).insert(records).execute()
     except Exception as exc:
         logger.exception("Supabase incident upload failed.")
+        if "invalid input syntax for type bigint" in str(exc) and "INC_" in str(exc):
+            raise RuntimeError(
+                "The Supabase incidents table still stores incident_id as bigint. "
+                "Change incident_id to text in the Supabase SQL Editor."
+            ) from exc
         raise RuntimeError("Failed to insert incidents into Supabase.") from exc
 
     response_data = getattr(response, "data", None)
@@ -144,7 +158,7 @@ def query_incidents(
     client = get_supabase_client()
 
     try:
-        query = client.table(TABLE_NAME).select(",".join(SELECT_COLUMNS))
+        query = client.table(get_table_name()).select(",".join(SELECT_COLUMNS))
         for column, value in query_filters.items():
             query = query.eq(column, value)
         response = query.limit(query_limit).execute()
@@ -178,7 +192,7 @@ def update_incident(
 
     try:
         response = (
-            client.table(TABLE_NAME)
+            client.table(get_table_name())
             .update(payload)
             .eq("incident_id", validated_id)
             .execute()
@@ -203,7 +217,7 @@ def delete_incident(incident_id: Any) -> dict[str, Any]:
 
     try:
         response = (
-            client.table(TABLE_NAME)
+            client.table(get_table_name())
             .delete()
             .eq("incident_id", validated_id)
             .execute()
@@ -272,6 +286,9 @@ def _validate_updates(updates: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(updates)
     if "incident_id" in payload:
         payload["incident_id"] = _validate_incident_id(payload["incident_id"])
+    if re.match(r"^unknown(?:\b|[_/-])", str(payload.get("event", "")).strip(), re.IGNORECASE):
+        payload["event"] = "Unknown"
+        payload["severity"] = "Low"
     return payload
 
 

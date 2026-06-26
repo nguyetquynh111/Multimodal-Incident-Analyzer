@@ -32,14 +32,10 @@ DEFAULT_TIMEOUT_SECONDS = 6.0
 
 # --- Environment helpers -----------------------------------------------------
 
-def _llm_enabled() -> bool:
-    """LLM runs only when explicitly enabled and a key is present."""
+def _llm_configured() -> bool:
+    """Return whether an OpenRouter key is available for summary generation."""
 
-    if os.getenv("ENABLE_LLM_SUMMARY", "").strip().lower() != "true":
-        return False
-    if not os.getenv("OPENROUTER_API_KEY", "").strip():
-        return False
-    return True
+    return bool(os.getenv("OPENROUTER_API_KEY", "").strip())
 
 
 def _model_name() -> str:
@@ -139,8 +135,8 @@ def summarize_incident(
     used in place of the real OpenRouter HTTP call (tests pass a fake).
     """
 
-    # 1. Disabled or no key -> skip the call entirely, deterministic fallback.
-    if not _llm_enabled():
+    # No key means the deterministic fallback is the active summary path.
+    if not _llm_configured():
         return fallback.summarize_fallback(
             incident_row,
             method=schemas.SUMMARY_METHOD_DISABLED,

@@ -38,10 +38,12 @@ def test_existing_rows_are_formatted_for_display_and_export() -> None:
                 "location": "Unknown",
                 "time": "Unknown",
                 "severity": "Medium",
-                "summary_by_llm": "Unknown",
+                "incident_summary": "Unknown",
             }
         ]
     )
 
     assert with_display_ids(rows).loc[0, "event"] == "Unknown"
+    assert with_display_ids(rows).loc[0, "severity"] == "Low"
     assert to_final_csv_frame(rows).loc[0, "event"] == "Unknown"
+    assert to_final_csv_frame(rows).loc[0, "severity"] == "Low"

@@ -1,16 +1,4 @@
-"""Multimodal Incident Analyzer — Streamlit app (Stage 5: Dashboard / UI).
-
-Owned by the Integration & Dashboard Lead (Student 6). Four views:
-
-1. Ingest & Convert — upload one file, run its modality processor, convert the
-   draft output to the final schema, and insert it into Supabase.
-2. Integrate — UNION every modality's output CSV into the unified master
-   dataset (the assignment's Final Integration Task) and push it to Supabase.
-3. Dashboard — read incidents from Supabase, filter, chart, export the final CSV.
-4. Manage Data — add / edit / delete rows via the CRUD helpers.
-
-Run with:  streamlit run app.py
-"""
+"""Streamlit UI for the documented single-file incident workflow."""
 
 from __future__ import annotations
 
@@ -29,6 +17,7 @@ from cloud_deployment.supabase_client import (
     query_incidents,
     update_incident,
 )
+from cloud_deployment.exporter import export_incidents_csv
 from cloud_deployment.upload_service import upload_incidents
 
 st.set_page_config(
@@ -37,7 +26,7 @@ st.set_page_config(
 )
 
 SEVERITY_ORDER = list(ig.SEVERITY_LEVELS)  # Low, Medium, High
-SEV_COLORS = {"Low": "#16A34A", "Medium": "#D97706", "High": "#DC2626"}
+SEV_COLORS = {"Low": "#16A34A", "Medium": "#D97706", "High": "#DC2626", "Unknown": "#64748B"}
 # Material Symbol names per modality.
 SOURCE_ICON = {
     "Audio": "mic",
@@ -46,7 +35,6 @@ SOURCE_ICON = {
     "Video": "movie",
     "Text": "forum",
     "CSV": "table",
-    "JSON": "data_object",
 }
 FINAL_COLS = list(ig.FINAL_CSV_COLUMNS)
 
@@ -156,6 +144,8 @@ def _friendly_error(error: Exception, action: str) -> str:
         return "We couldn't transcribe this audio. Please confirm the file plays correctly and try again."
     if any(term in message for term in ("unsupported", "file type", "extension")):
         return "This file type isn't supported yet. Please choose one of the listed evidence formats."
+    if any(term in message for term in ("five-minute", "duration", "longer than 5")):
+        return "This video is longer than five minutes, so it can't be processed in this prototype."
     if any(term in message for term in ("supabase", "postgrest", "connection", "network", "timeout")):
         return "Incident records are temporarily unavailable. Please try again in a moment."
     return f"We couldn't {action}. Please check your file or entries and try again."
@@ -197,81 +187,6 @@ def _style_table(display_df: pd.DataFrame):
     if "severity" in display_df.columns:
         styler = styler.map(sev, subset=["severity"])
     return styler
-
-
-def _review_queue() -> dict[str, dict]:
-    """Return evidence reviewed during this browser session, keyed by filename."""
-
-    return st.session_state.setdefault("review_queue", {})
-
-
-def _queue_review(
-    filename: str,
-    source_type: str,
-    draft: pd.DataFrame,
-    *,
-    final: pd.DataFrame | None = None,
-    saved: bool | None = None,
-) -> None:
-    existing = _review_queue().get(filename, {})
-    _review_queue()[filename] = {
-        "source_type": source_type,
-        "draft": draft.copy(),
-        "final": final.copy() if final is not None else existing.get("final"),
-        "saved": existing.get("saved", False) if saved is None else saved,
-    }
-
-
-def _sync_current_review() -> None:
-    """Carry a review created before the session queue was introduced into it."""
-
-    result = st.session_state.get("ingest")
-    if not result or "draft" not in result or "filename" not in result:
-        return
-    source_type = result.get("source_type") or ig.detect_source_type(result["filename"])
-    if source_type:
-        _queue_review(
-            result["filename"],
-            source_type,
-            result["draft"],
-            final=result.get("final"),
-        )
-
-
-def _queued_review_status() -> dict[str, int]:
-    status = {source_type: 0 for source_type in ig.MODALITIES}
-    for item in _review_queue().values():
-        status[item["source_type"]] += 1
-    return status
-
-
-def _build_queued_incidents(existing_ids: list) -> pd.DataFrame:
-    saved_frames = []
-    pending_frames = []
-    for filename, item in _review_queue().items():
-        if item.get("saved"):
-            if item.get("final") is not None:
-                saved_frames.append(item["final"].copy())
-            continue
-        pending_frames.append(
-            ig.integrate_records(
-                item["draft"],
-                item["source_type"],
-                source_filename=filename,
-            )
-        )
-
-    if pending_frames:
-        pending = pd.concat(pending_frames, ignore_index=True)
-        pending = ig.add_incident_summaries(pending)
-        pending = ig.assign_incident_ids(pending, existing_ids)
-        pending = ig.to_integration_output_frame(pending)
-    else:
-        pending = pd.DataFrame(columns=ig.INCIDENT_COLUMNS)
-
-    frames = [*saved_frames, pending]
-    nonempty = [frame for frame in frames if not frame.empty]
-    return pd.concat(nonempty, ignore_index=True) if nonempty else pending
 
 
 def _severity_donut(view: pd.DataFrame) -> alt.Chart:
@@ -705,12 +620,12 @@ def view_ingest() -> None:
 
     uploaded = st.file_uploader("Choose an evidence file", type=ig.supported_extensions())
     if uploaded is None:
-        st.info("You can add an audio recording, document, image, video, text file, CSV, or JSON file.")
+        st.info("You can add an audio recording, document, image, text file, or CSV file.")
         return
 
     source_type = ig.detect_source_type(uploaded.name)
     if source_type is None:
-        st.error("We can't review this file type yet. Please choose an audio, document, image, video, text, CSV, or JSON file.")
+        st.error("We can't review this file type yet. Please choose an audio, document, image, video, text, or CSV file.")
         return
 
     label = ig.source_label(source_type)
@@ -727,18 +642,11 @@ def view_ingest() -> None:
             try:
                 path = _save_upload_to_tempdir(uploaded)
                 draft_df = ig.run_modality(source_type, path)
-                final_df = ig.build_incidents(
+                final_df = ig.integrate_records(
                     draft_df,
                     source_type,
                     existing_incident_ids(),
                     source_filename=uploaded.name,
-                )
-                _queue_review(
-                    uploaded.name,
-                    source_type,
-                    draft_df,
-                    final=final_df,
-                    saved=False,
                 )
                 st.session_state["ingest"] = {
                     "draft": draft_df,
@@ -757,13 +665,17 @@ def view_ingest() -> None:
         return
 
     final_df = result["final"]
+    st.caption(f"Extractor rows: {len(result['draft'])} · Integrated incident rows: {len(final_df)}")
+    if final_df.empty:
+        st.info("No incidents were found in this evidence. Nothing will be inserted.")
+        return
     c1, c2 = st.columns(2)
     with c1:
         _section("What we found")
         st.dataframe(result["draft"], width="stretch", hide_index=True)
     with c2:
         _section("Incident record")
-        st.dataframe(_style_table(ig.to_final_csv_frame(final_df)), width="stretch", hide_index=True)
+        st.dataframe(_style_table(final_df), width="stretch", hide_index=True)
 
     _section("Visual evidence")
     _show_visual_evidence(
@@ -773,19 +685,10 @@ def view_ingest() -> None:
         uploaded.name,
     )
 
-    d1, d2 = st.columns(2)
-    d1.download_button(
-        "Download incident record", ig.to_final_csv_frame(final_df).to_csv(index=False).encode("utf-8"),
-        file_name=f"{result['filename']}_incidents.csv", mime="text/csv",
-        icon=":material/download:", width="stretch")
-    if d2.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
+    if st.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
         try:
             summary = upload_incidents(final_df)
             st.success(f"Added {summary['inserted_count']} incident record(s).")
-            item = _review_queue().get(result["filename"])
-            if item is not None:
-                item["saved"] = True
-                item["final"] = final_df.copy()
             st.session_state.pop("ingest", None)
         except Exception as exc:  # noqa: BLE001
             logger.exception("Incident upload failed")
@@ -793,69 +696,7 @@ def view_ingest() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# View 2: Integrate (Final Integration Task)
-# --------------------------------------------------------------------------- #
-def view_integrate() -> None:
-    _page_head("hub", "Combine Reports", "Bring completed evidence reviews into one organized incident list.")
-
-    _sync_current_review()
-    status = _queued_review_status()
-    _section("Available evidence reviews")
-    cols = st.columns(len(ig.MODALITIES))
-    for col, source_type in zip(cols, ig.MODALITIES):
-        label = ig.source_label(source_type)
-        count = status[source_type]
-        count_label = "review" if count == 1 else "reviews"
-        col.markdown(
-            f'<div class="mcard">{_icon(SOURCE_ICON.get(label, "description"))}'
-            f'<div class="mname">{label}</div><div class="mcount">{count} {count_label}</div></div>',
-            unsafe_allow_html=True)
-
-    st.caption("Counts include all evidence reviewed during this session, including records already added.")
-
-    if sum(status.values()) == 0:
-        st.info("No completed evidence reviews are available yet. Start by adding an evidence file.")
-        return
-
-    st.write("")
-    if st.button("Combine reports", type="primary", icon=":material/merge:"):
-        with st.spinner("Bringing the reports together…"):
-            try:
-                st.session_state["master"] = _build_queued_incidents(existing_incident_ids())
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Report combination failed")
-                st.error(_friendly_error(exc, "combine these reports"))
-
-    master = st.session_state.get("master")
-    if master is None or master.empty:
-        return
-
-    final_view = ig.to_final_csv_frame(master)
-    payload_view = ig.to_supabase_payload_frame(master)
-    k = st.columns(3)
-    _stat(k[0], "Total incidents", len(payload_view), icon="summarize")
-    _stat(k[1], "Evidence types", payload_view["source"].nunique(), color=ACCENT, icon="hub")
-    _stat(k[2], "High severity", int(payload_view["severity"].value_counts().get("High", 0)),
-          color=SEV_COLORS["High"], icon="priority_high")
-
-    st.write("")
-    _section(f"Combined incident list · {len(final_view)} incidents")
-    st.dataframe(_style_table(final_view), width="stretch", hide_index=True)
-    cc1, cc2 = st.columns(2)
-    with cc1:
-        _section("Records per source")
-        st.altair_chart(_hbar(payload_view["source"].value_counts(), "Source"), width="stretch")
-    with cc2:
-        _section("Severity by source")
-        st.altair_chart(_severity_by_source(payload_view), width="stretch")
-
-    st.download_button(
-        "Download combined report", final_view.to_csv(index=False).encode("utf-8"),
-        file_name="final_incident_dataset.csv", mime="text/csv", icon=":material/download:", width="stretch")
-
-
-# --------------------------------------------------------------------------- #
-# View 3: Dashboard
+# View 2: Dashboard
 # --------------------------------------------------------------------------- #
 def view_dashboard() -> None:
     _page_head("insights", "Incident Overview", "See priorities, patterns, and recent activity at a glance.")
@@ -867,25 +708,25 @@ def view_dashboard() -> None:
         st.error(_friendly_error(exc, "load incident records"))
         return
     if df.empty:
-        st.info("No incidents have been added yet. Start with **Add Evidence** or **Combine Reports**.")
+        st.info("No incidents have been added yet. Start with **Add Evidence**.")
         return
 
     df = ig.with_display_ids(df)
 
     with st.expander("Filters", expanded=False):
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4, c5 = st.columns(5)
         sources = sorted(df["source"].dropna().unique().tolist())
         severities = [s for s in SEVERITY_ORDER if s in df["severity"].unique()]
         pick_source = c1.multiselect("Source", sources, default=sources)
         pick_severity = c2.multiselect("Severity", severities, default=severities)
-        search = c3.text_input("Search ID / event / location", "")
+        pick_id = c3.text_input("Incident ID", "")
+        pick_event = c4.text_input("Event", "")
+        pick_location = c5.text_input("Location", "")
 
     view = df[df["source"].isin(pick_source) & df["severity"].isin(pick_severity)]
-    if search:
-        mask = pd.Series(False, index=view.index)
-        for column in ("Incident_ID", "event", "location"):
-            mask |= view[column].astype(str).str.contains(search, case=False, na=False)
-        view = view[mask]
+    for column, query in (("Incident_ID", pick_id), ("event", pick_event), ("location", pick_location)):
+        if query:
+            view = view[view[column].astype(str).str.contains(query, case=False, regex=False, na=False)]
 
     counts = view["severity"].value_counts()
     k = st.columns(4)
@@ -953,8 +794,16 @@ def view_dashboard() -> None:
             st.dataframe(_style_table(high), width="stretch", hide_index=True)
         _section(f"All incidents · {len(final_view)}")
         st.dataframe(_style_table(final_view), width="stretch", hide_index=True)
+        selected_id = st.selectbox("Selected incident", view["Incident_ID"].tolist())
+        selected = view.loc[view["Incident_ID"] == selected_id].iloc[0]
+        st.text_area(
+            "Incident summary",
+            str(selected.get("incident_summary", "Unknown")),
+            height=110,
+            disabled=True,
+        )
         st.download_button(
-            "Download incident report", final_view.to_csv(index=False).encode("utf-8"),
+            "Download incident report", export_incidents_csv(),
             file_name="final_incident_dataset.csv", mime="text/csv", icon=":material/download:")
 
 
@@ -971,20 +820,17 @@ def _add_incident_dialog(existing_ids: list) -> None:
     time_val = st.text_input("Time", "Unknown")
     severity = st.selectbox("Severity", SEVERITY_ORDER, index=1)
     if st.button("Save", type="primary", icon=":material/save:"):
-        row = pd.DataFrame([{
-            "incident_id": next_label,
-            "source": ig.source_label(source_type),
-            "event": ig.normalize_event(event), "location": location or "Unknown",
-            "time": time_val or "Unknown", "severity": severity,
-            "source_type": ig.source_prefix(source_type),
-            "confidence": 0.0,
-            "raw_text": "Unknown",
+        draft = pd.DataFrame([{
+            "Event": event,
+            "Location": location or "Unknown",
+            "Time": time_val or "Unknown",
+            "Severity": severity,
+            "Summary": "Unknown",
         }])
-        row = ig.add_incident_summaries(row)
-        row = ig.to_integration_output_frame(row)
+        row = ig.integrate_records(draft, source_type, existing_ids)
         try:
             upload_incidents(row)
-            st.success(f"Added {next_label}")
+            st.success(f"Added {row.iloc[0]['Incident_ID']}")
             st.rerun()
         except Exception as exc:  # noqa: BLE001
             logger.exception("Manual incident creation failed")
@@ -1122,6 +968,8 @@ def view_manage() -> None:
                         )
                         for field, value in bulk_values.items()
                     }
+                    if ig.normalize_event(payload.get("event", target["event"])) == "Unknown":
+                        payload["severity"] = "Low"
                     update_incident(target["incident_id"], payload)
                 succeeded += 1
             except Exception:  # noqa: BLE001
@@ -1216,6 +1064,8 @@ def view_manage() -> None:
                     else clean(row[field]) != clean(current[field])
                 )
             }
+            if ig.normalize_event(row["event"]) == "Unknown":
+                changes["severity"] = "Low"
             if changes:
                 update_incident(incident_id, changes)
                 updated_count += 1
@@ -1259,7 +1109,6 @@ def _bridge_streamlit_secrets() -> None:
 
 PAGES = [
     ("Add Evidence", ":material/upload_file:", view_ingest),
-    ("Combine Reports", ":material/hub:", view_integrate),
     ("Incident Overview", ":material/insights:", view_dashboard),
     ("Manage Incidents", ":material/edit_note:", view_manage),
 ]
@@ -1268,7 +1117,9 @@ PAGES = [
 def main() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
     _bridge_streamlit_secrets()
-    st.session_state.setdefault("page", PAGES[0][0])
+    page_names = {name for name, _, _ in PAGES}
+    if st.session_state.get("page") not in page_names:
+        st.session_state["page"] = PAGES[0][0]
 
     with st.sidebar:
         st.markdown(f'<div class="sb-brand">{_icon("local_police")} Incident Analyzer</div>', unsafe_allow_html=True)

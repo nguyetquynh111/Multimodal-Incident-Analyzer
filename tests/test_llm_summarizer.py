@@ -33,12 +33,12 @@ ALL_UNKNOWN_ROW = {
     "event": "Unknown",
     "location": "Unknown",
     "time": "Unknown",
-    "severity": "Unknown",
+    "severity": "Low",
     "confidence": 0.0,
     "raw_text": "Unknown",
 }
 
-LLM_ENABLED_ENV = {"ENABLE_LLM_SUMMARY": "True", "OPENROUTER_API_KEY": "test-key-not-real"}
+LLM_CONFIGURED_ENV = {"OPENROUTER_API_KEY": "test-key-not-real"}
 
 
 def _ok_response(content: str) -> dict:
@@ -78,20 +78,8 @@ class FallbackTests(unittest.TestCase):
 
 
 class SummarizeIncidentTests(unittest.TestCase):
-    @mock.patch.dict(os.environ, {"ENABLE_LLM_SUMMARY": "false"}, clear=True)
-    def test_disabled_skips_llm_call_entirely(self) -> None:
-        def boom(_request: dict) -> dict:
-            raise AssertionError("llm_call must not run when LLM is disabled")
-
-        result = summarize_incident(SAMPLE_ROW, llm_call=boom)
-
-        _assert_valid_contract(self, result)
-        self.assertEqual(result["summary_method"], schemas.SUMMARY_METHOD_DISABLED)
-        self.assertEqual(result["summary_model"], schemas.DISABLED_MODEL_LABEL)
-
-    @mock.patch.dict(os.environ, {"ENABLE_LLM_SUMMARY": "True"}, clear=True)
-    def test_enabled_but_missing_key_is_disabled(self) -> None:
-        # Flag on but no OPENROUTER_API_KEY -> treated as disabled, no call.
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_missing_key_skips_llm_call_entirely(self) -> None:
         def boom(_request: dict) -> dict:
             raise AssertionError("llm_call must not run without an API key")
 
@@ -99,8 +87,9 @@ class SummarizeIncidentTests(unittest.TestCase):
 
         _assert_valid_contract(self, result)
         self.assertEqual(result["summary_method"], schemas.SUMMARY_METHOD_DISABLED)
+        self.assertEqual(result["summary_model"], schemas.DISABLED_MODEL_LABEL)
 
-    @mock.patch.dict(os.environ, LLM_ENABLED_ENV, clear=True)
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
     def test_enabled_with_valid_llm_output(self) -> None:
         text = "A High-severity Theft / Robbery incident was reported on Main Street."
 
@@ -115,7 +104,7 @@ class SummarizeIncidentTests(unittest.TestCase):
         self.assertEqual(result["incident_summary"], text)
         self.assertNotIn(result["summary_model"], ("", schemas.UNKNOWN))
 
-    @mock.patch.dict(os.environ, LLM_ENABLED_ENV, clear=True)
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
     def test_llm_exception_falls_back_to_error(self) -> None:
         def fake_raise(_request: dict) -> dict:
             raise RuntimeError("simulated network/timeout failure")
@@ -128,7 +117,7 @@ class SummarizeIncidentTests(unittest.TestCase):
         # Falls back to the deterministic summary, so real fields still appear.
         self.assertIn("Theft / Robbery", result["incident_summary"])
 
-    @mock.patch.dict(os.environ, LLM_ENABLED_ENV, clear=True)
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
     def test_llm_overlong_output_is_rejected(self) -> None:
         def fake_long(_request: dict) -> dict:
             return _ok_response(" ".join(["word"] * 250))  # ~250 words
@@ -138,7 +127,7 @@ class SummarizeIncidentTests(unittest.TestCase):
         _assert_valid_contract(self, result)
         self.assertEqual(result["summary_method"], schemas.SUMMARY_METHOD_ERROR)
 
-    @mock.patch.dict(os.environ, LLM_ENABLED_ENV, clear=True)
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
     def test_llm_empty_output_is_rejected(self) -> None:
         def fake_empty(_request: dict) -> dict:
             return _ok_response("   ")

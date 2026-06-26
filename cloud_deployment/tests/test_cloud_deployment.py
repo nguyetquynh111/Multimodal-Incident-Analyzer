@@ -30,12 +30,12 @@ def _incident_frame(incident_id: object = "INC_TXT_101") -> pd.DataFrame:
         [
             {
                 "incident_id": incident_id,
-                "source": "pytest-cloud-deployment",
+                "source": "Text",
                 "event": "test event",
                 "location": "Unknown",
                 "time": "2026-06-20T00:00:00Z",
                 "severity": "Low",
-                "summary_by_llm": "A Low-severity test event incident was reported via pytest-cloud-deployment.",
+                "incident_summary": "A Low-severity test event incident was reported via pytest-cloud-deployment.",
             }
         ]
     )
@@ -43,6 +43,15 @@ def _incident_frame(incident_id: object = "INC_TXT_101") -> pd.DataFrame:
 
 def test_validate_incidents_df_accepts_valid_input() -> None:
     validate_incidents_df(_incident_frame("INC_TXT_101"))
+
+
+def test_validate_incidents_df_rejects_non_low_unknown_event() -> None:
+    frame = _incident_frame("INC_TXT_102")
+    frame.loc[0, "event"] = "unknown emergency"
+    frame.loc[0, "severity"] = "High"
+
+    with pytest.raises(ValueError, match="Severity must be Low when event is Unknown"):
+        validate_incidents_df(frame)
 
 
 def _duplicate_id_frame() -> pd.DataFrame:
@@ -85,6 +94,19 @@ def test_insert_incidents_sends_only_allowed_columns(monkeypatch: pytest.MonkeyP
     assert "created_at" not in records[0]
     assert summary["success"] is True
     assert summary["inserted_count"] == 1
+
+
+def test_insert_incidents_explains_legacy_bigint_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = MagicMock()
+    client.table.return_value.insert.return_value.execute.side_effect = RuntimeError(
+        'invalid input syntax for type bigint: "INC_TXT_101"'
+    )
+    monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: client)
+
+    with pytest.raises(RuntimeError, match="incident_id as bigint"):
+        supabase_client.insert_incidents(_incident_frame("INC_TXT_101"))
 
 
 def test_get_supabase_client_uses_shared_http_client(
@@ -137,7 +159,7 @@ def test_upload_incidents_accepts_integration_output_columns(
                 "Location": "Unknown",
                 "Time": "2026-06-20T00:00:00Z",
                 "Severity": "Low",
-                "LLM_Summary": "A Low-severity test event incident was reported via Text.",
+                "Incident_Summary": "A Low-severity test event incident was reported via Text.",
             }
         ]
     )
@@ -147,7 +169,7 @@ def test_upload_incidents_accepts_integration_output_columns(
     payload = insert.call_args.args[0]
     assert list(payload.columns) == list(INCIDENT_COLUMNS)
     assert payload.loc[0, "incident_id"] == "INC_TXT_101"
-    assert payload.loc[0, "summary_by_llm"].startswith("A Low-severity")
+    assert payload.loc[0, "incident_summary"].startswith("A Low-severity")
 
 
 def test_query_incidents_applies_filters_and_limit(
@@ -262,7 +284,7 @@ def test_supabase_insert_exists_then_delete() -> None:
         pytest.skip("Live CRUD test requires a configured Supabase key.")
 
     incident_id = f"INC_TXT_{time.time_ns()}"
-    source = "pytest-cloud-deployment"
+    source = "Text"
     frame = _incident_frame(incident_id)
     client = supabase_client.get_supabase_client()
 
@@ -293,7 +315,7 @@ def test_supabase_insert_exists_then_delete() -> None:
         assert supabase_client.get_incident(incident_id) is None
     finally:
         (
-            client.table("incidents")
+            client.table(supabase_client.get_table_name())
             .delete()
             .eq("incident_id", incident_id)
             .eq("source", source)
@@ -301,7 +323,7 @@ def test_supabase_insert_exists_then_delete() -> None:
         )
 
     remaining = (
-        client.table("incidents")
+        client.table(supabase_client.get_table_name())
         .select("incident_id")
         .eq("incident_id", incident_id)
         .eq("source", source)

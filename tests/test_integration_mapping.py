@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from integration.integration import (
     FINAL_CSV_COLUMNS,
     INCIDENT_COLUMNS,
-    build_incidents,
     detect_source_type,
     generate_incident_id,
+    integrate_records,
     to_supabase_payload_frame,
     to_final_csv_frame,
 )
+
+
+@pytest.fixture(autouse=True)
+def _disable_openrouter_for_mapping_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep exact mapping assertions independent of a developer's .env file."""
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
 
 def test_pdf_six_column_draft_maps_to_incident_schema() -> None:
@@ -31,7 +39,7 @@ def test_pdf_six_column_draft_maps_to_incident_schema() -> None:
         ]
     )
 
-    result = build_incidents(draft, "pdf", existing_ids=[7])
+    result = integrate_records(draft, "pdf")
 
     assert list(result.columns) == list(INCIDENT_COLUMNS)
     assert result.to_dict(orient="records") == [
@@ -42,7 +50,7 @@ def test_pdf_six_column_draft_maps_to_incident_schema() -> None:
             "Location": "Main Street",
             "Time": "June 23, 2026",
             "Severity": "Medium",
-            "LLM_Summary": "A Medium-severity Burglary / Robbery incident was reported via PDF at Main Street. The reported time was June 23, 2026.",
+            "Incident_Summary": "A Medium-severity Burglary / Robbery incident was reported via PDF at Main Street. The reported time was June 23, 2026.",
         }
     ]
     assert to_supabase_payload_frame(result).to_dict(orient="records")[0]["incident_id"] == "INC_PDF_001"
@@ -62,7 +70,7 @@ def test_video_five_column_draft_maps_to_incident_schema() -> None:
         ]
     )
 
-    result = build_incidents(draft, "video", existing_ids=[8])
+    result = integrate_records(draft, "video")
 
     assert list(result.columns) == list(INCIDENT_COLUMNS)
     assert result.to_dict(orient="records") == [
@@ -73,7 +81,7 @@ def test_video_five_column_draft_maps_to_incident_schema() -> None:
             "Location": "Unknown",
             "Time": "00:00:12",
             "Severity": "High",
-            "LLM_Summary": "A High-severity Person Collapsing incident was reported via Video. The reported time was 00:00:12.",
+            "Incident_Summary": "A High-severity Person Collapsing incident was reported via Video. The reported time was 00:00:12.",
         }
     ]
     assert list(to_final_csv_frame(result).columns) == list(FINAL_CSV_COLUMNS)
@@ -93,7 +101,7 @@ def test_text_six_column_draft_maps_labeled_entities_to_location_and_time() -> N
         ]
     )
 
-    result = build_incidents(draft, "text", existing_ids=[9])
+    result = integrate_records(draft, "text")
 
     assert list(result.columns) == list(INCIDENT_COLUMNS)
     assert result.to_dict(orient="records") == [
@@ -104,17 +112,16 @@ def test_text_six_column_draft_maps_labeled_entities_to_location_and_time() -> N
             "Location": "Oak Street, Chicago",
             "Time": "9pm tonight",
             "Severity": "Medium",
-            "LLM_Summary": "A Medium-severity Theft / Robbery incident was reported via Text at Oak Street, Chicago. The reported time was 9pm tonight.",
+            "Incident_Summary": "A Medium-severity Theft / Robbery incident was reported via Text at Oak Street, Chicago. The reported time was 9pm tonight.",
         }
     ]
     assert list(to_final_csv_frame(result).columns) == list(FINAL_CSV_COLUMNS)
 
 
-def test_csv_and_json_inputs_belong_to_text_modality() -> None:
+def test_csv_inputs_belong_to_text_modality_and_json_is_rejected() -> None:
     assert detect_source_type("records.csv") == "text"
-    assert detect_source_type("records.json") == "text"
+    assert detect_source_type("records.json") is None
     assert generate_incident_id("csv", 1) == "INC_TXT_001"
-    assert generate_incident_id("json", 2) == "INC_TXT_002"
 
 
 def test_structured_csv_draft_maps_through_text_modality() -> None:
@@ -131,7 +138,7 @@ def test_structured_csv_draft_maps_through_text_modality() -> None:
         ]
     )
 
-    result = build_incidents(draft, "text")
+    result = integrate_records(draft, "text")
 
     assert result.to_dict(orient="records") == [
         {
@@ -141,6 +148,25 @@ def test_structured_csv_draft_maps_through_text_modality() -> None:
             "Location": "Main Street",
             "Time": "June 25, 2026",
             "Severity": "High",
-            "LLM_Summary": "A High-severity Fire incident was reported via Text at Main Street. The reported time was June 25, 2026.",
+            "Incident_Summary": "A High-severity Fire incident was reported via Text at Main Street. The reported time was June 25, 2026.",
         }
     ]
+
+
+def test_unknown_event_is_always_low_severity() -> None:
+    draft = pd.DataFrame(
+        [
+            {
+                "Event": "unknown emergency",
+                "Location": "Unknown",
+                "Time": "Unknown",
+                "Severity": "High",
+                "Summary": "No reliable event was identified.",
+            }
+        ]
+    )
+
+    result = integrate_records(draft, "text")
+
+    assert result.loc[0, "Event"] == "Unknown"
+    assert result.loc[0, "Severity"] == "Low"

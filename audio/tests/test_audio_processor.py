@@ -87,17 +87,12 @@ class AudioProcessorTests(unittest.TestCase):
             self.assertGreaterEqual(row["Urgency_Score"], 0.0)
             self.assertLessEqual(row["Urgency_Score"], 1.0)
 
-    def test_process_audio_file_accepts_flac_with_custom_transcriber(self) -> None:
+    def test_process_audio_file_rejects_flac(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             audio_path = Path(directory) / "C009.flac"
             audio_path.touch()
-            row = process_audio_file(
-                str(audio_path),
-                transcriber=lambda _: "There are guns at 123 Main Street.",
-            )
-        self.assertEqual(row["Call_ID"], "C009")
-        self.assertEqual(row["Extracted_Event"], "shooting")
-        self.assertEqual(list(row), OUTPUT_COLUMNS)
+            with self.assertRaisesRegex(ValueError, "Unsupported audio type"):
+                process_audio_file(str(audio_path))
 
     def test_folder_processing_is_sorted_top_level_only_and_writes_csv(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

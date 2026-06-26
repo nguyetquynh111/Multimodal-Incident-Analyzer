@@ -30,6 +30,7 @@ cryptography==48.0.1
 # Image and video
 # Headless OpenCV avoids desktop GUI libraries that are unavailable on Cloud Run.
 opencv-python-headless==4.10.0.84
+inference-sdk
 ultralytics==8.4.70
 Pillow
 

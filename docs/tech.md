@@ -32,14 +32,20 @@ multimodal-incident-analyzer/
 └── tests/
     ├── test_file_type_detector.py
     ├── test_extractor_schema.py
+    ├── test_image_processor.py
     ├── test_modality_output_schemas.py
     ├── test_integration_schema.py
+    ├── test_integration_mapping.py
     ├── test_llm_summarizer.py
     ├── test_id_generator.py
     ├── test_supabase_mapping.py
     ├── test_final_export_schema.py
     └── test_dashboard_smoke.py
 ```
+
+Modality and deployment tests also live beside the relevant packages:
+`audio/tests/test_audio_processor.py`, `video/tests/test_video_processor.py`,
+and `cloud_deployment/tests/test_cloud_deployment.py`.
 
 ## 2. Main Modules
 
@@ -102,7 +108,7 @@ for row in final_df.to_dict(orient="records"):
 insert_incidents(rows_to_insert)
 ```
 
-The LLM summarizer uses OpenRouter when `ENABLE_LLM_SUMMARY=True` and `OPENROUTER_API_KEY` is configured. The fallback in `fallback.py` must always work without model downloads or paid APIs.
+The LLM summarizer uses OpenRouter when `OPENROUTER_API_KEY` is configured. The fallback in `fallback.py` must always work without model downloads or paid APIs.
 
 ## 4. Suggested Dependencies
 
@@ -125,13 +131,11 @@ The LLM summarizer uses OpenRouter when `ENABLE_LLM_SUMMARY=True` and `OPENROUTE
 | SUPABASE_URL | Yes | Supabase project URL |
 | SUPABASE_KEY | Yes | Supabase anon key or service role key depending on local demo setup |
 | SUPABASE_TABLE | No | Defaults to incidents |
-| ENABLE_LLM_SUMMARY | No | Turn OpenRouter summary generation on or off |
-| OPENROUTER_API_KEY | No | Required only when OpenRouter summaries are enabled |
+| OPENROUTER_API_KEY | No | Enables OpenRouter summaries when configured |
 | ROBOFLOW_API_KEY | No | Optional/free-tier Roboflow key for image inference; must come from environment variables, never committed |
 | ROBOFLOW_MODEL_ID | No | Optional Roboflow model id; defaults to `fire-detection-data-pre/4` when used |
 | LLM_MODEL_NAME | No | Optional OpenRouter model label for summary module |
 | LLM_TIMEOUT_SECONDS | No | Optional timeout for summary generation before fallback |
-| ENABLE_RULE_SUMMARY_FALLBACK | No | Keep summary fallback enabled; should default to true |
 | ENABLE_OCR_FALLBACK | No | Allow PDF/image OCR fallback |
 | FAST_DEMO_MODE | No | Use reduced processing for demo safety |
 
@@ -148,7 +152,7 @@ create table if not exists incidents (
   event text not null default 'Unknown',
   location text not null default 'Unknown',
   time text not null default 'Unknown',
-  severity text not null default 'Unknown' check (severity in ('Low', 'Medium', 'High', 'Unknown')),
+  severity text not null default 'Low' check (severity in ('Low', 'Medium', 'High', 'Unknown')),
   incident_summary text not null default 'Unknown'
 );
 ```
@@ -175,5 +179,5 @@ After user confirmation, the insert payload sent by the app contains only the se
 | Video processing is slow | Reject long videos, use a documented sample interval, and run detection only on motion frames |
 | Roboflow image API unavailable, quota exhausted, or key missing | Treat Roboflow as optional/free-tier external inference; load the API key from environment variables and fall back to Unknown without crashing |
 | Object detections are mistaken for activities | Require documented temporal or rule-based evidence for video event labels |
-| Extractor returns nulls | Validators convert missing values to Unknown and severity to Low/Medium/High/Unknown |
+| Extractor returns nulls | Validators convert missing values to Unknown and ensure an Unknown event has Low severity |
 | Dashboard reads local stale data | Dashboard must query Supabase directly |

@@ -14,11 +14,11 @@ INCIDENT_COLUMNS = (
     "location",
     "time",
     "severity",
-    "summary_by_llm",
+    "incident_summary",
 )
 
 ID_PATTERN = re.compile(r"^INC_(AUD|PDF|IMG|VID|TXT)_\d{3,}$")
-SEVERITY_LEVELS = {"Low", "Medium", "High"}
+SEVERITY_LEVELS = {"Low", "Medium", "High", "Unknown"}
 
 
 def validate_incidents_df(df: pd.DataFrame) -> None:
@@ -59,13 +59,19 @@ def validate_incidents_df(df: pd.DataFrame) -> None:
     if id_text.duplicated().any():
         raise ValueError("Every incident_id must be unique within an upload.")
 
-    for column in ("source", "event", "location", "time", "summary_by_llm"):
+    for column in ("source", "event", "location", "time", "incident_summary"):
         if df[column].isna().any():
             raise ValueError(f"The {column} column contains null values.")
         if df[column].astype(str).str.strip().eq("").any():
             raise ValueError(f"The {column} column contains blank values.")
 
     if not df["severity"].isin(SEVERITY_LEVELS).all():
-        raise ValueError("Severity must be Low, Medium, or High.")
+        raise ValueError("Severity must be Low, Medium, High, or Unknown.")
+
+    unknown_event = df["event"].astype(str).str.strip().str.match(
+        r"^unknown(?:\b|[_/-])", case=False, na=False
+    )
+    if (df.loc[unknown_event, "severity"] != "Low").any():
+        raise ValueError("Severity must be Low when event is Unknown.")
 
     logger.debug("Validated incidents DataFrame with %d rows.", len(df))

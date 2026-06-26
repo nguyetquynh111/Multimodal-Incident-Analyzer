@@ -128,7 +128,7 @@ Integration responsibilities:
 - Normalize event names.
 - Normalize location and time fields.
 - Convert missing fields to Unknown.
-- Compute or normalize severity to Low, Medium, High, or Unknown.
+- Compute or normalize severity to Low, Medium, High, or Unknown. An Unknown event must use Low severity.
 - Call `llm_summarizer.summarize_incident(...)` for each standardized row.
 - Add `Incident_Summary`.
 - Generate `Incident_ID` using the approved `INC_TYPE_NUMBER` rule.
@@ -194,7 +194,7 @@ The MVP uses one table named `incidents`. Required columns:
 | event | Final normalized event or Unknown |
 | location | Final normalized location or Unknown |
 | time | Final normalized time or Unknown |
-| severity | Low, Medium, High, or Unknown |
+| severity | Low, Medium, High, or Unknown; Low when event is Unknown |
 | incident_summary | OpenRouter/fallback incident summary for dashboard display and export |
 
 ## 8. Final CSV Export Contract
