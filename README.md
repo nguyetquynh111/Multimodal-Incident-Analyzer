@@ -273,6 +273,46 @@ name is real and source-grounded, not fabricated. This is intentional behavior.
    OCR result only; it has not yet been verified against a real scanned PDF with a
    real pytesseract install.
 
+## Image Processor (Student 3 — Image Analyst)
+
+Student 3 converts crime/incident scene photographs into:
+Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score
+
+The processor runs two pretrained models with no training required:
+- **Roboflow fire-detection-data-pre/4** — detects fire and smoke in scene images
+- **YOLOv8n-640** — detects persons in the same frames
+
+Scene classification uses the following rules:
+- Fire + Smoke or Fire + Person → **Fire and Smoke Scene**
+- Fire only → **Fire Scene**
+- Smoke only → **Smoke Scene**
+- Person only → **General Scene**
+
+OCR runs via pytesseract on every image to extract visible text such as
+street signs, building labels, and license plates. Text shorter than
+3 characters is suppressed and replaced with N/A.
+
+Severity is derived as `Confidence_Score × 10`:
+- 7–10 → High
+- 3–7 → Medium
+- 0–3 → Low
+
+Dataset: Roboflow Person and Fire Detection v9
+(universe.roboflow.com/fire-detection/fire-detection-data-pre)
+12 real incident scene images covering building fires, industrial
+explosions, and firefighter response scenes.
+
+Run it:
+
+```bash
+python -m images.processor \
+  --input images/sample_data/ \
+  --output images/output/image_output.csv
+```
+
+Output is written to `images/output/image_output.csv` — 12 rows,
+one per image, feeding directly into the integration merge.
+
 ## Text Processor
 
 Student 5 converts CrimeReport social/news posts into:
