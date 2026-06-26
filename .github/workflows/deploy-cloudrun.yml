@@ -44,5 +44,8 @@ jobs:
             APP_ENV=production
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+            RUN_SUPABASE_LIVE_TESTS=1
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+            ROBOFLOW_API_KEY=${{ secrets.ROBOFLOW_API_KEY }}
       - name: Show Cloud Run URL
         run: echo "Cloud Run URL is ${{ steps.deploy.outputs.url }}"
