@@ -3,7 +3,6 @@ import pytesseract
 import pandas as pd
 import argparse
 import cv2
-import numpy as np
 from pathlib import Path
 from inference_sdk import InferenceHTTPClient
 
@@ -29,58 +28,53 @@ def classify_scene(labels: list) -> str:
         return "General Scene"
     return "General Scene"
 
-def process_image(img_path: str, image_id: str = "IMG_001") -> dict:
+def _run_detection(img_path: str) -> dict:
+    """Run fire + person detection and OCR on one image file."""
     try:
-        # Run fire detection
         result1 = CLIENT.infer(img_path, model_id=MODEL_ID)
         preds1 = result1.get("predictions", [])
+    except Exception:
+        preds1 = []
 
-        # Run person detection
-        try:
-            result2 = CLIENT.infer(img_path, model_id=MODEL_ID2)
-            preds2 = [p for p in result2.get("predictions", [])
-                      if p["class"] == "person"]
-        except Exception:
-            preds2 = []
+    try:
+        result2 = CLIENT.infer(img_path, model_id=MODEL_ID2)
+        preds2 = [p for p in result2.get("predictions", []) if p["class"] == "person"]
+    except Exception:
+        preds2 = []
 
-        all_preds = preds1 + preds2
-        labels = [p["class"] for p in all_preds]
-        confs  = [round(p["confidence"], 2) for p in all_preds]
-        avg_conf = round(sum(confs) / len(confs), 2) if confs else 0.50
+    all_preds = preds1 + preds2
+    labels = [p["class"] for p in all_preds]
+    confs  = [round(p["confidence"], 2) for p in all_preds]
+    avg_conf = round(sum(confs) / len(confs), 2) if confs else 0.50
 
-        # OCR
+    try:
         img = cv2.imread(str(img_path))
-        if img is not None:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            ocr_text = pytesseract.image_to_string(gray).strip().replace("\n", " ")
-            ocr_clean = ocr_text if len(ocr_text) > 3 else "N/A"
-        else:
-            ocr_clean = "N/A"
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        ocr_text = pytesseract.image_to_string(gray).strip().replace("\n", " ")
+        ocr_clean = ocr_text if len(ocr_text) > 3 else "N/A"
+    except Exception:
+        ocr_clean = "N/A"
 
-        return {
-            "Image_ID":         image_id,
-            "Scene_Type":       classify_scene(labels),
-            "Objects_Detected": ", ".join(sorted(set(labels))) if labels else "None",
-            "Text_Extracted":   ocr_clean,
-            "Confidence_Score": avg_conf,
-        }
+    return {
+        "Scene_Type":       classify_scene(labels),
+        "Objects_Detected": ", ".join(sorted(set(labels))) if labels else "None",
+        "Text_Extracted":   ocr_clean,
+        "Confidence_Score": avg_conf,
+    }
 
-    except Exception as e:
-        print(f"Error processing {img_path}: {e}")
-        return {
-            "Image_ID":         image_id,
-            "Scene_Type":       "Unknown",
-            "Objects_Detected": "None",
-            "Text_Extracted":   "N/A",
-            "Confidence_Score": 0.50,
-        }
-
-def process_file(img_path: str, image_id: str = "IMG_001") -> pd.DataFrame:
-    """Single file entry point used by app.py"""
-    record = process_image(str(img_path), image_id)
-    return pd.DataFrame([record])
+def process_image(input_path, output_csv=None) -> pd.DataFrame:
+    """Entry point called by integration.py for a single image file."""
+    img_path = str(input_path)
+    detection = _run_detection(img_path)
+    record = {"Image_ID": "IMG_001", **detection}
+    df = pd.DataFrame([record])
+    if output_csv:
+        Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(output_csv, index=False)
+    return df
 
 def process_folder(input_path: str, output_csv: str) -> pd.DataFrame:
+    """Process all images in a folder."""
     p = Path(input_path)
     image_files = sorted(
         list(p.glob("*.jpg")) + list(p.glob("*.jpeg")) + list(p.glob("*.png"))
@@ -88,7 +82,8 @@ def process_folder(input_path: str, output_csv: str) -> pd.DataFrame:
     records = []
     for i, img_file in enumerate(image_files):
         print(f"Processing {img_file.name}...")
-        record = process_image(str(img_file), f"IMG_{i+1:03d}")
+        detection = _run_detection(str(img_file))
+        record = {"Image_ID": f"IMG_{i+1:03d}", **detection}
         records.append(record)
         print(f"  → {record['Scene_Type']} | {record['Objects_Detected']} | conf: {record['Confidence_Score']}")
 
