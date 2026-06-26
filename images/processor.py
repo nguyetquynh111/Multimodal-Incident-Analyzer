@@ -3,7 +3,7 @@ import pytesseract
 import pandas as pd
 import argparse
 import cv2
-import requests
+import numpy as np
 from pathlib import Path
 from inference_sdk import InferenceHTTPClient
 
@@ -12,12 +12,15 @@ CLIENT = InferenceHTTPClient(
     api_key="MeVt1zw9wmCsXsAspmAt"
 )
 
-MODEL_ID = "fire-detection-data-pre/4"
+MODEL_ID  = "fire-detection-data-pre/4"
+MODEL_ID2 = "yolov8n-640"
 
-def classify_scene(labels: list[str]) -> str:
+def classify_scene(labels: list) -> str:
     labels_lower = [l.lower() for l in labels]
-    if "fire" in labels_lower and "smoke" in labels_lower:
-        return "Fire Scene"
+    if "fire" in labels_lower and "person" in labels_lower:
+        return "Fire and Smoke Scene"
+    elif "fire" in labels_lower and "smoke" in labels_lower:
+        return "Fire and Smoke Scene"
     elif "fire" in labels_lower:
         return "Fire Scene"
     elif "smoke" in labels_lower:
@@ -26,31 +29,58 @@ def classify_scene(labels: list[str]) -> str:
         return "General Scene"
     return "General Scene"
 
-def process_image(img_path: str, image_id: str) -> dict:
-    # Run Roboflow inference
-    result = CLIENT.infer(img_path, model_id=MODEL_ID)
+def process_image(img_path: str, image_id: str = "IMG_001") -> dict:
+    try:
+        # Run fire detection
+        result1 = CLIENT.infer(img_path, model_id=MODEL_ID)
+        preds1 = result1.get("predictions", [])
 
-    predictions = result.get("predictions", [])
-    labels = [p["class"] for p in predictions]
-    confs  = [p["confidence"] for p in predictions]
+        # Run person detection
+        try:
+            result2 = CLIENT.infer(img_path, model_id=MODEL_ID2)
+            preds2 = [p for p in result2.get("predictions", [])
+                      if p["class"] == "person"]
+        except Exception:
+            preds2 = []
 
-    avg_conf = round(sum(confs) / len(confs), 2) if confs else 0.5
-    top_conf = round(max(confs), 2)              if confs else 0.5
+        all_preds = preds1 + preds2
+        labels = [p["class"] for p in all_preds]
+        confs  = [round(p["confidence"], 2) for p in all_preds]
+        avg_conf = round(sum(confs) / len(confs), 2) if confs else 0.50
 
-    # OCR
-    img = cv2.imread(img_path)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    ocr_text = pytesseract.image_to_string(gray).strip().replace("\n", " ")
+        # OCR
+        img = cv2.imread(str(img_path))
+        if img is not None:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            ocr_text = pytesseract.image_to_string(gray).strip().replace("\n", " ")
+            ocr_clean = ocr_text if len(ocr_text) > 3 else "N/A"
+        else:
+            ocr_clean = "N/A"
 
-    return {
-        "Image_ID":          image_id,
-        "Scene_Type":        classify_scene(labels),
-        "Objects_Detected":  ", ".join(sorted(set(labels))) if labels else "None",
-        "Text_Extracted":    ocr_text if ocr_text else "N/A",
-        "Confidence_Score":  top_conf,
-    }
+        return {
+            "Image_ID":         image_id,
+            "Scene_Type":       classify_scene(labels),
+            "Objects_Detected": ", ".join(sorted(set(labels))) if labels else "None",
+            "Text_Extracted":   ocr_clean,
+            "Confidence_Score": avg_conf,
+        }
 
-def process_folder(input_path: str, output_csv: str):
+    except Exception as e:
+        print(f"Error processing {img_path}: {e}")
+        return {
+            "Image_ID":         image_id,
+            "Scene_Type":       "Unknown",
+            "Objects_Detected": "None",
+            "Text_Extracted":   "N/A",
+            "Confidence_Score": 0.50,
+        }
+
+def process_file(img_path: str, image_id: str = "IMG_001") -> pd.DataFrame:
+    """Single file entry point used by app.py"""
+    record = process_image(str(img_path), image_id)
+    return pd.DataFrame([record])
+
+def process_folder(input_path: str, output_csv: str) -> pd.DataFrame:
     p = Path(input_path)
     image_files = sorted(
         list(p.glob("*.jpg")) + list(p.glob("*.jpeg")) + list(p.glob("*.png"))
