@@ -17,7 +17,6 @@ REQUIRED_INPUT_KEYS = (
     "time",
     "severity",
     "confidence",
-    "raw_text",
 )
 
 # Keys every ``summarize_incident`` return value must contain (specs.md §7).

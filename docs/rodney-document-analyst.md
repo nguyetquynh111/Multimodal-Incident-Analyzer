@@ -36,18 +36,16 @@ becomes `Unknown`.
 
 | Artifact field | Producing function | Reference |
 | --- | --- | --- |
-| `Incident_Type` | `classify_incident` — keyword/category matching, with an administrative-dominance guard so a stray crime word in a training/policy bundle does not flip the label. | [`processor.py:250`](../pdf/processor.py#L250) |
-| `Date` | `extract_date` — first explicit date matched by the month-name / numeric date regex. | [`processor.py:179`](../pdf/processor.py#L179) |
-| `Location` | `extract_location` — spaCy `GPE/LOC/FAC` entity when available, else an org-anchored or `City, ST` regex. | [`processor.py:193`](../pdf/processor.py#L193) |
-| `Officer` | `extract_officer` — first ranked law-enforcement title + proper name. | [`processor.py:186`](../pdf/processor.py#L186) |
-| `Summary` | `summarize_document` — source-grounded lead summary that prefers the document's subject/`RE:` line and otherwise the first body sentence, **skipping the letterhead block** (names/address/phone). Distinct from final `incident_summary`. | [`processor.py:381`](../pdf/processor.py#L381) |
+| `Incident_Type` | `classify_incident` — keyword/category matching, with an administrative-dominance guard so a stray crime word in a training/policy bundle does not flip the label. | [`processor.py`](../pdf/processor.py#L222) |
+| `Date` | `extract_date` — first explicit date matched by the month-name / numeric date regex. | [`processor.py`](../pdf/processor.py#L149) |
+| `Location` | `extract_location` — spaCy `GPE/LOC/FAC` entity when available, else an org-anchored or `City, ST` regex. | [`processor.py`](../pdf/processor.py#L165) |
+| `Officer` | `extract_officer` — first ranked law-enforcement title + proper name. | [`processor.py`](../pdf/processor.py#L158) |
+| `Summary` | `summarize_document` — source-grounded lead summary that prefers the document's subject/`RE:` line and otherwise the first body sentence, **skipping the letterhead block** (names/address/phone). Distinct from final `incident_summary`. | [`processor.py`](../pdf/processor.py#L332) |
 
-For a bundle, the per-agency text is assembled into **one row per detected
-document** by `analyze_document`
-([`processor.py:404`](../pdf/processor.py#L404)) and mapped onto the shared
-extractor contract by `map_to_extractor`
-([`processor.py:439`](../pdf/processor.py#L439)). See section 3.1 for the
-boundary detection that produces those per-agency segments.
+`analyze_document` ([`processor.py`](../pdf/processor.py#L404)) builds the
+artifact row directly. The current public PDF path processes the uploaded PDF
+as one document and returns one eight-column row; there is no
+`map_to_extractor` function or multi-document segmentation in the active path.
 
 ### Design decision: `Officer` on documents with no incident
 
@@ -58,80 +56,24 @@ and matches the README's stated design decision.
 
 ---
 
-## 3. OCR strategy — page-aware, not whole-document
+## 3. OCR strategy — whole-document fallback
 
-OCR is handled by `_extract_pages_text`
-([`processor.py:730`](../pdf/processor.py#L730)), which drives `_ocr_pages`
-([`processor.py:681`](../pdf/processor.py#L681)).
+The public `process_pdf_file` path
+([`processor.py`](../pdf/processor.py#L631)) first uses whole-document direct
+text extraction through PyMuPDF, falling back to pdfplumber. If the resulting
+text is fewer than 20 characters, it OCRs every page at 300 DPI through
+`_extract_text_ocr` and `_ocr_pages`
+([`processor.py`](../pdf/processor.py#L595)).
 
-The flow is:
+If `pytesseract` or the local `tesseract` executable is unavailable, OCR returns
+an empty result and field extractors emit `Unknown` rather than crashing. Set
+`TESSERACT_CMD` when the executable is installed outside `PATH`.
 
-1. Read every page's embedded text layer directly (PyMuPDF, then pdfplumber).
-2. Identify **only the pages whose direct text is empty/near-empty** (scanned
-   images).
-3. OCR (pytesseract, 300 DPI) **only those scanned pages**, keeping each page's
-   text separate so the document can be segmented (section 3.1).
-
-Why page-aware rather than OCR'ing the whole document:
-
-- **Accuracy.** Pages that already have a clean text layer should be read
-  directly; re-OCR'ing them would only introduce recognition errors.
-- **Speed.** OCR is the expensive step. On `LESO2.pdf`, ~65 of 75 pages are
-  scanned, so a full run still takes several minutes; OCR'ing the ~10 text pages
-  too would waste time for a worse result.
-- **Resilience.** If pytesseract or the system `tesseract` binary is missing, the
-  scanned pages are skipped with a logged warning and the text-layer pages still
-  produce the structured fields — the processor never crashes.
-
-OCR has been exercised end-to-end against the real scanned pages of `LESO2.pdf`
-with a real install (Tesseract 5.5.0); the full test suite passes.
-
-### 3.1 Multi-document segmentation — one row per agency
-
-`LESO2.pdf` is a **bundle of ~17 agencies' stapled 1033/MRAP proposals**, not a
-single report. `segment_pages`
-([`processor.py:581`](../pdf/processor.py#L581)) groups the per-page text into
-one segment per stapled document, and `process_pdf_file` runs the full
-eight-column pipeline independently on each segment, emitting `RPT_001`,
-`RPT_002`, … in document order.
-
-Boundary detection is **content-based, never a fixed page count** (the agencies
-vary in length from 1 to ~30 pages):
-
-- A new segment starts only at a page whose **header** (first ~400 chars) both
-  carries a new-document cue — a cover letter (`To: Whom it may Concern` /
-  `RE: MRAP`), a letterhead with a phone number, a `MEMORANDUM`, or a
-  policy/SOP/`Cover Sheet` title — **and** names a *different* agency than the
-  running one (`_header_agency` / `_same_agency`).
-- Trusting only the header means body prose that merely mentions another
-  agency ("…obtained for the police department") cannot split a long document;
-  this is what keeps the 30-page Little Rock aviation SOP as a single row.
-- Continuation pages (including OCR-only pages with no header cue) stay with the
-  current segment.
-
-**Known limitations (OCR-driven, deliberately surfaced rather than hidden):**
-
-1. **Mississippi County Sheriff is merged into the Lonoke County row.** Its
-   OCR'd letterhead reads "County of Mississippi / State of Arkansas / SHERIFF'S
-   DEPARTMENT", which the `<Place> Sheriff's Department` matcher does not catch,
-   so no boundary is detected at that page. Fixing it would need a `County of
-   <Place> … Sheriff` pattern; deferred to avoid over-fitting to one OCR form.
-2. **RPT_012 (Little Rock) is the weakest-extraction row in the dataset.** Its
-   source is the 30-page aviation SOP — an aircraft operating procedure
-   structurally unlike the other agencies' MRAP letters — so *both* of its
-   free-text fields are degraded: `Officer` reads "Sergeant Responsibilities"
-   and `Summary` is the bare fragment "to the following restrictions" rather
-   than a usable summary. The Crawford cover page similarly yields a noisier
-   `Summary` than the cleaner agencies. The rows are still the correct
-   *agencies*; only these free-text fields are degraded by OCR quality.
-3. **Three rows leak a leading article into `Location`** from OCR: RPT_011
-   ("The Jefferson"), RPT_015 ("The Rogers"), and RPT_016 ("The Union County").
-   Cosmetic and harmless — the agency identity is still correct.
-
-Net: **16 rows** are detected for the current fixture (the 17th agency,
-Mississippi County, shares the Lonoke row). The count is derived from content,
-so a different OCR engine/version could shift it slightly; the deterministic
-`segment_pages` unit test pins the splitting *logic* independently of OCR.
+The module contains an internal `_extract_pages_text` helper, but the active
+public processing path does not call it. Consequently, page-aware conditional
+OCR and splitting bundled PDFs into one row per agency are not current
+behavior. A bundle such as `LESO2.pdf` is represented by a single `RPT_001`
+artifact row.
 
 ---
 
@@ -145,9 +87,12 @@ inside the Integration workflow as `INC_PDF_001`, `INC_PDF_002`, … and stored 
 
 ## 5. Open handoff items for the Integration Lead
 
-1. **Low-signal administrative rows.** Every agency in `LESO2.pdf`
-   classifies as `Training / Administrative` with `severity` = `Low`, because these are administrative/training documents with source-grounded content but no violent, urgent, or criminal event signal. An `Unknown` event also uses `Low` severity.
-   Rodney's PDF processor should return the extracted PDF rows only. Integration decides whether rows are valid final incidents, must not invent crime facts, and must never insert rows for demo-only visibility exceptions.
+1. **Low-signal administrative documents.** `LESO2.pdf` is processed as one
+   PDF artifact row. If its extracted event is `Training / Administrative`,
+   Integration assigns `Low` severity because it contains no configured
+   high- or medium-severity event signal. An `Unknown` event also uses `Low`
+   severity. The PDF processor returns extracted fields only; Integration must
+   not invent crime facts.
 
 ---
 
@@ -156,7 +101,7 @@ inside the Integration workflow as `INC_PDF_001`, `INC_PDF_002`, … and stored 
 The required summary module lives in [`llm_summarizer/`](../llm_summarizer/).
 
 - **Input:** the structured integrated fields (`event`, `location`, `time`,
-  `severity`, `source`, `raw_text`) — use `Unknown` for `raw_text` if the source provides no supporting text; never pass raw unprocessed full files as the only input.
+  `severity`, `source`). Raw source/OCR text is not sent to the summary prompt; image OCR text can only affect summary indirectly when `update_image_location(row)` fills the cleaned `location` field first.
 - **Output:** the summarizer returns `incident_summary`, `summary_method`, and
   `summary_model`; Integration stores the accepted summary text as `Incident_Summary`, and the app maps it to Supabase `incident_summary`.
 - **Real LLM call:** OpenRouter chat completion in
@@ -169,8 +114,8 @@ The required summary module lives in [`llm_summarizer/`](../llm_summarizer/).
   paid API is required.
 - **Config:** `OPENROUTER_API_KEY`, `LLM_MODEL_NAME`
   (see `.env.example`; real keys must never be committed — `.env` is gitignored).
-- **Tests:** [`tests/test_llm_summarizer.py`](../tests/test_llm_summarizer.py),
-  8/8 passing (valid output, disabled, missing-key, network error, over-length,
-  empty). No test makes a network call.
+- **Tests:** [`tests/test_llm_summarizer.py`](../tests/test_llm_summarizer.py)
+  covers summary output, disabled/error fallbacks, invalid model output, and
+  image OCR location extraction. No test makes a network call.
 
 See the README for sample input, output, and run instructions.

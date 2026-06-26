@@ -7,6 +7,7 @@ Timestamp, Frame_ID, Event_Detected, Objects, Confidence
 
 from __future__ import annotations
 
+import argparse
 import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -438,6 +439,35 @@ def process_video(
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output, index=False)
     return frame
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the video processor for one evidence file from the command line."""
+
+    parser = argparse.ArgumentParser(description="Analyze video evidence.")
+    parser.add_argument("--input", required=True, help="A supported video file")
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH), help="Destination CSV path")
+    parser.add_argument(
+        "--annotated-frames-dir", default=None,
+        help="Optional directory for annotated sampled frames",
+    )
+    args = parser.parse_args(argv)
+    input_path = Path(args.input).expanduser()
+    if not input_path.is_file():
+        parser.error(f"Input file does not exist: {input_path}")
+
+    annotated_frames_dir = (
+        Path(args.annotated_frames_dir).expanduser()
+        if args.annotated_frames_dir else None
+    )
+    frame = process_video(input_path, args.output, annotated_frames_dir)
+    print(frame.to_string(index=False))
+    print(f"Saved {len(frame)} row(s) to {Path(args.output).expanduser()}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 
 
 __all__ = [

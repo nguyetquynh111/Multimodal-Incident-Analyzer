@@ -15,9 +15,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import cv2
-import numpy as np
 import pandas as pd
+import pytest
+
+cv2 = pytest.importorskip("cv2", reason="OpenCV is required for video processor tests.")
+np = pytest.importorskip("numpy", reason="NumPy is required for video processor tests.")
 
 from video.processor import (
     DRAFT_COLUMNS,

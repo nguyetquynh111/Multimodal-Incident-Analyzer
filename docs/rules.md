@@ -82,17 +82,19 @@ default before Integration.
 
 | **Modality** | **Exact Columns** | **Key Rule** |
 | --- | --- | --- |
-| Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm` or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
-| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Use direct extraction first and page-aware OCR only for scanned or near-empty pages |
-| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use supported Roboflow model labels and confidence from 0.0 to 1.0; no detected objects may be represented as the string `None`, and empty OCR text may be represented as `N/A` |
-| Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, `FRM_NNN`, motion gating, and documented event logic |
+| Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm`, `Concerned`, or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
+| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Extract whole-document text first; OCR the whole PDF only when its direct text is near-empty; emit one artifact row per uploaded PDF |
+| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use supported Roboflow model labels and confidence from 0.0 to 1.0. For an empty detection response, use `General Scene`, the string `None`, and neutral confidence `0.5`; empty OCR text uses `N/A`. OCR checks enlarged top-left and bottom-right crops first and keeps generic readable text after cleanup. During Integration, `llm_summarizer.update_image_location(...)` may populate final `Location` only when OCR text contains an explicit place. |
+| Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, source-frame-index `FRM_NNN` IDs, motion gating, and documented event logic |
 | Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` | Preserve `Raw_Text`; unsupported topics use `Other` |
 
 Use `Unknown` for unsupported or missing final evidence. For the image artifact only, no detected objects may be represented as the string `None` and empty OCR text may be represented as `N/A`; Integration must still map final missing fields safely. Never infer facts that are not present in the source or model output.
 
 Structured text inputs may also arrive as CSV
-(`Event, Location, Time, Severity, Summary, Confidence`). They are handled
-under `text/`, may produce many rows, and use `Unknown` for missing values.
+(`Event, Location, Time, Severity, Summary, Confidence`). The Integration
+dispatcher reads structured CSVs directly; CSVs that instead contain a
+recognized text field are processed by `text/processor.py`. They may produce
+many rows and use `Unknown` for missing values.
 JSON file uploads are not supported in the MVP and must be rejected with a clear message.
 
 ## 5. Integration Rules
@@ -124,11 +126,12 @@ llm_summarizer/
 └── schemas.py
 ```
 
-Integration must call this module during `integrate_records(...)` after row standardization and before ID generation and Supabase insertion. The required public function is:
+Integration must call this module during `integrate_records(...)` after row standardization and before ID generation and Supabase insertion. The required public functions are:
 
 ```text
-from llm_summarizer.summarizer import summarize_incident
+from llm_summarizer.summarizer import summarize_incident, update_image_location
 
+image_row = update_image_location(image_row)
 summary_result = summarize_incident(incident_row: dict)
 
 # Integration stores result["incident_summary"] as Incident_Summary, then the app maps it to Supabase incident_summary.
@@ -138,8 +141,8 @@ LLM summary rules:
 
 | **Rule** | **Requirement** |
 | --- | --- |
-| Separate responsibility | The summarizer only creates a readable summary; it must not compute final severity, rewrite IDs, insert database rows, or override Integration's normalized fields |
-| Use integrated fields | The prompt/function must summarize from required fields `event`, `location`, `time`, `severity`, `source`, and `raw_text`; use `Unknown` when supporting raw text is unavailable |
+| Separate responsibility | `summarize_incident(row)` only creates a readable summary; it must not compute final severity, rewrite IDs, insert database rows, or override Integration's normalized fields. `update_image_location(row)` may fill an image row's missing `Location` from explicit OCR location text, but must not change event, time, severity, IDs, or summaries. |
+| Use integrated fields | The summary prompt/function must summarize only from cleaned fields `event`, `location`, `time`, `severity`, and `source`. Raw OCR/source text must not be sent to the summary prompt. |
 | No hallucination | If a detail is missing, write `Unknown` or omit that detail; do not invent people, places, weapons, dates, or outcomes |
 | Length | Keep `incident_summary` short: one to three sentences, preferably under 80 words |
 | Fallback required | If OpenRouter is disabled, unavailable, slow, or invalid, use deterministic rule-based fallback |
@@ -152,22 +155,26 @@ LLM summary rules:
 | **Signal** | **Severity** |
 | --- | --- |
 | Fire, weapon, trapped person, collapse, fighting, severe crash | High |
-| Distressed audio sentiment or urgency score >= 0.75 | High |
+| Audio urgency score >= 0.70 | High |
+| Audio urgency score from 0.30 up to 0.69 | Medium |
 | Theft, robbery, public disturbance, property damage | Medium |
 | Neutral report or low-confidence non-violent event | Low |
 | No reliable signal | Low with Event = Unknown |
 
-When multiple signals disagree, choose the highest severity. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. When Event is `Unknown`, Severity must be `Low`, even if an upstream value says otherwise.
+Integration first forces configured high-risk event terms to `High`, preserves a valid explicit severity when provided, and otherwise maps a confidence or urgency score on a 0–1 scale as `< 0.30 = Low`, `< 0.70 = Medium`, and `>= 0.70 = High`. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. When Event is `Unknown`, Severity must be `Low`, even if an upstream value says otherwise.
 
-## 8. Source Priority Rules
+## 8. Per-Modality Mapping Rules
 
-| **Field** | **Priority** |
+Integration standardizes each input row independently; it does not merge facts
+from different modalities. The current mappings are:
+
+| **Field** | **Mapping** |
 | --- | --- |
-| Time | PDF/text/CSV explicit time first, then audio transcript, then video timestamp, then image OCR, then `Unknown` |
-| Location | PDF/text/CSV explicit location first, then audio transcript, then image OCR, then `Unknown` |
-| Event | Highest-confidence or highest-severity integrated signal first |
-| Severity | Highest severity across available signals |
-| Summary | Use integrated final fields first; raw text is supporting context only |
+| Time | PDF uses `Date`; video uses `Timestamp`; structured text uses its explicit time/date fields; unstructured text uses DATE/TIME entities; audio and image use optional draft `Time`/`Timestamp` fields when present, otherwise `Unknown` |
+| Location | Audio and PDF use their `Location`; text uses `Location` or location entities; image uses an optional draft `Location` first and may then use `llm_summarizer.update_image_location(...)`; video uses an optional draft `Location` only |
+| Event | Audio uses `Extracted_Event`; PDF uses `Incident_Type`; image uses `Scene_Type` then objects; video uses `Event_Detected`; text uses `Topic` or structured incident fields |
+| Severity | Apply the normalized event/explicit-severity/confidence rules in section 7 to each mapped row |
+| Summary | Use integrated final fields only; image OCR text may fill a missing `Location` before summary, but summaries must not quote or narrate raw OCR/source text |
 
 ## 9. Fallback Rules
 
@@ -175,11 +182,11 @@ When multiple signals disagree, choose the highest severity. Severity must alway
 | --- | --- |
 | Unsupported file type | Show clear Streamlit error and do not insert rows |
 | Extractor returns empty DataFrame | Show no incident found message; insert nothing |
-| Failed audio transcription | Use Unknown transcript-derived fields and continue if possible |
-| PDF text extraction empty | Try OCR fallback when enabled |
+| Failed audio transcription | Show a processing error and do not insert rows |
+| PDF direct extraction near-empty | Try whole-document OCR fallback |
 | OCR unavailable or failed | Use Unknown fields and continue |
 | Image model detects no supported objects | Keep image artifact values such as `Objects_Detected = None` and `Text_Extracted = N/A` when appropriate; Integration must still map final missing fields safely |
-| Roboflow unavailable, quota exhausted, or API key missing | Use Unknown fallback and do not crash |
+| Roboflow unavailable, quota exhausted, or API key missing | Write safe image artifact placeholders (`None`, `N/A`, confidence `0.0`) and do not crash |
 | Video model detects nothing | Use Unknown fields |
 | Video frame has no qualifying motion | Skip model inference for that frame and do not invent an event |
 | Text has no supported topic | Use `Other` |

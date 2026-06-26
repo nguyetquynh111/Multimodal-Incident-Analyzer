@@ -189,6 +189,63 @@ def _style_table(display_df: pd.DataFrame):
     return styler
 
 
+def _review_queue() -> dict[str, dict]:
+    """Return reviews collected in this browser session, keyed by filename."""
+
+    return st.session_state.setdefault("review_queue", {})
+
+
+def _queue_review(filename: str, source_type: str, draft: pd.DataFrame) -> None:
+    """Save a completed review so it can be included in the master UNION."""
+
+    queue = _review_queue()
+    previous = queue.get(filename)
+    has_changed = (
+        previous is None
+        or previous["source_type"] != source_type
+        or not previous["draft"].equals(draft)
+    )
+    queue[filename] = {"source_type": source_type, "draft": draft.copy()}
+    if has_changed:
+        # A previously combined result is stale after a new or updated review.
+        st.session_state.pop("master", None)
+
+
+def _sync_current_review() -> None:
+    """Include the currently displayed review in the session's master queue."""
+
+    result = st.session_state.get("ingest")
+    if not result or "draft" not in result or "filename" not in result:
+        return
+    source_type = result.get("source_type") or ig.detect_source_type(result["filename"])
+    if source_type:
+        _queue_review(result["filename"], source_type, result["draft"])
+
+
+def _queued_review_status() -> dict[str, int]:
+    status = {source_type: 0 for source_type in ig.MODALITIES}
+    for item in _review_queue().values():
+        status[item["source_type"]] += 1
+    return status
+
+
+def _build_queued_incidents(existing_ids: list) -> pd.DataFrame:
+    """Integrate and UNION each queued modality review into one master frame."""
+
+    frames: list[pd.DataFrame] = []
+    used_ids = list(existing_ids)
+    for filename, item in _review_queue().items():
+        frame = ig.integrate_records(
+            item["draft"], item["source_type"], used_ids, source_filename=filename
+        )
+        frames.append(frame)
+        used_ids.extend(frame["Incident_ID"].tolist())
+
+    if not frames:
+        return pd.DataFrame(columns=list(ig.INTEGRATION_OUTPUT_COLUMNS))
+    return pd.concat(frames, ignore_index=True)
+
+
 def _severity_donut(view: pd.DataFrame) -> alt.Chart:
     counts = (
         view["severity"].value_counts().reindex(SEVERITY_ORDER).fillna(0)
@@ -337,6 +394,74 @@ def _show_audio_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -
         st.markdown(
             f'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;'
             f'padding:12px;font-size:.9rem;line-height:1.7">{highlighted}</div>',
+            unsafe_allow_html=True,
+        )
+
+
+def _show_image_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> None:
+    """Show the uploaded image with the processor's scene, object, and OCR evidence."""
+
+    import html as _html
+
+    if file_path and Path(file_path).exists():
+        detections = draft_df.attrs.get("image_detections", []) if isinstance(draft_df, pd.DataFrame) else []
+        try:
+            from images.processor import annotate_image_with_detections
+
+            annotated_image = annotate_image_with_detections(file_path, detections=detections)
+            has_boxes = bool(detections)
+            st.image(
+                annotated_image,
+                caption="Uploaded image with detection boxes" if has_boxes else "Uploaded image",
+                width="stretch",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not annotate image evidence: %s", exc)
+            st.image(file_path, caption="Uploaded image", width="stretch")
+    elif file_path:
+        st.caption("Source image is no longer available for preview.")
+
+    if draft_df.empty:
+        return
+
+    row = draft_df.iloc[0]
+    scene = str(row.get("Scene_Type", "Unknown")).strip()
+    objects = str(row.get("Objects_Detected", "Unknown")).strip()
+    extracted_text = str(row.get("Text_Extracted", "Unknown")).strip()
+    confidence_raw = row.get("Confidence_Score", 0)
+    try:
+        confidence = float(confidence_raw)
+        if pd.isna(confidence):
+            confidence = 0.0
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    scene_display = "—" if scene.lower() in ("unknown", "nan", "") else scene
+    col_scene, col_confidence = st.columns(2)
+    col_scene.metric("Scene classification", scene_display)
+    col_confidence.metric("Detection confidence", f"{confidence:.0%}")
+    st.progress(confidence)
+
+    if objects.lower() not in ("unknown", "nan", ""):
+        chips = "".join(
+            f'<span style="display:inline-block;background:#EDE9FE;color:#5B21B6;'
+            f'padding:3px 9px;margin:2px 3px;border-radius:999px;'
+            f'font-size:.8rem;font-weight:700">{_html.escape(item.strip())}</span>'
+            for item in objects.split(",")
+            if item.strip()
+        )
+        if chips:
+            st.markdown("**Detected objects**")
+            st.markdown(chips, unsafe_allow_html=True)
+
+    if extracted_text.lower() not in ("unknown", "nan", ""):
+        st.markdown("**Text found in image**")
+        st.markdown(
+            f'<div style="background:#F8FAFC;border-left:4px solid {ACCENT};'
+            f'border-radius:0 8px 8px 0;padding:12px 16px;font-size:.9rem;'
+            f'line-height:1.7;color:#334155;white-space:pre-wrap">'
+            f'{_html.escape(extracted_text)}</div>',
             unsafe_allow_html=True,
         )
 
@@ -604,6 +729,8 @@ def _show_visual_evidence(
             _show_audio_evidence(draft_df, file_path)
         elif source_type == "pdf":
             _show_pdf_evidence(draft_df, file_path)
+        elif source_type == "image":
+            _show_image_evidence(draft_df, file_path)
         elif source_type == "video":
             _show_video_evidence(file_path, filename)
         elif source_type == "text":
@@ -616,7 +743,7 @@ def _show_visual_evidence(
 # View 1: Ingest & Convert
 # --------------------------------------------------------------------------- #
 def view_ingest() -> None:
-    _page_head("upload_file", "Add Evidence", "Choose a file and we'll turn it into a clear incident record.")
+    _page_head("upload_file", "Add Incident", "Choose a file and we'll turn it into a clear incident record.")
 
     uploaded = st.file_uploader("Choose an evidence file", type=ig.supported_extensions())
     if uploaded is None:
@@ -648,6 +775,7 @@ def view_ingest() -> None:
                     existing_incident_ids(),
                     source_filename=uploaded.name,
                 )
+                _queue_review(uploaded.name, source_type, draft_df)
                 st.session_state["ingest"] = {
                     "draft": draft_df,
                     "final": final_df,
@@ -696,7 +824,73 @@ def view_ingest() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# View 2: Dashboard
+# View 2: Integrate (Final Integration Task)
+# --------------------------------------------------------------------------- #
+def view_integrate() -> None:
+    _page_head("hub", "Combine Reports", "Bring completed evidence reviews into one organized incident list.")
+
+    _sync_current_review()
+    status = _queued_review_status()
+    _section("Available evidence reviews")
+    cols = st.columns(len(ig.MODALITIES))
+    for col, source_type in zip(cols, ig.MODALITIES):
+        label = ig.source_label(source_type)
+        count = status[source_type]
+        count_label = "review" if count == 1 else "reviews"
+        col.markdown(
+            f'<div class="mcard">{_icon(SOURCE_ICON.get(label, "description"))}'
+            f'<div class="mname">{label}</div><div class="mcount">{count} {count_label}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.caption("Counts include every evidence file reviewed during this browser session.")
+    if sum(status.values()) == 0:
+        st.info("No completed evidence reviews are available yet. Start by adding an evidence file.")
+        return
+
+    st.write("")
+    if st.button("Combine reports", type="primary", icon=":material/merge:"):
+        with st.spinner("Bringing the reports together…"):
+            try:
+                st.session_state["master"] = _build_queued_incidents(existing_incident_ids())
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Report combination failed")
+                st.error(_friendly_error(exc, "combine these reports"))
+
+    master = st.session_state.get("master")
+    if master is None or master.empty:
+        return
+
+    k = st.columns(3)
+    _stat(k[0], "Total incidents", len(master), icon="summarize")
+    _stat(k[1], "Evidence types", master["Source"].nunique(), color=ACCENT, icon="hub")
+    _stat(
+        k[2], "High severity", int(master["Severity"].value_counts().get("High", 0)),
+        color=SEV_COLORS["High"], icon="priority_high",
+    )
+
+    st.write("")
+    _section(f"Combined incident list · {len(master)} incidents")
+    st.dataframe(_style_table(master), width="stretch", hide_index=True)
+
+    chart_data = ig.to_supabase_payload_frame(master)
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        _section("Records per source")
+        st.altair_chart(_hbar(chart_data["source"].value_counts(), "Source"), width="stretch")
+    with cc2:
+        _section("Severity by source")
+        st.altair_chart(_severity_by_source(chart_data), width="stretch")
+
+    st.download_button(
+        "Download combined report", master.to_csv(index=False).encode("utf-8"),
+        file_name="final_incident_dataset.csv", mime="text/csv",
+        icon=":material/download:", width="stretch",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# View 3: Dashboard
 # --------------------------------------------------------------------------- #
 def view_dashboard() -> None:
     _page_head("insights", "Incident Overview", "See priorities, patterns, and recent activity at a glance.")
@@ -708,7 +902,7 @@ def view_dashboard() -> None:
         st.error(_friendly_error(exc, "load incident records"))
         return
     if df.empty:
-        st.info("No incidents have been added yet. Start with **Add Evidence**.")
+        st.info("No incidents have been added yet. Start with **Add Incident**.")
         return
 
     df = ig.with_display_ids(df)
@@ -1108,7 +1302,8 @@ def _bridge_streamlit_secrets() -> None:
 
 
 PAGES = [
-    ("Add Evidence", ":material/upload_file:", view_ingest),
+    ("Add Incident", ":material/upload_file:", view_ingest),
+    ("Combine Reports", ":material/hub:", view_integrate),
     ("Incident Overview", ":material/insights:", view_dashboard),
     ("Manage Incidents", ":material/edit_note:", view_manage),
 ]

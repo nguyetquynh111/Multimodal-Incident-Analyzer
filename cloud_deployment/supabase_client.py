@@ -23,6 +23,7 @@ except ImportError:  # Allows validation-only use before dependencies are instal
     create_client = None
 
 from .validators import INCIDENT_COLUMNS
+from integration.integration import normalize_event, normalize_severity
 
 logger = logging.getLogger(__name__)
 
@@ -286,6 +287,10 @@ def _validate_updates(updates: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(updates)
     if "incident_id" in payload:
         payload["incident_id"] = _validate_incident_id(payload["incident_id"])
+    if "event" in payload:
+        payload["event"] = normalize_event(payload["event"])
+    if "severity" in payload:
+        payload["severity"] = normalize_severity(payload["severity"])
     if re.match(r"^unknown(?:\b|[_/-])", str(payload.get("event", "")).strip(), re.IGNORECASE):
         payload["event"] = "Unknown"
         payload["severity"] = "Low"

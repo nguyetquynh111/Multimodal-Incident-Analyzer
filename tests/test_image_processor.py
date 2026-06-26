@@ -25,7 +25,17 @@ def test_repository_includes_image_samples_for_offline_contract_tests() -> None:
 def test_sample_image_returns_exact_draft_schema_without_network_calls(
     monkeypatch: pytest.MonkeyPatch, sample: Path
 ) -> None:
-    monkeypatch.setattr(processor, "_infer_labels", lambda _: (["fire", "person"], 0.88))
+    monkeypatch.setattr(
+        processor,
+        "_infer_detection_result",
+        lambda _: (
+            [
+                {"class": "fire", "confidence": 0.88, "x": 50, "y": 40, "width": 20, "height": 10},
+                {"class": "person", "confidence": 0.74, "x": 30, "y": 35, "width": 12, "height": 24},
+            ],
+            True,
+        ),
+    )
     monkeypatch.setattr(processor, "_ocr_text", lambda _: "Main Street")
 
     frame = processor.process_image(sample)
@@ -35,13 +45,15 @@ def test_sample_image_returns_exact_draft_schema_without_network_calls(
         "Image_ID": "IMG_001", "Scene_Type": "Fire / Arson", "Objects_Detected": "fire, person",
         "Text_Extracted": "Main Street", "Confidence_Score": 0.88,
     }
+    assert frame.attrs["image_detections"][0]["class"] == "fire"
+    assert frame.attrs["image_detections"][0]["width"] == 20
     assert 0.0 <= float(frame.iloc[0]["Confidence_Score"]) <= 1.0
 
 
 def test_folder_processing_uses_the_samples_in_sorted_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     for sample in SAMPLE_IMAGES:
         shutil.copy2(sample, tmp_path / sample.name)
-    monkeypatch.setattr(processor, "_infer_labels", lambda _: ([], 0.0))
+    monkeypatch.setattr(processor, "_infer_detection_result", lambda _: ([], False))
     monkeypatch.setattr(processor, "_ocr_text", lambda _: processor.UNKNOWN)
 
     output = tmp_path / "image_output.csv"
@@ -51,3 +63,47 @@ def test_folder_processing_uses_the_samples_in_sorted_order(monkeypatch: pytest.
     assert frame["Image_ID"].tolist() == [f"IMG_{index:03d}" for index in range(1, len(SAMPLE_IMAGES) + 1)]
     assert list(saved.columns) == processor.ARTIFACT_COLUMNS
     assert not saved.isnull().values.any()
+
+
+def test_no_image_signal_uses_documented_artifact_placeholders(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(processor, "_infer_detection_result", lambda _: ([], True))
+    monkeypatch.setattr(processor, "_ocr_text", lambda _: processor.NO_TEXT)
+
+    row = processor.analyze_image(SAMPLE_IMAGES[0])
+
+    assert row["Scene_Type"] == "General Scene"
+    assert row["Objects_Detected"] == "None"
+    assert row["Text_Extracted"] == "N/A"
+    assert row["Confidence_Score"] == 0.5
+
+
+def test_roboflow_bbox_coordinates_convert_to_box_corners() -> None:
+    detection = {"class": "fire", "confidence": 0.91, "x": 50, "y": 40, "width": 20, "height": 10}
+
+    assert processor._bbox_from_detection(detection, 100, 80) == (40, 35, 60, 45)
+
+
+@pytest.mark.parametrize(
+    ("readings", "expected"),
+    [
+        (["readable ExampleNews.com"], "readable ExampleNews.com"),
+        (["In Loving Memory"], "In Loving Memory"),
+        (["unrelated marks"], "unrelated marks"),
+        (["!!!", "  "], processor.NO_TEXT),
+    ],
+)
+def test_ocr_cleanup_preserves_generic_readable_text(readings, expected) -> None:
+    """Exercise OCR text cleanup without requiring OpenCV/Tesseract in CI."""
+
+    cleaned = [
+        processor._clean_ocr_candidate(reading)
+        for reading in readings
+        if processor._clean_ocr_candidate(reading)
+    ]
+
+    if cleaned:
+        actual = max(cleaned, key=lambda value: (len("".join(ch for ch in value if ch.isalnum())), len(value)))
+    else:
+        actual = processor.NO_TEXT
+
+    assert actual == expected

@@ -321,19 +321,39 @@ def _map_pdf(row: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def update_image_location_with_llm(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Use llm_summarizer's image helper to fill Location from OCR text."""
+
+    try:
+        from llm_summarizer.summarizer import update_image_location
+
+        return update_image_location(dict(row))
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Image OCR location update skipped: %s", type(exc).__name__)
+        return dict(row)
+
+
 def _map_image(row: Mapping[str, Any]) -> dict[str, Any]:
-    event = normalize_event(_first_known(row, "Scene_Type"))
-    objects = _clean(row.get("Objects_Detected"))
+    def image_value(value: Any) -> str:
+        """Treat image-artifact placeholders as missing Integration evidence."""
+
+        cleaned = _clean(value)
+        return UNKNOWN if cleaned.casefold() in {"none", "n/a"} else cleaned
+
+    row = update_image_location_with_llm(row)
+    event = normalize_event(image_value(row.get("Scene_Type")))
+    objects = image_value(row.get("Objects_Detected"))
     if event == UNKNOWN and objects != UNKNOWN:
         event = normalize_event(objects)
+    text = image_value(row.get("Text_Extracted"))
+    raw_text = text if text != UNKNOWN else objects
+    location = _first_known(row, "Location")
     return {
         "event": event,
-        # OCR text only becomes a location when it clearly is one; the draft
-        # keeps it Unknown, so we default to Unknown here.
-        "location": _first_known(row, "Location"),
+        "location": location,
         "time": _first_known(row, "Time", "Timestamp"),
         "confidence": _confidence(row, "Confidence_Score"),
-        "raw_text": _first_known(row, "Text_Extracted", "Objects_Detected"),
+        "raw_text": raw_text,
         "severity": _mapped_severity(
             row,
             explicit=("Severity",),

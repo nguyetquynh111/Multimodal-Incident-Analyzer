@@ -229,6 +229,26 @@ def test_update_incident_uses_incident_key(
     assert summary["data"] == response.data
 
 
+def test_update_incident_normalizes_event_and_severity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = MagicMock()
+    query = MagicMock()
+    response = SimpleNamespace(data=[{"id": 7, "event": "Updated Test Event"}])
+    client.table.return_value.update.return_value = query
+    query.eq.return_value.execute.return_value = response
+    monkeypatch.setattr(supabase_client, "get_supabase_client", lambda: client)
+
+    supabase_client.update_incident(
+        "INC_TXT_007",
+        {"event": "updated test event", "severity": "medium"},
+    )
+
+    client.table.return_value.update.assert_called_once_with(
+        {"event": "Updated Test Event", "severity": "Medium"}
+    )
+
+
 def test_delete_incident_uses_incident_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -298,7 +318,7 @@ def test_supabase_insert_exists_then_delete() -> None:
             limit=2,
         )
         assert len(selected) == 1
-        assert selected[0]["event"] == "test event"
+        assert selected[0]["event"] == "Test Event"
 
         update_summary = supabase_client.update_incident(
             incident_id,
@@ -307,7 +327,7 @@ def test_supabase_insert_exists_then_delete() -> None:
         assert update_summary["updated_count"] == 1
         updated = supabase_client.get_incident(incident_id)
         assert updated is not None
-        assert updated["event"] == "updated test event"
+        assert updated["event"] == "Updated Test Event"
         assert updated["severity"] == "Medium"
 
         delete_summary = supabase_client.delete_incident(incident_id)

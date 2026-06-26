@@ -8,7 +8,7 @@ multimodal-incident-analyzer/
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
-├── app.py                     # planned Streamlit entry point
+├── app.py                     # Streamlit entry point
 ├── .github/
 │   └── workflows/
 ├── .streamlit/
@@ -21,8 +21,7 @@ multimodal-incident-analyzer/
 │   ├── tech.md
 │   ├── rules.md
 │   ├── tickets.md
-│   ├── rodney-document-analyst.md
-│   └── diagrams/
+│   └── rodney-document-analyst.md
 ├── images/
 ├── integration/
 ├── llm_summarizer/
@@ -57,21 +56,21 @@ and `cloud_deployment/tests/test_cloud_deployment.py`.
 | cloud_deployment/validators.py | Validate Supabase insert payloads |
 | cloud_deployment/exporter.py | Query Supabase and export the final approved nine-field CSV |
 | audio/ | Transcribe audio and output `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` |
-| pdf/ | Extract document fields with page-aware conditional OCR and output `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` |
-| images/ | Use the Roboflow Inference SDK for supported scene/object signals, run OCR, and output `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` |
+| pdf/ | Extract whole-document fields and use whole-document OCR only when direct extraction is near-empty; output `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` |
+| images/ | Use the Roboflow Inference SDK for supported scene/object signals and session-only bounding-box overlays; OCR enlarged corner crops and keep generic readable text after cleanup; output `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` |
 | video/ | Sample frames, gate detection by motion, and output `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` |
 | text/ | Preserve source text, run NLP analysis, and output `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` |
-| Structured text files | CSV is parsed as text evidence; JSON uploads are unsupported; conventional outputs live under `text/output/` |
-| llm_summarizer/summarizer.py | Public `summarize_incident(row)` function called by Integration after row standardization and before ID generation/Supabase insert |
-| llm_summarizer/prompts.py | Prompt template for OpenRouter summary generation |
+| Structured text files | The Integration dispatcher reads incident-like CSVs directly; text-oriented CSVs are parsed by `text/processor.py`; JSON uploads are unsupported; conventional text artifacts live under `text/output/` |
+| llm_summarizer/summarizer.py | Two public capabilities: `summarize_incident(row)` for summaries and `update_image_location(row)` for image OCR location updates |
+| llm_summarizer/prompts.py | Prompt templates for OpenRouter summary generation and image OCR location extraction |
 | llm_summarizer/fallback.py | Rule-based deterministic summary when OpenRouter fails or is disabled |
-| llm_summarizer/schemas.py | Input/output schema constants for summary function |
+| llm_summarizer/schemas.py | Input/output schema constants for the summary function |
 
 ## 3. LLM Summarizer Technical Contract
 
-The LLM summarizer must be a separate folder and must not be embedded inside the modality extractors. The Integration workflow imports it and calls it after row standardization and before ID generation.
+The LLM summarizer must be a separate folder and must not be embedded inside the modality extractors. The Integration workflow imports it after row standardization. For images the order is: OCR writes `Text_Extracted`, Integration calls `update_image_location(row)` to fill a missing `Location`, and then Integration calls `summarize_incident(row)` before ID generation.
 
-Public function:
+Public functions:
 
 ```text
 # llm_summarizer/summarizer.py
@@ -83,6 +82,13 @@ def summarize_incident(incident_row: dict) -> dict:
       - incident_summary: str
       - summary_method: "llm" | "rule_based" | "disabled" | "error"
       - summary_model: str
+    """
+
+def update_image_location(image_row: dict) -> dict:
+    """
+    Input: one image draft row with Text_Extracted and optional Location.
+    Output: a copy of the row with Location filled only when OCR text contains
+    an explicit road, highway, county, address, or LLM-confirmed place.
     """
 ```
 
@@ -117,10 +123,10 @@ The LLM summarizer uses OpenRouter when `OPENROUTER_API_KEY` is configured. The 
 | Core | python, pandas, numpy, streamlit, python-dotenv |
 | Supabase | supabase |
 | Audio | openai-whisper, torch, and the FFmpeg system command |
-| PDF | pymupdf, pdfplumber, pytesseract |
-| Image | opencv-python, pillow, pytesseract, inference-sdk |
-| Video | opencv-python, ultralytics, moviepy, imageio |
-| NLP/LLM optional | spacy, nltk, transformers, and an optional local LLM client |
+| PDF | pymupdf, pdfplumber, pytesseract, plus the Conda `tesseract` executable for whole-document OCR fallback |
+| Image | opencv-python, pillow, pytesseract, inference-sdk, plus the Conda `tesseract` executable for OCR |
+| Video | opencv-python, ultralytics |
+| NLP/LLM optional | spacy and the OpenRouter HTTP client (`requests`) |
 | Testing | pytest |
 | Not required in MVP | watchdog, sqlite-specific tooling, AWS SDK, async queue libraries |
 
@@ -134,10 +140,14 @@ The LLM summarizer uses OpenRouter when `OPENROUTER_API_KEY` is configured. The 
 | OPENROUTER_API_KEY | No | Enables OpenRouter summaries when configured |
 | ROBOFLOW_API_KEY | No | Optional/free-tier Roboflow key for image inference; must come from environment variables, never committed |
 | ROBOFLOW_MODEL_ID | No | Optional Roboflow model id; defaults to `fire-detection-data-pre/4` when used |
+| ROBOFLOW_API_URL | No | Optional image inference endpoint; defaults to `https://detect.roboflow.com` |
 | LLM_MODEL_NAME | No | Optional OpenRouter model label for summary module |
 | LLM_TIMEOUT_SECONDS | No | Optional timeout for summary generation before fallback |
-| ENABLE_OCR_FALLBACK | No | Allow PDF/image OCR fallback |
-| FAST_DEMO_MODE | No | Use reduced processing for demo safety |
+| TESSERACT_CMD | No | Optional path to the local Tesseract executable used by PDF OCR |
+| WHISPER_MODEL | No | Optional Whisper model name; defaults to `base` |
+| WHISPER_DEVICE | No | Whisper execution device; defaults to `cpu` |
+| WHISPER_LANGUAGE | No | Transcription language; defaults to `en` |
+| WHISPER_MODEL_DIR | No | Optional local directory for Whisper model downloads |
 
 For deployment, store Supabase values in the host's secret manager or environment settings. Do not commit credentials or raw evidence. The hosted app only needs to support the classroom workflow; production availability and emergency-service security certification are out of scope.
 
@@ -169,15 +179,15 @@ After user confirmation, the insert payload sent by the app contains only the se
 
 | **Risk** | **Mitigation** |
 | --- | --- |
-| Heavy models run slowly inside Streamlit | Use FAST_DEMO_MODE, small models, cached model downloads, and short demo files |
+| Heavy models run slowly inside Streamlit | Use short demo files and cached model downloads |
 | LLM model unavailable | Use deterministic rule-based summary fallback from `llm_summarizer/fallback.py` |
 | LLM hallucinates details | Constrain prompt, validate output, and never allow LLM to override normalized fields |
 | Supabase credentials missing or wrong | Show setup guidance and do not crash |
 | Integration schema mismatch | Add strict validator tests before Supabase insert |
 | ID collision if multiple users insert at the same time | For class demo, query current max per type before insert; document single-user assumption |
-| OCR setup is difficult | Use text-based PDF for main demo and keep OCR fallback optional |
+| OCR setup is difficult | Use text-based PDF for the main demo; when direct extraction is near-empty, the processor attempts OCR and degrades to Unknown fields if it is unavailable |
 | Video processing is slow | Reject long videos, use a documented sample interval, and run detection only on motion frames |
-| Roboflow image API unavailable, quota exhausted, or key missing | Treat Roboflow as optional/free-tier external inference; load the API key from environment variables and fall back to Unknown without crashing |
+| Roboflow image API unavailable, quota exhausted, or key missing | Treat Roboflow as optional/free-tier external inference; load the API key from environment variables and return safe image artifact placeholders without crashing |
 | Object detections are mistaken for activities | Require documented temporal or rule-based evidence for video event labels |
 | Extractor returns nulls | Validators convert missing values to Unknown and ensure an Unknown event has Low severity |
 | Dashboard reads local stale data | Dashboard must query Supabase directly |

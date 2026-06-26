@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from streamlit.testing.v1 import AppTest
+import pytest
+
+streamlit_testing = pytest.importorskip(
+    "streamlit.testing.v1",
+    reason="Streamlit is required for the dashboard smoke test.",
+)
+AppTest = streamlit_testing.AppTest
 
 
 def test_streamlit_dashboard_loads_without_an_exception() -> None:

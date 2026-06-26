@@ -17,18 +17,18 @@
 | Input flow | Streamlit single-file upload; exactly one file per processing run |
 | Processing mode | Synchronous processing inside the Streamlit app |
 | Integration strategy | Extractor output is passed as a pandas DataFrame to Integration logic |
-| LLM summary strategy | Separate `llm_summarizer/` module. The Integration workflow calls it after row standardization and before ID generation/Supabase insert. OpenRouter when configured, rule-based fallback always required. |
+| LLM summary strategy | Separate `llm_summarizer/` module with two responsibilities: `summarize_incident(row)` for summaries and `update_image_location(row)` for image OCR location updates before summarization. OpenRouter can be used when configured, and rule-based fallbacks are required. |
 | Cloud/data scope | Supabase stores structured incident rows only; raw files are not uploaded to Supabase Storage in the MVP |
 | Cloud deployment | Host the class prototype with protected Supabase credentials; production hosting is out of scope |
 | Final submission date | June 28, 2026 |
 
 ## 2. Product Definition
 
-The product is a class prototype that converts one uploaded multimodal evidence file into one or more structured incident rows. The app supports five modalities: audio, PDF, image, video, and text. CSV is the supported structured text input format handled by the text path. JSON file uploads are not supported in the MVP. Streamlit handles the upload and UI. The selected extractor processes the file synchronously and returns a normalized intermediate pandas DataFrame. Integration receives that DataFrame, cleans and standardizes the extracted information, calls the LLM summarizer, generates IDs, and returns zero, one, or many final incident rows for user review before Supabase insertion.
+The product is a class prototype that converts one uploaded multimodal evidence file into one or more structured incident rows. The app supports five modalities: audio, PDF, image, video, and text. CSV is the supported structured text input format: structured incident CSVs are read directly by the Integration dispatch path, while text-oriented CSVs are analyzed by `text/processor.py`. JSON file uploads are not supported in the MVP. Streamlit handles the upload and UI. The selected extractor processes the file synchronously and returns a normalized intermediate pandas DataFrame. Integration receives that DataFrame, cleans and standardizes the extracted information, calls the LLM summarizer, generates IDs, and returns zero, one, or many final incident rows for user review before Supabase insertion.
 
-During the Integration flow, Integration must call the separate LLM summarizer function from `llm_summarizer/` before ID generation. The summarizer adds a short `Incident_Summary` to each integrated row. Integration then generates synthetic `Incident_ID` values using the abbreviated `INC_TYPE_NUMBER` format and returns final rows for preview. The app inserts rows into Supabase only after the user confirms the final Integration result.
+During the Integration flow, Integration must call the separate LLM summarizer function from `llm_summarizer/` before ID generation. For image rows, Integration may first call `update_image_location(row)` when `Text_Extracted` contains non-placeholder text and no explicit `Location` exists. That helper fills a missing location from explicit OCR text through OpenRouter when configured, with a strict rule-based fallback for obvious road/address/county text. The summarizer then adds a short `Incident_Summary` to each integrated row using only cleaned fields. Integration generates synthetic `Incident_ID` values using the abbreviated `INC_TYPE_NUMBER` format and returns final rows for preview. The app inserts rows into Supabase only after the user confirms the final Integration result.
 
-After insertion, the application treats Supabase as the source of truth. Dashboard filtering, selected-incident summary display, and final CSV export must read from Supabase, not from local intermediate files.
+After insertion, the application treats Supabase as the source of truth. Dashboard filtering, selected-incident summary display, and the dashboard's final nine-field CSV export read from Supabase. The separate Combine Reports view can download a session-local, seven-field Integration preview before rows are inserted.
 
 ## 3. Problem
 
@@ -62,7 +62,7 @@ Incident evidence can arrive as emergency calls, PDF reports, scene photos, surv
 | NG6 | Async queue or external worker | Processing is synchronous inside Streamlit for the MVP |
 | NG7 | Multi-file batch or folder upload | The MVP accepts one file at a time |
 | NG8 | Legal-grade crime classification | Output is for demonstration and education, not official investigation |
-| NG9 | LLM as a factual authority | The LLM summarizer may summarize integrated fields; it must not override final event, location, time, or severity |
+| NG9 | LLM as a broad factual authority | `summarize_incident(row)` may summarize integrated fields; `update_image_location(row)` may extract only an explicit location from image OCR text. Neither path may infer unrelated facts, compute severity, generate IDs, or insert rows. |
 | NG10 | Train custom vision models | Pretrained models and documented rules are sufficient for the class prototype |
 
 ## 6. Users
@@ -81,7 +81,7 @@ Incident evidence can arrive as emergency calls, PDF reports, scene photos, surv
 | **Input Type** | **MVP Limit** | **Required Result** |
 | --- | --- | --- |
 | Audio | Exactly 1 uploaded file per run | Speech transcription and urgency/event extraction |
-| PDF | Exactly 1 uploaded file per run | Direct text extraction, page-aware OCR fallback for scanned/near-empty pages, and structured report fields |
+| PDF | Exactly 1 uploaded file per run | Whole-document direct text extraction, with whole-document OCR fallback only when the direct text is near-empty, and structured report fields |
 | Image | Exactly 1 uploaded file per run | Scene/object detection, OCR, and bounded confidence |
 | Video | Exactly 1 uploaded file per run; max 5 minutes | Regular frame sampling, motion gating, and timestamped event signals |
 | Text | Exactly 1 uploaded `.txt` or `.csv` file per run | Preserved source text or structured CSV text evidence, with entities, sentiment/topic, or incident-like fields |
@@ -111,6 +111,8 @@ Detect file type and route to one extractor
 Extractor returns normalized intermediate pandas DataFrame
         ↓
 Integration receives DataFrame and standardizes incident rows
+        ↓
+For image rows, Integration may call llm_summarizer.update_image_location(...)
         ↓
 Integration calls llm_summarizer.summarize_incident(...) for each row
         ↓
@@ -156,7 +158,7 @@ Integration calls the summarizer after it standardizes rows and before ID genera
 
 | **Metric** | **Target** |
 | --- | --- |
-| Modality coverage | 5/5 modalities have a route or graceful fallback: audio, PDF, image, video, text; CSV is accepted through text; `.json` uploads are rejected |
+| Modality coverage | 5/5 modalities have a route or clear processing error: audio, PDF, image, video, text; structured CSV is accepted through Integration and text-oriented CSV through `text/processor.py`; `.json` uploads are rejected |
 | Upload behavior | Exactly one file is processed per Streamlit run |
 | One-file-many-incidents behavior | A single uploaded file can produce zero, one, or many Supabase incident rows |
 | DataFrame contract validity | Extractor output and Integration output match the documented schemas |

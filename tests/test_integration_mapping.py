@@ -153,6 +153,73 @@ def test_structured_csv_draft_maps_through_text_modality() -> None:
     ]
 
 
+def test_image_artifact_placeholders_map_to_safe_final_values() -> None:
+    draft = pd.DataFrame(
+        [
+            {
+                "Image_ID": "IMG_001",
+                "Scene_Type": "Unknown",
+                "Objects_Detected": "None",
+                "Text_Extracted": "N/A",
+                "Confidence_Score": 0.0,
+            }
+        ]
+    )
+
+    result = integrate_records(draft, "image")
+
+    assert result.loc[0, "Event"] == "Unknown"
+    assert result.loc[0, "Severity"] == "Low"
+    assert "N/A" not in result.loc[0, "Incident_Summary"]
+
+
+def test_image_ocr_text_can_populate_location_with_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    import integration.integration as ig
+
+    draft = pd.DataFrame(
+        [
+            {
+                "Image_ID": "IMG_001",
+                "Scene_Type": "Fire / Arson",
+                "Objects_Detected": "fire",
+                "Text_Extracted": "SAN BERNARDINO COUNTY CALL BOX 1226",
+                "Confidence_Score": 0.91,
+            }
+        ]
+    )
+    monkeypatch.setattr(
+        ig,
+        "update_image_location_with_llm",
+        lambda row: {**dict(row), "Location": "San Bernardino County"},
+    )
+
+    result = ig.integrate_records(draft, "image")
+
+    assert result.loc[0, "Location"] == "San Bernardino County"
+    assert "San Bernardino County" in result.loc[0, "Incident_Summary"]
+
+
+def test_image_ocr_road_location_is_extracted_without_raw_text_summary() -> None:
+    draft = pd.DataFrame(
+        [
+            {
+                "Image_ID": "IMG_001",
+                "Scene_Type": "Fire / Arson",
+                "Objects_Detected": "fire",
+                "Text_Extracted": 'ALABAMA BANKHEAD HIGHWAY re P e — No ~ A, we ome + me Beer"" aes Bee no Pad',
+                "Confidence_Score": 0.91,
+            }
+        ]
+    )
+
+    result = integrate_records(draft, "image")
+
+    assert result.loc[0, "Location"] == "Alabama Bankhead Highway"
+    assert "Alabama Bankhead Highway" in result.loc[0, "Incident_Summary"]
+    assert "Raw text" not in result.loc[0, "Incident_Summary"]
+    assert "Beer" not in result.loc[0, "Incident_Summary"]
+
+
 def test_unknown_event_is_always_low_severity() -> None:
     draft = pd.DataFrame(
         [
