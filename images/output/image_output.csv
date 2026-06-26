@@ -1,11 +1,13 @@
-Image_ID,Scene_Type,Objects_Detected,Text_Extracted,Confidence_Score
-IMG_001,Fire Scene,"fire, smoke",MAIN ST,0.94
-IMG_002,Smoke Scene,smoke,N/A,0.81
-IMG_003,Traffic Accident Scene,"car, person",ROAD CLOSED,0.76
-IMG_004,General Scene,person,N/A,0.63
-IMG_005,Fire Scene,"fire, smoke, person",N/A,0.91
-IMG_006,Smoke Scene,"smoke, person",N/A,0.78
-IMG_007,Traffic Accident Scene,"car, truck",HIGHWAY 5,0.85
-IMG_008,Fire Scene,fire,OAK AVE,0.92
-IMG_009,General Scene,"person, person",N/A,0.55
-IMG_010,Traffic Accident Scene,"car, person",DOWNTOWN BLVD,0.88
+Image_ID	Scene_Type	Objects_Detected	Text_Extracted	Confidence_Score
+IMG_001	Fire and Smoke Scene	fire, person	N/A	0.86
+IMG_002	Fire Scene	fire	2 AV	1
+IMG_003	Fire Scene	fire, smoke	N/A	0.91
+IMG_004	Fire Scene	fire, smoke	N/A	0.95
+IMG_005	Fire Scene	fire, person	NOW RENTING	0.88
+IMG_006	Fire and Smoke Scene	fire, person	N/A	0.94
+IMG_007	Fire and Smoke Scene	fire, person	ART GALLERY	0.94
+IMG_008	Fire and Smoke Scene	fire, person	N/A	0.64
+IMG_009	Fire Scene	fire	N/A	1
+IMG_010	Fire Scene	fire	N/A	0.93
+IMG_011	Fire Scene	fire, smoke	SPW	0.87
+IMG_012	Fire Scene	fire, person	N/A	0.85
