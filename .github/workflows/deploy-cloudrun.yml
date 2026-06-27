@@ -91,7 +91,6 @@ jobs:
             --max-instances=1
             --min-instances=0
             --execution-environment=gen2
-            --no-gpu-zonal-redundancy
             --no-cpu-throttling
             --allow-unauthenticated
           env_vars: |
