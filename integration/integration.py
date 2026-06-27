@@ -206,7 +206,9 @@ def _severity_from_event(event: str, current: str) -> str:
         # High/Medium value cannot contradict the normalized event.
         return "Low"
     text = event.casefold()
-    if text in {"other", "no activity"}:
+    if text in {"other", "no activity", "multiple persons present", 
+                "multiple persons detected", 
+                "person standing", "person running"}:
         return "Low"
     if any(token in text for token in (
         "fire", "arson", "assault", "violence", "weapon", "gun", "knife",
