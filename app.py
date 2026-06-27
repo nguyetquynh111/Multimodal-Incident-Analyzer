@@ -18,6 +18,7 @@ from cloud_deployment.supabase_client import (
     delete_incident,
     query_incidents,
     update_incident,
+    validate_incident_key,
 )
 from cloud_deployment.exporter import export_incidents_csv
 from cloud_deployment.upload_service import upload_incidents
@@ -1205,8 +1206,10 @@ def view_manage() -> None:
             label = str(target["Incident_ID"])
             try:
                 if do_bulk_remove:
-                    delete_incident(target["incident_id"])
+                    incident_key = validate_incident_key(target["Incident_ID"])
+                    delete_incident(incident_key)
                 else:
+                    incident_key = validate_incident_key(target["Incident_ID"])
                     payload = {
                         field: (
                             ig.normalize_event(value)
@@ -1217,7 +1220,7 @@ def view_manage() -> None:
                     }
                     if ig.normalize_event(payload.get("event", target["event"])) == "Unknown":
                         payload["severity"] = "Low"
-                    update_incident(target["incident_id"], payload)
+                    update_incident(incident_key, payload)
                 succeeded += 1
             except Exception:  # noqa: BLE001
                 logger.exception("Bulk incident action failed for %s", label)
@@ -1305,8 +1308,8 @@ def view_manage() -> None:
     for _, row in edited.iterrows():
         label = str(row["Incident_ID"])
         current = original.loc[label]
-        incident_id = current["incident_id"]
         try:
+            incident_id = validate_incident_key(current["Incident_ID"])
             if bool(row["remove"]):
                 delete_incident(incident_id)
                 deleted_count += 1

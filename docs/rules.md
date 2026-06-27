@@ -154,14 +154,14 @@ LLM summary rules:
 
 | **Signal** | **Severity** |
 | --- | --- |
-| Fire, weapon, trapped person, collapse, fighting, severe crash | High |
+| Fire, arson, assault/violence, weapon, trapped person, collapse, fighting, severe crash | High |
 | Audio urgency score >= 0.70 | High |
 | Audio urgency score from 0.30 up to 0.69 | Medium |
-| Theft, robbery, public disturbance, property damage | Medium |
-| Neutral report or low-confidence non-violent event | Low |
+| Theft, robbery, burglary, public disturbance, property damage | Medium |
+| Other, neutral report, no activity, or low-confidence non-violent event | Low |
 | No reliable signal | Low with Event = Unknown |
 
-Integration first forces configured high-risk event terms to `High`, preserves a valid explicit severity when provided, and otherwise maps a confidence or urgency score on a 0–1 scale as `< 0.30 = Low`, `< 0.70 = Medium`, and `>= 0.70 = High`. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. When Event is `Unknown`, Severity must be `Low`, even if an upstream value says otherwise.
+Integration first applies event safety/category rules: `Unknown`, `Other`, and `No Activity` are `Low`; configured high-risk event terms are `High`; configured medium-risk event terms are at least `Medium`. It then preserves a valid explicit severity when no event category rule applies, and otherwise maps a confidence or urgency score on a 0–1 scale as `< 0.30 = Low`, `< 0.70 = Medium`, and `>= 0.70 = High`. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. When Event is `Unknown`, Severity must be `Low`, even if an upstream value says otherwise.
 
 ## 8. Per-Modality Mapping Rules
 

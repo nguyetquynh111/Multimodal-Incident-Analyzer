@@ -132,13 +132,14 @@ The LLM summarizer uses OpenRouter when `OPENROUTER_API_KEY` is configured. The 
 | ROBOFLOW_PERSON_MODEL_ID | No | Optional Roboflow person model id; defaults to `yolov8n-640` when used |
 | ROBOFLOW_API_URL | No | Optional image inference endpoint; defaults to `https://detect.roboflow.com` |
 | VIDEO_YOLO_MODEL_PATH | No | Optional YOLO model path; defaults to `video/yolov8s.pt` and may point to an exported ONNX model |
+| VIDEO_YOLO_DEVICE | No | YOLO execution device; defaults to `auto`, which uses CUDA when PyTorch reports it is available |
 | VIDEO_YOLO_IMAGE_SIZE | No | Optional YOLO inference image size; defaults to `640` for faster CPU/GPU processing |
 | VIDEO_YOLO_SAMPLE_STRIDE | No | Optional stride over motion-sampled frames eligible for YOLO; defaults to `2` |
 | LLM_MODEL_NAME | No | Optional OpenRouter model label for summary module |
 | LLM_TIMEOUT_SECONDS | No | Optional timeout for summary generation before fallback |
 | TESSERACT_CMD | No | Optional path to the local Tesseract executable used by PDF OCR |
 | WHISPER_MODEL | No | Optional Whisper model name; defaults to `small.en` for better English transcripts than `base` |
-| WHISPER_DEVICE | No | Whisper execution device; defaults to `cpu` |
+| WHISPER_DEVICE | No | Whisper execution device; defaults to `auto`, which uses CUDA when PyTorch reports it is available and otherwise CPU |
 | WHISPER_LANGUAGE | No | Transcription language; defaults to `en` |
 | WHISPER_MODEL_DIR | No | Optional local directory for Whisper model downloads |
 | WHISPER_BEAM_SIZE | No | Optional Whisper beam size; defaults to `5` for more accurate deterministic decoding |

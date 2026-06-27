@@ -56,7 +56,8 @@ Useful optional settings:
 OPENROUTER_API_KEY=...          # Enables LLM summaries
 ROBOFLOW_API_KEY=...            # Enables image object detection
 WHISPER_MODEL=small.en          # Audio transcription model
-WHISPER_DEVICE=cpu              # Use cuda when available
+WHISPER_DEVICE=auto             # auto uses cuda when available, otherwise cpu
+VIDEO_YOLO_DEVICE=auto          # auto uses cuda when available, otherwise default
 VIDEO_YOLO_SAMPLE_STRIDE=2      # Skip YOLO work on some video frames
 VIDEO_YOLO_IMAGE_SIZE=640
 VIDEO_YOLO_MODEL_PATH=video/yolov8s.pt

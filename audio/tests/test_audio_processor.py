@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import redirect_stdout
 from io import StringIO
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -36,13 +37,35 @@ class AudioProcessorTests(unittest.TestCase):
             return object()
 
         original = transcribe._load_whisper
+        env_value = os.environ.get("WHISPER_DEVICE")
+        os.environ["WHISPER_DEVICE"] = "cpu"
         transcribe._load_whisper = fake_load
         try:
             transcribe.preload_whisper_model("tiny.en", quiet=True)
         finally:
             transcribe._load_whisper = original
+            if env_value is None:
+                os.environ.pop("WHISPER_DEVICE", None)
+            else:
+                os.environ["WHISPER_DEVICE"] = env_value
 
         self.assertEqual(calls, [("tiny.en", "cpu", None)])
+
+    def test_whisper_auto_device_uses_cuda_when_available(self) -> None:
+        original = transcribe._cuda_available
+        transcribe._cuda_available = lambda: True
+        try:
+            self.assertEqual(transcribe._resolve_device("auto"), "cuda")
+        finally:
+            transcribe._cuda_available = original
+
+    def test_whisper_cuda_device_falls_back_to_cpu_when_unavailable(self) -> None:
+        original = transcribe._cuda_available
+        transcribe._cuda_available = lambda: False
+        try:
+            self.assertEqual(transcribe._resolve_device("cuda"), "cpu")
+        finally:
+            transcribe._cuda_available = original
 
     def test_rule_based_analysis(self) -> None:
         row = analyze_transcript(

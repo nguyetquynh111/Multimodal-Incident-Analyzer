@@ -237,3 +237,36 @@ def test_unknown_event_is_always_low_severity() -> None:
 
     assert result.loc[0, "Event"] == "Unknown"
     assert result.loc[0, "Severity"] == "Low"
+
+
+@pytest.mark.parametrize(
+    ("event", "confidence", "expected"),
+    [
+        ("Other", 0.30, "Low"),
+        ("Fire / Arson", 0.30, "High"),
+        ("Assault / Violence", 0.30, "High"),
+        ("Public Disturbance", 0.10, "Medium"),
+        ("Theft / Robbery", 0.10, "Medium"),
+    ],
+)
+def test_event_category_overrides_generic_confidence_severity(
+    event: str,
+    confidence: float,
+    expected: str,
+) -> None:
+    draft = pd.DataFrame(
+        [
+            {
+                "Event": event,
+                "Location": "Unknown",
+                "Time": "Unknown",
+                "Confidence": confidence,
+                "Summary": "Structured incident row.",
+            }
+        ]
+    )
+
+    result = integrate_records(draft, "text")
+
+    assert result.loc[0, "Event"] == event
+    assert result.loc[0, "Severity"] == expected
