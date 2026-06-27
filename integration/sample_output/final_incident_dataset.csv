@@ -1,283 +1,122 @@
-﻿id,created_at,incident_id,source,event,location,time,severity,incident_summary
-469,2026-06-24T19:56:12.477976+00:00,289,Text,Other,"Wyoming Highway, United States",Sat Feb 01 05:11:45 +0000 2014,Medium,Unknown
-468,2026-06-24T19:56:12.477976+00:00,288,Text,Other,"San Jose, Ca",Sat Feb 01 05:11:50 +0000 2014,Medium,Unknown
-467,2026-06-24T19:56:12.477976+00:00,287,Text,Other,Anywhere USA,Sat Feb 01 05:13:33 +0000 2014,Medium,Unknown
-466,2026-06-24T19:56:12.477976+00:00,286,Text,Assault / Violence,"Badger Guns suit, Windber, PA",Sat Feb 01 05:14:28 +0000 2014,Medium,Unknown
-465,2026-06-24T19:56:12.477976+00:00,285,Text,Other,Ontario,Sat Feb 01 05:16:57 +0000 2014,Medium,Unknown
-464,2026-06-24T19:56:12.477976+00:00,284,Text,Assault / Violence,Badger Guns suit,Sat Feb 01 05:17:58 +0000 2014,Medium,Unknown
-463,2026-06-24T19:56:12.477976+00:00,283,Text,Other,"cry foul, Gurgaon",Sat Feb 01 05:18:59 +0000 2014,Medium,Unknown
-462,2026-06-24T19:56:12.477976+00:00,282,Text,Other,Here But I'm Gone,Sat Feb 01 05:19:44 +0000 2014,Medium,Unknown
-461,2026-06-24T19:56:12.477976+00:00,281,Text,Fire / Arson,"Richland, Michigan - Worldwide",Sat Feb 01 05:19:53 +0000 2014,Medium,Unknown
-460,2026-06-24T19:56:12.477976+00:00,280,Text,Other,PERSON: Felicity Gamelin; DATE: Sat Feb 01 05:21:56 +0000 2014,Sat Feb 01 05:21:56 +0000 2014,Medium,Unknown
-459,2026-06-24T19:56:12.477976+00:00,279,Text,Fire / Arson,"Richland, Worldwide",Sat Feb 01 05:22:38 +0000 2014,Medium,Unknown
-458,2026-06-24T19:56:12.477976+00:00,278,Text,Assault / Violence,United Kingdom,Sat Feb 01 05:23:12 +0000 2014,Medium,Unknown
-457,2026-06-24T19:56:12.477976+00:00,277,Text,Other,"Delhi, New Delhi / Sikkim",Sat Feb 01 05:25:12 +0000 2014,Medium,Unknown
-456,2026-06-24T19:56:12.477976+00:00,276,Text,Assault / Violence,"a crime scene, Los Angeles Digital Journo",Sat Feb 01 05:25:49 +0000 2014,Medium,Unknown
-455,2026-06-24T19:56:12.477976+00:00,275,Text,Other,Delhi,Sat Feb 01 05:28:23 +0000 2014,Medium,Unknown
-454,2026-06-24T19:56:12.477976+00:00,274,Text,Other,UK,Sat Feb 01 05:30:42 +0000 2014,Medium,Unknown
-453,2026-06-24T19:56:12.477976+00:00,273,Text,Other,"The Shoals, Alabama",Sat Feb 01 05:31:05 +0000 2014,Medium,Unknown
-452,2026-06-24T19:56:12.477976+00:00,272,Text,Other,McDonald's Happy Meals,Sat Feb 01 05:31:32 +0000 2014,Medium,Unknown
-451,2026-06-24T19:56:12.477976+00:00,271,Text,Other,"Delhi, somewhere in INDIA or BHARAT",Sat Feb 01 05:32:45 +0000 2014,Medium,Unknown
-450,2026-06-24T19:56:12.477976+00:00,270,Text,Other,"it, On the road with Rick",Sat Feb 01 05:35:23 +0000 2014,Medium,Unknown
-449,2026-06-24T19:56:12.477976+00:00,269,Text,Other,"Hertfordshire, England, UK",Sat Feb 01 05:35:35 +0000 2014,Medium,Unknown
-448,2026-06-24T19:56:12.477976+00:00,268,Text,Other,Ramsay Street,Sat Feb 01 05:36:44 +0000 2014,Medium,Unknown
-447,2026-06-24T19:56:12.477976+00:00,267,Text,Other,"be traipsed over multiple times, Denver, CO",Sat Feb 01 05:37:20 +0000 2014,Medium,Unknown
-446,2026-06-24T19:56:12.477976+00:00,266,Text,Other,"Delhi NCR, India + California",Sat Feb 01 05:38:35 +0000 2014,Medium,Unknown
-445,2026-06-24T19:56:12.477976+00:00,265,Text,Other,"Ridgeland, Mississippi",Sat Feb 01 05:40:22 +0000 2014,Medium,Unknown
-444,2026-06-24T19:56:12.477976+00:00,264,Text,Other,PERSON: -; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:23 +0000 2014,Sat Feb 01 05:41:23 +0000 2014,Medium,Unknown
-443,2026-06-24T19:56:12.477976+00:00,263,Text,Other,"California, Estados Unidos",Sat Feb 01 05:41:23 +0000 2014,Medium,Unknown
-442,2026-06-24T19:56:12.477976+00:00,262,Text,Other,All Round The World,Sat Feb 01 05:41:23 +0000 2014,Medium,Unknown
-441,2026-06-24T19:56:12.477976+00:00,261,Text,Other,"Nairobi , Kenya",Sat Feb 01 05:41:23 +0000 2014,Medium,Unknown
-440,2026-06-24T19:56:12.477976+00:00,260,Text,Other,PERSON: Avissena; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:23 +0000 2014,Sat Feb 01 05:41:23 +0000 2014,Medium,Unknown
-439,2026-06-24T19:56:12.477976+00:00,259,Text,Other,PERSON: -; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:26 +0000 2014,Sat Feb 01 05:41:26 +0000 2014,Medium,Unknown
-438,2026-06-24T19:56:12.477976+00:00,258,Text,Other,PERSON: -; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:33 +0000 2014,Sat Feb 01 05:41:33 +0000 2014,Medium,Unknown
-437,2026-06-24T19:56:12.477976+00:00,257,Text,Other,"local, @GoodGirlBackUp",Sat Feb 01 05:46:18 +0000 2014,Medium,Unknown
-436,2026-06-24T19:56:12.477976+00:00,256,Text,Other,Mountains of Madness,Sat Feb 01 05:48:25 +0000 2014,Medium,Unknown
-435,2026-06-24T19:56:12.477976+00:00,255,Text,Other,Seoul / Oakland,Sat Feb 01 05:50:33 +0000 2014,Medium,Unknown
-434,2026-06-24T19:56:12.477976+00:00,254,Text,Other,"Leeds, UK",Sat Feb 01 05:51:37 +0000 2014,Medium,Unknown
-433,2026-06-24T19:56:12.477976+00:00,253,Text,Other,Delhi,Sat Feb 01 05:52:48 +0000 2014,Medium,Unknown
-432,2026-06-24T19:56:12.477976+00:00,252,Text,Other,"Springfield, MO",Sat Feb 01 05:53:04 +0000 2014,Medium,Unknown
-431,2026-06-24T19:56:12.477976+00:00,251,Text,Other,"Springfield, Springfield, MO",Sat Feb 01 05:53:06 +0000 2014,Medium,Unknown
-430,2026-06-24T19:56:12.477976+00:00,250,Text,Assault / Violence,"Pontchartrain Park, New Orleans, Louisiana",Sat Feb 01 05:54:51 +0000 2014,Medium,Unknown
-429,2026-06-24T19:56:12.477976+00:00,249,Text,Other,"alleged child porn bust, Hopkinsville, Ky",Sat Feb 01 05:57:29 +0000 2014,Medium,Unknown
-428,2026-06-24T19:56:12.477976+00:00,248,Text,Other,PERSON: *; DATE: Sat Feb 01 05:57:38 +0000 2014,Sat Feb 01 05:57:38 +0000 2014,Medium,Unknown
-427,2026-06-24T19:56:12.477976+00:00,247,Text,Other,PERSON: Janie Peveto Johnson; ORGANIZATION: Police; DATE: Sat Feb 01 05:57:43 +0000 2014,Sat Feb 01 05:57:43 +0000 2014,Medium,Unknown
-426,2026-06-24T19:56:12.477976+00:00,246,Text,Assault / Violence,"Pontchartrain Park, Gentilly neighborhood Saturday, United States of America","Jan. 31, Sat Feb 01 06:00:01 +0000 2014",Medium,Unknown
-425,2026-06-24T19:56:12.477976+00:00,245,Text,Other,"14.8, Ventura, CA",Sat Feb 01 06:03:23 +0000 2014,Medium,Unknown
-424,2026-06-24T19:56:12.477976+00:00,244,Text,Assault / Violence,"Hopkinsville, Ky",Sat Feb 01 06:03:28 +0000 2014,Medium,Unknown
-423,2026-06-24T19:56:12.477976+00:00,243,Text,Assault / Violence,"Pontchartrain Park, New Orleans, LA",Sat Feb 01 06:06:04 +0000 2014,Medium,Unknown
-422,2026-06-24T19:56:12.477976+00:00,242,Text,Assault / Violence,"Pontchartrain Park, HollyGrove-New Orleans",Sat Feb 01 06:07:09 +0000 2014,Medium,Unknown
-421,2026-06-24T19:56:12.477976+00:00,241,Text,Assault / Violence,Pontchartrain Park,Sat Feb 01 06:07:42 +0000 2014,Medium,Unknown
-420,2026-06-24T19:56:12.477976+00:00,240,Text,Other,California,Sat Feb 01 06:10:17 +0000 2014,Medium,Unknown
-419,2026-06-24T19:56:12.477976+00:00,239,Text,Assault / Violence,PERSON: Crime Watch India; ORGANIZATION: Police; DATE: Sat Feb 01 06:11:02 +0000 2014,Sat Feb 01 06:11:02 +0000 2014,Medium,Unknown
-418,2026-06-24T19:56:12.477976+00:00,238,Text,Assault / Violence,a crime scene,Sat Feb 01 06:14:18 +0000 2014,Medium,Unknown
-417,2026-06-24T19:56:12.477976+00:00,237,Text,Assault / Violence,British army's crime-fighting software,Sat Feb 01 06:14:25 +0000 2014,Medium,Unknown
-416,2026-06-24T19:56:12.477976+00:00,236,Text,Other,"Toledo, OH",Sat Feb 01 06:16:12 +0000 2014,Medium,Unknown
-415,2026-06-24T19:56:12.477976+00:00,235,Text,Other,"Toledo, OH",Sat Feb 01 06:16:14 +0000 2014,Medium,Unknown
-414,2026-06-24T19:56:12.477976+00:00,234,Text,Other,deserve such loyal companion. This is a,Sat Feb 01 06:18:36 +0000 2014,Medium,Unknown
-413,2026-06-24T19:56:12.477976+00:00,233,Text,Other,"deserve such loyal companion. This is a, Sacramento, CA",Sat Feb 01 06:20:30 +0000 2014,Medium,Unknown
-412,2026-06-24T19:56:12.477976+00:00,232,Text,Other,Petaluma,Sat Feb 01 06:20:51 +0000 2014,Medium,Unknown
-411,2026-06-24T19:56:12.477976+00:00,231,Text,Other,PERSON: David E P Dennis; DATE: Sat Feb 01 06:22:08 +0000 2014,Sat Feb 01 06:22:08 +0000 2014,Medium,Unknown
-410,2026-06-24T19:56:12.477976+00:00,230,Text,Other,"Toledo, OH",Sat Feb 01 06:22:17 +0000 2014,Medium,Unknown
-409,2026-06-24T19:56:12.477976+00:00,229,Text,Other,"Toledo, OH",Sat Feb 01 06:22:24 +0000 2014,Medium,Unknown
-408,2026-06-24T19:56:12.477976+00:00,228,Text,Other,Florida,Sat Feb 01 06:22:28 +0000 2014,Medium,Unknown
-407,2026-06-24T19:56:12.477976+00:00,227,Text,Assault / Violence,"Detroit, Somewhere in SE Michigan",Sat Feb 01 06:23:34 +0000 2014,Medium,Unknown
-406,2026-06-24T19:56:12.477976+00:00,226,Text,Assault / Violence,"Pontchartrain Park, New Orleans, LA",Sat Feb 01 06:25:03 +0000 2014,Medium,Unknown
-405,2026-06-24T19:56:12.477976+00:00,225,Text,Other,"Petaluma, Burlingame, CA",Sat Feb 01 06:25:11 +0000 2014,Medium,Unknown
-404,2026-06-24T19:56:12.477976+00:00,224,Text,Other,/dev/null,Sat Feb 01 06:27:14 +0000 2014,Medium,Unknown
-403,2026-06-24T19:56:12.477976+00:00,223,Text,Other,"Petaluma, San Francisco, California",Sat Feb 01 06:27:37 +0000 2014,Medium,Unknown
-402,2026-06-24T19:56:12.477976+00:00,222,Text,Assault / Violence,"Murder Case, San Dimas, CA",Sat Feb 01 06:28:37 +0000 2014,Medium,Unknown
-401,2026-06-24T19:56:12.477976+00:00,221,Text,Other,"cry foul, Chennai, India",Sat Feb 01 06:28:49 +0000 2014,Medium,Unknown
-400,2026-06-24T19:56:12.477976+00:00,220,Text,Other,pay for their crime of beating him.Delhi,Sat Feb 01 06:29:18 +0000 2014,Medium,Unknown
-399,2026-06-24T19:56:12.477976+00:00,219,Text,Assault / Violence,Pontchartrain Park,Sat Feb 01 06:29:25 +0000 2014,Medium,Unknown
-398,2026-06-24T19:56:12.477976+00:00,218,Text,Other,"pay for their crime of beating him.Delhi, Capital, India",Sat Feb 01 06:31:00 +0000 2014,Medium,Unknown
-397,2026-06-24T19:56:12.477976+00:00,217,Text,Other,"w, • Afghanistan, CA •",Sat Feb 01 06:31:20 +0000 2014,Medium,Unknown
-396,2026-06-24T19:56:12.477976+00:00,216,Text,Other,"blame Delhi, Hell",Sat Feb 01 06:31:40 +0000 2014,Medium,Unknown
-395,2026-06-24T19:56:12.477976+00:00,215,Text,Other,"St. Louis, Mo",Sat Feb 01 06:32:15 +0000 2014,Medium,Unknown
-394,2026-06-24T19:56:12.477976+00:00,214,Text,Assault / Violence,Ontario,Sat Feb 01 06:32:41 +0000 2014,Medium,Unknown
-393,2026-06-24T19:56:12.477976+00:00,213,Text,Assault / Violence,"be fighting crime on the streets, a hiding spot waiting",Sat Feb 01 06:35:17 +0000 2014,Medium,Unknown
-392,2026-06-24T19:56:12.477976+00:00,212,Text,Other,"sunny spot med. MJ shop on 17th, San Francisco, CA",Sat Feb 01 06:35:45 +0000 2014,Medium,Unknown
-391,2026-06-24T19:56:12.477976+00:00,211,Text,Other,Petaluma,Sat Feb 01 06:40:55 +0000 2014,Medium,Unknown
-390,2026-06-24T19:56:12.477976+00:00,210,Text,Other,FACEBOOK,Sat Feb 01 06:42:54 +0000 2014,Medium,Unknown
-389,2026-06-24T19:56:12.477976+00:00,209,Text,Other,"showdown, Cranston, RI",Sat Feb 01 06:42:57 +0000 2014,Medium,Unknown
-388,2026-06-24T19:56:12.477976+00:00,208,Text,Other,"prevent a crime or arrest the suspect, California",Sat Feb 01 06:43:11 +0000 2014,Medium,Unknown
-387,2026-06-24T19:56:12.477976+00:00,207,Text,Other,"Onitsha, Ilorin, Kwara State, Nigeria",Sat Feb 01 06:43:22 +0000 2014,Medium,Unknown
-386,2026-06-24T19:56:12.477976+00:00,206,Text,Other,"capital by govnment, b present ther b4 crime take place, South Africa",Sat Feb 01 06:43:47 +0000 2014,Medium,Unknown
-385,2026-06-24T19:56:12.477976+00:00,205,Text,Fire / Arson,"grass fires, FACEBOOK",Sat Feb 01 06:46:27 +0000 2014,Medium,Unknown
-384,2026-06-24T19:56:12.477976+00:00,204,Text,Other,Sydney Australia,Sat Feb 01 06:48:08 +0000 2014,Medium,Unknown
-383,2026-06-24T19:56:12.477976+00:00,203,Text,Other,"a playlist World's Scariest, Victoria bc",Sat Feb 01 06:48:16 +0000 2014,Medium,Unknown
-382,2026-06-24T19:56:12.477976+00:00,202,Text,Other,"Delhi. Home minister, France",Sat Feb 01 06:51:32 +0000 2014,Medium,Unknown
-381,2026-06-24T19:56:12.477976+00:00,201,Text,Other,"High Court, Mumbai jail for 10 years, Karachi Pakistan",Sat Feb 01 06:51:55 +0000 2014,Medium,Unknown
-380,2026-06-24T19:56:12.477976+00:00,200,Text,Other,"Rs 8 cr heist, Karachi Pakistan",Sat Feb 01 06:51:55 +0000 2014,Medium,Unknown
-379,2026-06-24T19:56:12.477976+00:00,199,Text,Other,USC '15 • D(M)V,Sat Feb 01 06:53:10 +0000 2014,Medium,Unknown
-378,2026-06-24T19:56:12.477976+00:00,198,Text,Other,Delhi. Home minister,Sat Feb 01 06:54:05 +0000 2014,Medium,Unknown
-377,2026-06-24T19:56:12.477976+00:00,197,Text,Assault / Violence,"a crime scene, Berlin",Sat Feb 01 06:54:09 +0000 2014,Medium,Unknown
-376,2026-06-24T19:56:12.477976+00:00,196,Text,Other,SIGMA LAND blasting Hatch,Sat Feb 01 06:54:50 +0000 2014,Medium,Unknown
-375,2026-06-24T19:56:12.477976+00:00,195,Text,Other,Delhi. Home minister,Sat Feb 01 06:55:13 +0000 2014,Medium,Unknown
-374,2026-06-24T19:56:12.477976+00:00,194,Text,Other,University of Southern Comfort,Sat Feb 01 06:57:23 +0000 2014,Medium,Unknown
-373,2026-06-24T19:56:12.477976+00:00,193,Text,Other,Delhi. Home minister,Sat Feb 01 06:58:28 +0000 2014,Medium,Unknown
-372,2026-06-24T19:56:12.477976+00:00,192,Text,Other,"Delhi. Home minister, Mumbai",Sat Feb 01 06:58:52 +0000 2014,Medium,Unknown
-371,2026-06-24T19:56:12.477976+00:00,191,Text,Other,"Delhi. Home minister, Bhilai",Sat Feb 01 07:00:47 +0000 2014,Medium,Unknown
-370,2026-06-24T19:56:12.477976+00:00,190,Text,Other,"cry foul, CITY OF DREAMS (BOMBAYY",Sat Feb 01 07:01:12 +0000 2014,Medium,Unknown
-369,2026-06-24T19:56:12.477976+00:00,189,Text,Other,"river, York,North Yorkshire",Fri Jan 31 13:04:37 +0000 2014,Medium,Unknown
-368,2026-06-24T19:56:12.477976+00:00,188,Text,Assault / Violence,"Badger Guns suit, Washington, D.C",Thu Jan 30 20:23:16 +0000 2014,Medium,Unknown
-367,2026-06-24T19:56:12.477976+00:00,187,Text,Other,"Devon and Cornwall, England",Fri Jan 31 12:49:56 +0000 2014,Medium,Unknown
-366,2026-06-24T19:56:12.477976+00:00,186,Text,Assault / Violence,a crime scene,Fri Jan 31 22:25:01 +0000 2014,Medium,Unknown
-365,2026-06-24T19:56:12.477976+00:00,185,Text,Other,"co-ordinated raids, Essex, England",Fri Jan 31 08:20:12 +0000 2014,Medium,Unknown
-364,2026-06-24T19:56:12.477976+00:00,184,Text,Other,"end the violent MJ trade, Baltimore, MD",Fri Jan 31 04:37:05 +0000 2014,Medium,Unknown
-363,2026-06-24T19:56:12.477976+00:00,183,Text,Assault / Violence,"A Crime Scene, Washington, DC",Thu Jan 30 18:24:27 +0000 2014,Medium,Unknown
-362,2026-06-24T19:56:12.477976+00:00,182,Text,Other,"lack of, Pakistan become easy targets for crime, Washington, D.C",Thu Jan 30 14:31:21 +0000 2014,Medium,Unknown
-361,2026-06-24T19:56:12.477976+00:00,181,Text,Theft / Robbery,"Buffalo, NY",Thu Jan 30 22:19:37 +0000 2014,Medium,Unknown
-360,2026-06-24T19:56:12.477976+00:00,180,Text,Other,"stamp out, London","Today, Fri Jan 31 07:22:18 +0000 2014",Medium,Unknown
-359,2026-06-24T19:56:12.477976+00:00,179,Text,Assault / Violence,"stamp out, domestic violence, London",Thu Jan 30 23:18:45 +0000 2014,Medium,Unknown
-358,2026-06-24T19:56:12.477976+00:00,178,Text,Assault / Violence,A Crime Scene,Fri Jan 31 02:33:17 +0000 2014,Medium,Unknown
-357,2026-06-24T19:56:12.477976+00:00,177,Text,Other,"public via, Northern Virginia",Fri Jan 31 18:10:37 +0000 2014,Medium,Unknown
-356,2026-06-24T19:56:12.477976+00:00,176,Text,Assault / Violence,"Monday shooting, Rocky Mount, N.C",Fri Jan 31 05:01:39 +0000 2014,Medium,Unknown
-355,2026-06-24T19:56:12.477976+00:00,175,Text,Assault / Violence,"Jeff, Hoover, AL, Alabama",Fri Jan 31 05:51:59 +0000 2014,Medium,Unknown
-354,2026-06-24T11:13:49.888048+00:00,174,Audio,Unknown,Unknown,Unknown,Low,Unknown
-353,2026-06-24T11:10:03.077005+00:00,173,Video,No Activity,Unknown,00:00:38,Medium,Unknown
-352,2026-06-24T11:10:03.077005+00:00,172,Video,Person Standing,Unknown,00:00:37,Medium,Unknown
-351,2026-06-24T11:10:03.077005+00:00,171,Video,No Activity,Unknown,00:00:37,Medium,Unknown
-350,2026-06-24T11:10:03.077005+00:00,170,Video,No Activity,Unknown,00:00:36,Medium,Unknown
-349,2026-06-24T11:10:03.077005+00:00,169,Video,Person Standing,Unknown,00:00:36,Medium,Unknown
-348,2026-06-24T11:10:03.077005+00:00,168,Video,No Activity,Unknown,00:00:36,Medium,Unknown
-347,2026-06-24T11:10:03.077005+00:00,167,Video,No Activity,Unknown,00:00:35,Medium,Unknown
-346,2026-06-24T11:10:03.077005+00:00,166,Video,No Activity,Unknown,00:00:35,Medium,Unknown
-345,2026-06-24T11:10:03.077005+00:00,165,Video,No Activity,Unknown,00:00:34,Medium,Unknown
-344,2026-06-24T11:10:03.077005+00:00,164,Video,No Activity,Unknown,00:00:34,Medium,Unknown
-343,2026-06-24T11:10:03.077005+00:00,163,Video,Person Standing,Unknown,00:00:33,Medium,Unknown
-342,2026-06-24T11:10:03.077005+00:00,162,Video,Person Collapsing,Unknown,00:00:33,High,Unknown
-341,2026-06-24T11:10:03.077005+00:00,161,Video,No Activity,Unknown,00:00:32,Medium,Unknown
-340,2026-06-24T11:10:03.077005+00:00,160,Video,Person Standing,Unknown,00:00:32,Medium,Unknown
-339,2026-06-24T11:10:03.077005+00:00,159,Video,Person Collapsing,Unknown,00:00:31,Medium,Unknown
-338,2026-06-24T11:10:03.077005+00:00,158,Video,Person Collapsing,Unknown,00:00:31,Medium,Unknown
-337,2026-06-24T11:10:03.077005+00:00,157,Video,Person Collapsing,Unknown,00:00:30,Medium,Unknown
-336,2026-06-24T11:10:03.077005+00:00,156,Video,Person Collapsing,Unknown,00:00:30,Medium,Unknown
-335,2026-06-24T11:10:03.077005+00:00,155,Video,Person Standing,Unknown,00:00:29,Medium,Unknown
-334,2026-06-24T11:10:03.077005+00:00,154,Video,No Activity,Unknown,00:00:29,Medium,Unknown
-333,2026-06-24T11:10:03.077005+00:00,153,Video,No Activity,Unknown,00:00:28,Medium,Unknown
-332,2026-06-24T11:10:03.077005+00:00,152,Video,Person Collapsing,Unknown,00:00:28,Medium,Unknown
-331,2026-06-24T11:10:03.077005+00:00,151,Video,Person Standing,Unknown,00:00:27,Medium,Unknown
-330,2026-06-24T11:10:03.077005+00:00,150,Video,Person Collapsing,Unknown,00:00:27,Medium,Unknown
-329,2026-06-24T11:10:03.077005+00:00,149,Video,Person Collapsing,Unknown,00:00:26,Medium,Unknown
-328,2026-06-24T11:10:03.077005+00:00,148,Video,Person Collapsing,Unknown,00:00:26,High,Unknown
-327,2026-06-24T11:10:03.077005+00:00,147,Video,Person Collapsing,Unknown,00:00:25,High,Unknown
-326,2026-06-24T11:10:03.077005+00:00,146,Video,Person Collapsing,Unknown,00:00:25,High,Unknown
-325,2026-06-24T11:10:03.077005+00:00,145,Video,Person Collapsing,Unknown,00:00:24,High,Unknown
-324,2026-06-24T11:10:03.077005+00:00,144,Video,Person Collapsing,Unknown,00:00:24,High,Unknown
-323,2026-06-24T11:10:03.077005+00:00,143,Video,Person Collapsing,Unknown,00:00:24,High,Unknown
-322,2026-06-24T11:10:03.077005+00:00,142,Video,Person Standing,Unknown,00:00:23,Medium,Unknown
-321,2026-06-24T11:10:03.077005+00:00,141,Video,Person Collapsing,Unknown,00:00:23,High,Unknown
-320,2026-06-24T11:10:03.077005+00:00,140,Video,Person Standing,Unknown,00:00:22,High,Unknown
-319,2026-06-24T11:10:03.077005+00:00,139,Video,Person Collapsing,Unknown,00:00:22,Medium,Unknown
-318,2026-06-24T11:10:03.077005+00:00,138,Video,Person Standing,Unknown,00:00:21,Medium,Unknown
-317,2026-06-24T11:10:03.077005+00:00,137,Video,Person Standing,Unknown,00:00:21,Medium,Unknown
-316,2026-06-24T11:10:03.077005+00:00,136,Video,Person Standing,Unknown,00:00:20,High,Unknown
-315,2026-06-24T11:10:03.077005+00:00,135,Video,Person Standing,Unknown,00:00:20,High,Unknown
-314,2026-06-24T11:10:03.077005+00:00,134,Video,Person Standing,Unknown,00:00:19,High,Unknown
-313,2026-06-24T11:10:03.077005+00:00,133,Video,Person Standing,Unknown,00:00:19,High,Unknown
-312,2026-06-24T11:10:03.077005+00:00,132,Video,Person Standing,Unknown,00:00:18,Medium,Unknown
-311,2026-06-24T11:10:03.077005+00:00,131,Video,Person Collapsing,Unknown,00:00:18,High,Unknown
-310,2026-06-24T11:10:03.077005+00:00,130,Video,Person Collapsing,Unknown,00:00:17,High,Unknown
-309,2026-06-24T11:10:03.077005+00:00,129,Video,Person Standing,Unknown,00:00:17,Medium,Unknown
-308,2026-06-24T11:10:03.077005+00:00,128,Video,Multiple Persons Present,Unknown,00:00:16,High,Unknown
-307,2026-06-24T11:10:03.077005+00:00,127,Video,Person Collapsing,Unknown,00:00:16,High,Unknown
-306,2026-06-24T11:10:03.077005+00:00,126,Video,Person Standing,Unknown,00:00:15,Medium,Unknown
-305,2026-06-24T11:10:03.077005+00:00,125,Video,Person Standing,Unknown,00:00:15,High,Unknown
-304,2026-06-24T11:10:03.077005+00:00,124,Video,Person Standing,Unknown,00:00:14,Medium,Unknown
-303,2026-06-24T11:10:03.077005+00:00,123,Video,Person Collapsing,Unknown,00:00:14,High,Unknown
-302,2026-06-24T11:10:03.077005+00:00,122,Video,Person Standing,Unknown,00:00:13,Medium,Unknown
-301,2026-06-24T11:10:03.077005+00:00,121,Video,Multiple Persons Present,Unknown,00:00:13,High,Unknown
-300,2026-06-24T11:10:03.077005+00:00,120,Video,Person Collapsing,Unknown,00:00:12,High,Unknown
-299,2026-06-24T11:10:03.077005+00:00,119,Video,Person Standing,Unknown,00:00:12,High,Unknown
-298,2026-06-24T11:10:03.077005+00:00,118,Video,Person Standing,Unknown,00:00:12,Medium,Unknown
-297,2026-06-24T11:10:03.077005+00:00,117,Video,No Activity,Unknown,00:00:11,Medium,Unknown
-296,2026-06-24T11:10:03.077005+00:00,116,Video,Multiple Persons Present,Unknown,00:00:11,Medium,Unknown
-295,2026-06-24T11:10:03.077005+00:00,115,Video,Person Standing,Unknown,00:00:10,Medium,Unknown
-294,2026-06-24T11:10:03.077005+00:00,114,Video,Person Standing,Unknown,00:00:10,Medium,Unknown
-293,2026-06-24T11:10:03.077005+00:00,113,Video,Multiple Persons Present,Unknown,00:00:09,Medium,Unknown
-292,2026-06-24T11:10:03.077005+00:00,112,Video,No Activity,Unknown,00:00:09,Medium,Unknown
-291,2026-06-24T11:10:03.077005+00:00,111,Video,Multiple Persons Present,Unknown,00:00:08,Medium,Unknown
-290,2026-06-24T11:10:03.077005+00:00,110,Video,Person Standing,Unknown,00:00:08,Medium,Unknown
-289,2026-06-24T11:10:03.077005+00:00,109,Video,Person Standing,Unknown,00:00:07,Medium,Unknown
-288,2026-06-24T11:10:03.077005+00:00,108,Video,Person Standing,Unknown,00:00:07,Medium,Unknown
-287,2026-06-24T11:10:03.077005+00:00,107,Video,Person Collapsing,Unknown,00:00:06,High,Unknown
-286,2026-06-24T11:10:03.077005+00:00,106,Video,Person Standing,Unknown,00:00:06,High,Unknown
-285,2026-06-24T11:10:03.077005+00:00,105,Video,Person Standing,Unknown,00:00:05,Medium,Unknown
-284,2026-06-24T11:10:03.077005+00:00,104,Video,Person Collapsing,Unknown,00:00:05,Medium,Unknown
-283,2026-06-24T11:10:03.077005+00:00,103,Video,Person Collapsing,Unknown,00:00:04,High,Unknown
-282,2026-06-24T11:10:03.077005+00:00,102,Video,Multiple Persons Present,Unknown,00:00:04,High,Unknown
-281,2026-06-24T11:10:03.077005+00:00,101,Video,Person Standing,Unknown,00:00:03,Medium,Unknown
-280,2026-06-24T11:10:03.077005+00:00,100,Video,No Activity,Unknown,00:00:03,Medium,Unknown
-279,2026-06-24T11:10:03.077005+00:00,99,Video,No Activity,Unknown,00:00:02,Medium,Unknown
-278,2026-06-24T11:10:03.077005+00:00,98,Video,Person Standing,Unknown,00:00:02,Medium,Unknown
-277,2026-06-24T11:10:03.077005+00:00,97,Video,Person Collapsing,Unknown,00:00:01,High,Unknown
-276,2026-06-24T11:10:03.077005+00:00,96,Video,Person Collapsing,Unknown,00:00:01,Medium,Unknown
-275,2026-06-24T11:10:03.077005+00:00,95,Video,No Activity,Unknown,00:00:00,Medium,Unknown
-274,2026-06-24T11:10:03.077005+00:00,94,Video,Person Running,Unknown,00:00:00,High,Unknown
-273,2026-06-24T03:40:09.899452+00:00,93,Video,No Activity,Unknown,00:00:38,Medium,Unknown
-272,2026-06-24T03:40:09.899452+00:00,92,Video,No Activity,Unknown,00:00:37,Medium,Unknown
-271,2026-06-24T03:40:09.899452+00:00,91,Video,No Activity,Unknown,00:00:37,Medium,Unknown
-270,2026-06-24T03:40:09.899452+00:00,90,Video,No Activity,Unknown,00:00:36,Medium,Unknown
-269,2026-06-24T03:40:09.899452+00:00,89,Video,No Activity,Unknown,00:00:36,Medium,Unknown
-268,2026-06-24T03:40:09.899452+00:00,88,Video,No Activity,Unknown,00:00:36,Medium,Unknown
-267,2026-06-24T03:40:09.899452+00:00,87,Video,No Activity,Unknown,00:00:35,Medium,Unknown
-266,2026-06-24T03:40:09.899452+00:00,86,Video,No Activity,Unknown,00:00:35,Medium,Unknown
-265,2026-06-24T03:40:09.899452+00:00,85,Video,No Activity,Unknown,00:00:34,Medium,Unknown
-264,2026-06-24T03:40:09.899452+00:00,84,Video,No Activity,Unknown,00:00:34,Medium,Unknown
-263,2026-06-24T03:40:09.899452+00:00,83,Video,No Activity,Unknown,00:00:33,Medium,Unknown
-262,2026-06-24T03:40:09.899452+00:00,82,Video,No Activity,Unknown,00:00:33,Medium,Unknown
-261,2026-06-24T03:40:09.899452+00:00,81,Video,No Activity,Unknown,00:00:32,Medium,Unknown
-260,2026-06-24T03:40:09.899452+00:00,80,Video,Person Standing,Unknown,00:00:32,Medium,Unknown
-259,2026-06-24T03:40:09.899452+00:00,79,Video,Person Collapsing,Unknown,00:00:31,Medium,Unknown
-258,2026-06-24T03:40:09.899452+00:00,78,Video,Person Collapsing,Unknown,00:00:31,Medium,Unknown
-257,2026-06-24T03:40:09.899452+00:00,77,Video,Person Collapsing,Unknown,00:00:30,Medium,Unknown
-256,2026-06-24T03:40:09.899452+00:00,76,Video,Person Collapsing,Unknown,00:00:30,Medium,Unknown
-255,2026-06-24T03:40:09.899452+00:00,75,Video,Person Standing,Unknown,00:00:29,Medium,Unknown
-254,2026-06-24T03:40:09.899452+00:00,74,Video,No Activity,Unknown,00:00:29,Medium,Unknown
-253,2026-06-24T03:40:09.899452+00:00,73,Video,No Activity,Unknown,00:00:28,Medium,Unknown
-252,2026-06-24T03:40:09.899452+00:00,72,Video,Person Collapsing,Unknown,00:00:28,Medium,Unknown
-251,2026-06-24T03:40:09.899452+00:00,71,Video,Person Collapsing,Unknown,00:00:27,Medium,Unknown
-250,2026-06-24T03:40:09.899452+00:00,70,Video,Person Collapsing,Unknown,00:00:27,Medium,Unknown
-249,2026-06-24T03:40:09.899452+00:00,69,Video,Person Collapsing,Unknown,00:00:26,Medium,Unknown
-248,2026-06-24T03:40:09.899452+00:00,68,Video,Person Collapsing,Unknown,00:00:26,Medium,Unknown
-247,2026-06-24T03:40:09.899452+00:00,67,Video,Person Standing,Unknown,00:00:25,Medium,Unknown
-246,2026-06-24T03:40:09.899452+00:00,66,Video,Person Standing,Unknown,00:00:25,Medium,Unknown
-245,2026-06-24T03:40:09.899452+00:00,65,Video,Person Standing,Unknown,00:00:24,Medium,Unknown
-244,2026-06-24T03:40:09.899452+00:00,64,Video,No Activity,Unknown,00:00:24,Medium,Unknown
-243,2026-06-24T03:40:09.899452+00:00,63,Video,Person Collapsing,Unknown,00:00:24,Medium,Unknown
-242,2026-06-24T03:40:09.899452+00:00,62,Video,Person Collapsing,Unknown,00:00:23,Medium,Unknown
-241,2026-06-24T03:40:09.899452+00:00,61,Video,Person Collapsing,Unknown,00:00:23,Medium,Unknown
-240,2026-06-24T03:40:09.899452+00:00,60,Video,Person Standing,Unknown,00:00:22,Medium,Unknown
-239,2026-06-24T03:40:09.899452+00:00,59,Video,Person Collapsing,Unknown,00:00:22,Medium,Unknown
-238,2026-06-24T03:40:09.899452+00:00,58,Video,Person Standing,Unknown,00:00:21,Medium,Unknown
-237,2026-06-24T03:40:09.899452+00:00,57,Video,Person Standing,Unknown,00:00:21,Medium,Unknown
-236,2026-06-24T03:40:09.899452+00:00,56,Video,Person Standing,Unknown,00:00:20,Medium,Unknown
-235,2026-06-24T03:40:09.899452+00:00,55,Video,No Activity,Unknown,00:00:20,Medium,Unknown
-234,2026-06-24T03:40:09.899452+00:00,54,Video,No Activity,Unknown,00:00:19,Medium,Unknown
-233,2026-06-24T03:40:09.899452+00:00,53,Video,No Activity,Unknown,00:00:19,Medium,Unknown
-232,2026-06-24T03:40:09.899452+00:00,52,Video,No Activity,Unknown,00:00:18,Medium,Unknown
-231,2026-06-24T03:40:09.899452+00:00,51,Video,No Activity,Unknown,00:00:18,Medium,Unknown
-230,2026-06-24T03:40:09.899452+00:00,50,Video,No Activity,Unknown,00:00:17,Medium,Unknown
-229,2026-06-24T03:40:09.899452+00:00,49,Video,No Activity,Unknown,00:00:17,Medium,Unknown
-228,2026-06-24T03:40:09.899452+00:00,48,Video,No Activity,Unknown,00:00:16,Medium,Unknown
-227,2026-06-24T03:40:09.899452+00:00,47,Video,No Activity,Unknown,00:00:16,Medium,Unknown
-226,2026-06-24T03:40:09.899452+00:00,46,Video,No Activity,Unknown,00:00:15,Medium,Unknown
-225,2026-06-24T03:40:09.899452+00:00,45,Video,Person Standing,Unknown,00:00:15,Medium,Unknown
-224,2026-06-24T03:40:09.899452+00:00,44,Video,Person Standing,Unknown,00:00:14,Medium,Unknown
-223,2026-06-24T03:40:09.899452+00:00,43,Video,No Activity,Unknown,00:00:14,Medium,Unknown
-222,2026-06-24T03:40:09.899452+00:00,42,Video,No Activity,Unknown,00:00:13,Medium,Unknown
-221,2026-06-24T03:40:09.899452+00:00,41,Video,Person Standing,Unknown,00:00:13,Medium,Unknown
-220,2026-06-24T03:40:09.899452+00:00,40,Video,Person Standing,Unknown,00:00:12,Medium,Unknown
-219,2026-06-24T03:40:09.899452+00:00,39,Video,No Activity,Unknown,00:00:12,Medium,Unknown
-218,2026-06-24T03:40:09.899452+00:00,38,Video,No Activity,Unknown,00:00:12,Medium,Unknown
-217,2026-06-24T03:40:09.899452+00:00,37,Video,No Activity,Unknown,00:00:11,Medium,Unknown
-216,2026-06-24T03:40:09.899452+00:00,36,Video,Person Standing,Unknown,00:00:11,Medium,Unknown
-215,2026-06-24T03:40:09.899452+00:00,35,Video,Person Standing,Unknown,00:00:10,Medium,Unknown
-214,2026-06-24T03:40:09.899452+00:00,34,Video,Person Collapsing,Unknown,00:00:10,Medium,Unknown
-213,2026-06-24T03:40:09.899452+00:00,33,Video,No Activity,Unknown,00:00:09,Medium,Unknown
-212,2026-06-24T03:40:09.899452+00:00,32,Video,No Activity,Unknown,00:00:09,Medium,Unknown
-211,2026-06-24T03:40:09.899452+00:00,31,Video,Multiple Persons Present,Unknown,00:00:08,Medium,Unknown
-210,2026-06-24T03:40:09.899452+00:00,30,Video,Multiple Persons Present,Unknown,00:00:08,Medium,Unknown
-209,2026-06-24T03:40:09.899452+00:00,29,Video,Person Collapsing,Unknown,00:00:07,Medium,Unknown
-208,2026-06-24T03:40:09.899452+00:00,28,Video,Person Collapsing,Unknown,00:00:07,Medium,Unknown
-207,2026-06-24T03:40:09.899452+00:00,27,Video,Person Collapsing,Unknown,00:00:06,Medium,Unknown
-206,2026-06-24T03:40:09.899452+00:00,26,Video,Person Collapsing,Unknown,00:00:06,Medium,Unknown
-205,2026-06-24T03:40:09.899452+00:00,25,Video,Person Standing,Unknown,00:00:05,Medium,Unknown
-204,2026-06-24T03:40:09.899452+00:00,24,Video,Person Collapsing,Unknown,00:00:05,Medium,Unknown
-203,2026-06-24T03:40:09.899452+00:00,23,Video,Person Collapsing,Unknown,00:00:04,Medium,Unknown
-202,2026-06-24T03:40:09.899452+00:00,22,Video,Person Collapsing,Unknown,00:00:04,Medium,Unknown
-201,2026-06-24T03:40:09.899452+00:00,21,Video,Person Collapsing,Unknown,00:00:03,Medium,Unknown
-200,2026-06-24T03:40:09.899452+00:00,20,Video,No Activity,Unknown,00:00:03,Medium,Unknown
-199,2026-06-24T03:40:09.899452+00:00,19,Video,No Activity,Unknown,00:00:02,Medium,Unknown
-198,2026-06-24T03:40:09.899452+00:00,18,Video,No Activity,Unknown,00:00:02,Medium,Unknown
-197,2026-06-24T03:40:09.899452+00:00,17,Video,Person Collapsing,Unknown,00:00:01,Medium,Unknown
-196,2026-06-24T03:40:09.899452+00:00,16,Video,Person Collapsing,Unknown,00:00:01,Medium,Unknown
-195,2026-06-24T03:40:09.899452+00:00,15,Video,No Activity,Unknown,00:00:00,Medium,Unknown
-194,2026-06-24T03:40:09.899452+00:00,14,Video,Person Running,Unknown,00:00:00,High,Unknown
-193,2026-06-24T03:38:54.326273+00:00,13,PDF,Unknown,Fort Smith,"January 19, 2015",Low,Unknown
-28,2026-06-22T09:12:46.184242+00:00,12,Text,Fire / Arson,downtown,Unknown,Medium,Unknown
-27,2026-06-22T09:12:46.184242+00:00,11,Text,Theft / Robbery,Oak Street; Chicago,Unknown,Medium,Unknown
-24,2026-06-22T09:12:46.184242+00:00,8,Image,Traffic Accident,Unknown,Unknown,High,Unknown
-23,2026-06-22T09:12:46.184242+00:00,7,Image,Fire Scene,Unknown,Unknown,High,Unknown
-6,2026-06-22T08:45:49.820246+00:00,1,Text,Other,Unknown,Unknown,Medium,Unknown
+﻿Incident_ID,source,event,location,time,severity,incident_summary,remove
+INC_AUD_002,Audio,Shooting,Unknown,Unknown,High,A High-severity Shooting incident was reported via Audio.,false
+INC_AUD_001,Audio,Unknown,other side of the facility,Unknown,Low,A Low-severity incident was reported via Audio at other side of the facility.,false
+INC_IMG_002,Image,Fire Scene,Alabama Bankhead Highway,Unknown,High,A High-severity Fire Scene incident was reported via Image at Alabama Bankhead Highway.,false
+INC_IMG_001,Image,Fire Scene,Unknown,Unknown,High,A High-severity Fire Scene incident was reported via Image.,false
+INC_VID_001,Video,Person Running,Unknown,00:00:00,High,A High-severity Person Running incident was reported via Video. The reported time was 00:00:00.,false
+INC_PDF_001,PDF,Training / Administrative,Benton County,"May 26, 2015",Low,"A low-severity administrative training event occurred in Benton County on May 26, 2015, as documented in a PDF source.",false
+INC_TXT_115,Text,Other,"Wyoming Highway, United States",Sat Feb 01 05:11:45 +0000 2014,Low,"A low‑severity incident of type 'Other' occurred on Wyoming Highway, United States, reported by a Text source at 05:11:45 UTC on Saturday, February 1, 2014.",false
+INC_TXT_114,Text,Other,"San Jose, Ca",Sat Feb 01 05:11:50 +0000 2014,Low,"A low‑severity event classified as “Other” was reported in San Jose, Ca. The incident occurred at Sat Feb 01 2014 05:11:50 +0000 and was sourced from text.",false
+INC_TXT_113,Text,Other,Anywhere USA,Sat Feb 01 05:13:33 +0000 2014,Low,"At 5:13:33 UTC on Saturday, February 1, 2014, an other type of incident was reported in Anywhere, USA, with low severity, according to a text source.",false
+INC_TXT_112,Text,Assault / Violence,"Badger Guns suit, Windber, PA",Sat Feb 01 05:14:28 +0000 2014,High,"On Sat Feb 01 05:14:28 +0000 2014, a high‑severity assault or violence incident occurred at Badger Guns suit in Windber, PA, according to a text source.",false
+INC_TXT_111,Text,Other,Ontario,Sat Feb 01 05:16:57 +0000 2014,Low,"A low severity incident classified as ""Other"" was reported in Ontario on Saturday, February 1, 2014 at 05:16:57 UTC. The source of the information was text.",false
+INC_TXT_110,Text,Assault / Violence,Badger Guns suit,Sat Feb 01 05:17:58 +0000 2014,High,"An assault/violence incident occurred at the Badger Guns suit on Saturday, February 1, 2014 at 05:17:58 UTC, rated as high severity.",false
+INC_TXT_109,Text,Other,"cry foul, Gurgaon",Sat Feb 01 05:18:59 +0000 2014,Low,"On Sat Feb 01 05:18:59 +0000 2014, an event classified as Other occurred at cry foul, Gurgaon. The source is Text. The severity is Low.",false
+INC_TXT_108,Text,Other,Here But I'm Gone,Sat Feb 01 05:19:44 +0000 2014,Low,A Low-severity Other incident was reported via Text at Here But I'm Gone. The reported time was Sat Feb 01 05:19:44 +0000 2014.,false
+INC_TXT_107,Text,Fire / Arson,"Richland, Michigan - Worldwide",Sat Feb 01 05:19:53 +0000 2014,High,"On Sat Feb 01 2014 at 05:19:53 UTC, a fire/arson incident with high severity occurred in Richland, Michigan, classified as worldwide. The event was reported via text.",false
+INC_TXT_106,Text,Other,PERSON: Felicity Gamelin; DATE: Sat Feb 01 05:21:56 +0000 2014,Sat Feb 01 05:21:56 +0000 2014,Low,"A text event labeled Other was reported at low severity. The incident involved person Felicity Gamelin and the date Sat Feb 01 05:21:56 +0000 2014, with the same timestamp for the event.",false
+INC_TXT_105,Text,Fire / Arson,"Richland, Worldwide",Sat Feb 01 05:22:38 +0000 2014,High,"A high‑severity fire/ arson incident occurred at Richland, Worldwide on Saturday, February 1, 2014, at 05:22:38 UTC, as reported by a text source.",false
+INC_TXT_104,Text,Assault / Violence,United Kingdom,Sat Feb 01 05:23:12 +0000 2014,High,"An assault or violence event occurred in the United Kingdom at 5:23:12 AM UTC on Saturday, February 1, 2014, from a text source. The incident is classified as high severity.",false
+INC_TXT_103,Text,Other,"Delhi, New Delhi / Sikkim",Sat Feb 01 05:25:12 +0000 2014,Low,"A low‑severity event classified as “Other” was recorded in Delhi, New Delhi and Sikkim on Sat Feb 01 2014 at 05:25:12 UTC. The source of the report is textual.",false
+INC_TXT_102,Text,Assault / Violence,"a crime scene, Los Angeles Digital Journo",Sat Feb 01 05:25:49 +0000 2014,High,An assault/violence incident occurred at the crime scene in Los Angeles Digital Journo on Sat Feb 01 05:25:49 +0000 2014. The event was reported as high severity. The source of the information was text.,false
+INC_TXT_101,Text,Other,Delhi,Sat Feb 01 05:28:23 +0000 2014,Low,"On Sat Feb 01 2014 at 05:28:23 UTC, a low‑severity incident classified as ""Other"" was reported in Delhi, according to the text source.",false
+INC_TXT_100,Text,Other,UK,Sat Feb 01 05:30:42 +0000 2014,Low,"At 5:30:42 UTC on Saturday, February 1, 2014, a low‑severity incident was recorded in the UK. The event was categorized as Other, according to a text source.",false
+INC_TXT_099,Text,Other,"The Shoals, Alabama",Sat Feb 01 05:31:05 +0000 2014,Low,"A low severity incident classified as ""Other"" occurred in The Shoals, Alabama, on Saturday, February 1, 2014 at 05:31:05 UTC, according to a textual source.",false
+INC_TXT_098,Text,Other,McDonald's Happy Meals,Sat Feb 01 05:31:32 +0000 2014,Low,A Low-severity Other incident was reported via Text at McDonald's Happy Meals. The reported time was Sat Feb 01 05:31:32 +0000 2014.,false
+INC_TXT_097,Text,Other,"Delhi, somewhere in INDIA or BHARAT",Sat Feb 01 05:32:45 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Delhi, somewhere in INDIA or BHARAT. The reported time was Sat Feb 01 05:32:45 +0000 2014.",false
+INC_TXT_096,Text,Other,"it, On the road with Rick",Sat Feb 01 05:35:23 +0000 2014,Low,"On the road with Rick, an event of type ""Other"" was reported on Saturday, February 1, 2014, at 05:35:23 UTC. The incident was catalogued as low severity and was sourced from a text message.",false
+INC_TXT_095,Text,Other,"Hertfordshire, England, UK",Sat Feb 01 05:35:35 +0000 2014,Low,"An incident classified as ""Other"" was reported in Hertfordshire, England, UK. It was noted at 05:35:35 UTC on Saturday, February 1, 2014. The event was assessed as low severity.",false
+INC_TXT_094,Text,Other,Ramsay Street,Sat Feb 01 05:36:44 +0000 2014,Low,"A low severity incident was reported on Ramsay Street at 05:36:44 UTC on Saturday, February 1, 2014. The event is listed as other. The source of the report was text.",false
+INC_TXT_093,Text,Other,"be traipsed over multiple times, Denver, CO",Sat Feb 01 05:37:20 +0000 2014,Low,"An incident of type “Other” was reported in Denver, CO, where a location was noted as “be traipsed over multiple times.” It occurred at 05:37:20 UTC on Saturday, February 1, 2014. The severity was assessed as low.",false
+INC_TXT_092,Text,Other,"Delhi NCR, India + California",Sat Feb 01 05:38:35 +0000 2014,Low,"A low-severity incident of type “Other” was reported in Delhi NCR, India and California. The event was logged at 05:38:35 UTC on Saturday, February 1, 2014. The source of the report was a text message.",false
+INC_TXT_091,Text,Other,"Ridgeland, Mississippi",Sat Feb 01 05:40:22 +0000 2014,Low,"An incident classified as “Other” occurred in Ridgeland, Mississippi, at 05:40:22 UTC on Saturday, February 1, 2014. The event was reported with a low severity level. The source of the information was a text.",false
+INC_TXT_090,Text,Other,PERSON: -; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:23 +0000 2014,Sat Feb 01 05:41:23 +0000 2014,Low,"A low‑severity “Other” incident was reported via text at McLean High School on Saturday, February 1, 2014, at 05:41:23 UTC.",false
+INC_TXT_089,Text,Other,"California, Estados Unidos",Sat Feb 01 05:41:23 +0000 2014,Low,"An incident classified as “Other” occurred in California, Estados Unidos on Sat Feb 01 05:41:23 +0000 2014, with low severity.",false
+INC_TXT_088,Text,Other,All Round The World,Sat Feb 01 05:41:23 +0000 2014,Low,"Another event labeled ""Other"" occurred at a location described as All Round The World on Saturday, February 1, 2014, at 05:41:23 UTC. The incident was reported by a text source and assessed as Low severity.",false
+INC_TXT_087,Text,Other,"Nairobi , Kenya",Sat Feb 01 05:41:23 +0000 2014,Low,"A low‑severity event occurred in Nairobi, Kenya at 05:41:23 UTC on Saturday, February 1, 2014, reported via text.",false
+INC_TXT_086,Text,Other,PERSON: Avissena; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:23 +0000 2014,Sat Feb 01 05:41:23 +0000 2014,Low,"At 05:41:23 UTC on February 1, 2014, a low‑severity incident involving Avissena at McLean High School was reported.",false
+INC_TXT_085,Text,Other,PERSON: -; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:26 +0000 2014,Sat Feb 01 05:41:26 +0000 2014,Low,"An incident categorized as ""Other"" was reported with low severity at McLean High School. The event occurred on Saturday, February 1, 2014, at 05:41:26 UTC. The source of the report was a text message.",false
+INC_TXT_084,Text,Other,PERSON: -; ORGANIZATION: McLean High School; DATE: Sat Feb 01 05:41:33 +0000 2014,Sat Feb 01 05:41:33 +0000 2014,Low,"Text source reported an Other incident at McLean High School on Saturday, February 1, 2014 at 05:41:33 UTC. The severity was Low.",false
+INC_TXT_083,Text,Other,"local, @GoodGirlBackUp",Sat Feb 01 05:46:18 +0000 2014,Low,"A low‑severity incident occurred at local, @GoodGirlBackUp on Sat Feb 01 05:46:18 +0000 2014, reported by Text. The nature of the incident was classified as Other.",false
+INC_TXT_082,Text,Other,Mountains of Madness,Sat Feb 01 05:48:25 +0000 2014,Low,"On Sat Feb 01 2014 at 05:48:25 +0000, an incident classified as Other occurred in the Mountains of Madness, reported with low severity.",false
+INC_TXT_081,Text,Other,Seoul / Oakland,Sat Feb 01 05:50:33 +0000 2014,Low,A Low-severity Other incident was reported via Text at Seoul / Oakland. The reported time was Sat Feb 01 05:50:33 +0000 2014.,false
+INC_TXT_080,Text,Other,"Leeds, UK",Sat Feb 01 05:51:37 +0000 2014,Low,"A low‑severity incident of type Other occurred in Leeds, UK at 05:51:37 UTC on Saturday, February 1, 2014. The source of the report was Text.",false
+INC_TXT_079,Text,Other,Delhi,Sat Feb 01 05:52:48 +0000 2014,Low,"An incident occurred in Delhi on Saturday, February 1, 2014 at 05:52:48 AM UTC. The event type was listed as ""Other"" and its severity was noted as Low. The information was received from a text source.",false
+INC_TXT_078,Text,Other,"Springfield, MO",Sat Feb 01 05:53:04 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Springfield, MO. The reported time was Sat Feb 01 05:53:04 +0000 2014.",false
+INC_TXT_077,Text,Other,"Springfield, Springfield, MO",Sat Feb 01 05:53:06 +0000 2014,Low,"An incident was reported as “Other” by a text source, occurring at Springfield, Springfield, MO, on Saturday, February 1, 2014 at 05:53:06 UTC, with low severity.",false
+INC_TXT_076,Text,Assault / Violence,"Pontchartrain Park, New Orleans, Louisiana",Sat Feb 01 05:54:51 +0000 2014,High,"A high‑severity assault/violence incident occurred at Pontchartrain Park in New Orleans, Louisiana on Saturday, February 1, 2014 at 05:54:51 UTC, as reported by a text source.",false
+INC_TXT_075,Text,Other,"alleged child porn bust, Hopkinsville, Ky",Sat Feb 01 05:57:29 +0000 2014,Low,"A Low-severity Other incident was reported via Text at alleged child porn bust, Hopkinsville, Ky. The reported time was Sat Feb 01 05:57:29 +0000 2014.",false
+INC_TXT_074,Text,Other,PERSON: *; DATE: Sat Feb 01 05:57:38 +0000 2014,Sat Feb 01 05:57:38 +0000 2014,Low,A Low-severity Other incident was reported via Text at PERSON: *; DATE: Sat Feb 01 05:57:38 +0000 2014. The reported time was Sat Feb 01 05:57:38 +0000 2014.,false
+INC_TXT_073,Text,Other,PERSON: Janie Peveto Johnson; ORGANIZATION: Police; DATE: Sat Feb 01 05:57:43 +0000 2014,Sat Feb 01 05:57:43 +0000 2014,Low,"On Saturday, February 1 at 05:57:43 +0000 2014, an event classified as Other took place involving Janie Peveto Johnson of the Police. The incident was reported with low severity.",false
+INC_TXT_072,Text,Assault / Violence,"Pontchartrain Park, Gentilly neighborhood Saturday, United States of America","Jan. 31, Sat Feb 01 06:00:01 +0000 2014",High,"A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park, Gentilly neighborhood Saturday, United States of America. The reported time was Jan. 31, Sat Feb 01 06:00:01 +0000 2014.",false
+INC_TXT_071,Text,Other,"14.8, Ventura, CA",Sat Feb 01 06:03:23 +0000 2014,Low,"Text describes an other event that occurred in Ventura, CA at coordinates 14.8 on Saturday, February 1, 2014 at 06:03:23 UTC. The incident was assessed as low severity.",false
+INC_TXT_070,Text,Assault / Violence,"Hopkinsville, Ky",Sat Feb 01 06:03:28 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at Hopkinsville, Ky. The reported time was Sat Feb 01 06:03:28 +0000 2014.",false
+INC_TXT_069,Text,Assault / Violence,"Pontchartrain Park, New Orleans, LA",Sat Feb 01 06:06:04 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park, New Orleans, LA. The reported time was Sat Feb 01 06:06:04 +0000 2014.",false
+INC_TXT_068,Text,Assault / Violence,"Pontchartrain Park, HollyGrove-New Orleans",Sat Feb 01 06:07:09 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park, HollyGrove-New Orleans. The reported time was Sat Feb 01 06:07:09 +0000 2014.",false
+INC_TXT_067,Text,Assault / Violence,Pontchartrain Park,Sat Feb 01 06:07:42 +0000 2014,High,A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park. The reported time was Sat Feb 01 06:07:42 +0000 2014.,false
+INC_TXT_066,Text,Other,California,Sat Feb 01 06:10:17 +0000 2014,Low,"A low‑severity incident occurred in California on Saturday, February 1, 2014, at 06:10:17 UTC, involving an event categorized as “Other.” The incident was reported via a text source.",false
+INC_TXT_065,Text,Assault / Violence,PERSON: Crime Watch India; ORGANIZATION: Police; DATE: Sat Feb 01 06:11:02 +0000 2014,Sat Feb 01 06:11:02 +0000 2014,High,"A high‑severity assault/violence incident involving the Police was reported by Crime Watch India at 06:11:02 UTC on February 1, 2014.",false
+INC_TXT_064,Text,Assault / Violence,a crime scene,Sat Feb 01 06:14:18 +0000 2014,High,A High-severity Assault / Violence incident was reported via Text at a crime scene. The reported time was Sat Feb 01 06:14:18 +0000 2014.,false
+INC_TXT_063,Text,Assault / Violence,British army's crime-fighting software,Sat Feb 01 06:14:25 +0000 2014,High,A High-severity Assault / Violence incident was reported via Text at British army's crime-fighting software. The reported time was Sat Feb 01 06:14:25 +0000 2014.,false
+INC_TXT_062,Text,Other,"Toledo, OH",Sat Feb 01 06:16:12 +0000 2014,Low,"An incident classified as “Other” occurred in Toledo, OH on Saturday, February 1, 2014, at 06:16:12 UTC. The event was reported via a text source and is considered low severity. No additional details are provided.",false
+INC_TXT_061,Text,Other,"Toledo, OH",Sat Feb 01 06:16:14 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Toledo, OH. The reported time was Sat Feb 01 06:16:14 +0000 2014.",false
+INC_TXT_060,Text,Other,deserve such loyal companion. This is a,Sat Feb 01 06:18:36 +0000 2014,Low,"An incident categorized as “Other” was reported by Text at 06:18:36 UTC on Sat Feb 01 2014 with low severity, occurring at the location described as ""deserve such loyal companion. This is a"".",false
+INC_TXT_059,Text,Other,"deserve such loyal companion. This is a, Sacramento, CA",Sat Feb 01 06:20:30 +0000 2014,Low,"A Low-severity Other incident was reported via Text at deserve such loyal companion. This is a, Sacramento, CA. The reported time was Sat Feb 01 06:20:30 +0000 2014.",false
+INC_TXT_058,Text,Other,Petaluma,Sat Feb 01 06:20:51 +0000 2014,Low,"On Sat Feb 01 06:20:51 +0000 2014, an Other event occurred in Petaluma. The incident was reported by Text and has a Low severity.",false
+INC_TXT_057,Text,Other,PERSON: David E P Dennis; DATE: Sat Feb 01 06:22:08 +0000 2014,Sat Feb 01 06:22:08 +0000 2014,Low,"A low‑severity incident classified as “Other” was reported at the location identified by PERSON: David E P Dennis; DATE: Sat Feb 01 06:22:08 +0000 2014, occurring on Sat Feb 01 06:22:08 +0000 2014.",false
+INC_TXT_056,Text,Other,"Toledo, OH",Sat Feb 01 06:22:17 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Toledo, OH. The reported time was Sat Feb 01 06:22:17 +0000 2014.",false
+INC_TXT_055,Text,Other,"Toledo, OH",Sat Feb 01 06:22:24 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Toledo, OH. The reported time was Sat Feb 01 06:22:24 +0000 2014.",false
+INC_TXT_054,Text,Other,Florida,Sat Feb 01 06:22:28 +0000 2014,Low,A Low-severity Other incident was reported via Text at Florida. The reported time was Sat Feb 01 06:22:28 +0000 2014.,false
+INC_TXT_053,Text,Assault / Violence,"Detroit, Somewhere in SE Michigan",Sat Feb 01 06:23:34 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at Detroit, Somewhere in SE Michigan. The reported time was Sat Feb 01 06:23:34 +0000 2014.",false
+INC_TXT_052,Text,Assault / Violence,"Pontchartrain Park, New Orleans, LA",Sat Feb 01 06:25:03 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park, New Orleans, LA. The reported time was Sat Feb 01 06:25:03 +0000 2014.",false
+INC_TXT_051,Text,Other,"Petaluma, Burlingame, CA",Sat Feb 01 06:25:11 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Petaluma, Burlingame, CA. The reported time was Sat Feb 01 06:25:11 +0000 2014.",false
+INC_TXT_050,Text,Other,/dev/null,Sat Feb 01 06:27:14 +0000 2014,Low,An incident classified as “Other” occurred at location /dev/null on Sat Feb 01 06:27:14 +0000 2014 with low severity.,false
+INC_TXT_049,Text,Other,"Petaluma, San Francisco, California",Sat Feb 01 06:27:37 +0000 2014,Low,"At 06:27:37 UTC on Saturday, February 1, 2014, an incident classified as ""Other"" was reported in Petaluma, San Francisco, California, with a low severity level.",false
+INC_TXT_048,Text,Assault / Violence,"Murder Case, San Dimas, CA",Sat Feb 01 06:28:37 +0000 2014,High,"Text reports an assault/violence incident at Murder Case, San Dimas, CA, occurring on Sat Feb 01 06:28:37 +0000 2014. The event is classified as high severity.",false
+INC_TXT_047,Text,Other,"cry foul, Chennai, India",Sat Feb 01 06:28:49 +0000 2014,Low,"A text reports an other incident at Cry Foul, Chennai, India, on Saturday, February 1st, 2014 at 06:28:49 UTC, and it is classified as low severity.",false
+INC_TXT_046,Text,Other,pay for their crime of beating him.Delhi,Sat Feb 01 06:29:18 +0000 2014,Low,"On Sat Feb 01 06:29:18 +0000 2014, a low‑severity incident categorized as “Other” occurred at “pay for their crime of beating him.Delhi.”",false
+INC_TXT_045,Text,Assault / Violence,Pontchartrain Park,Sat Feb 01 06:29:25 +0000 2014,High,"An assault or violence incident was reported at Pontchartrain Park on Saturday, February 1, 2014 at 06:29:25 UTC, classified as high severity.",false
+INC_TXT_044,Text,Other,"pay for their crime of beating him.Delhi, Capital, India",Sat Feb 01 06:31:00 +0000 2014,Low,"A Low-severity Other incident was reported via Text at pay for their crime of beating him.Delhi, Capital, India. The reported time was Sat Feb 01 06:31:00 +0000 2014.",false
+INC_TXT_043,Text,Other,"w, • Afghanistan, CA •",Sat Feb 01 06:31:20 +0000 2014,Low,"A Low-severity Other incident was reported via Text at w, • Afghanistan, CA •. The reported time was Sat Feb 01 06:31:20 +0000 2014.",false
+INC_TXT_042,Text,Other,"blame Delhi, Hell",Sat Feb 01 06:31:40 +0000 2014,Low,"A text report recorded an incident classified as ""Other"" that occurred at blame Delhi, Hell. It was logged on Saturday, February 1, 2014, at 06:31:40 UTC. The event was rated as having low severity.",false
+INC_TXT_041,Text,Other,"St. Louis, Mo",Sat Feb 01 06:32:15 +0000 2014,Low,"A Low-severity Other incident was reported via Text at St. Louis, Mo. The reported time was Sat Feb 01 06:32:15 +0000 2014.",false
+INC_TXT_040,Text,Assault / Violence,Ontario,Sat Feb 01 06:32:41 +0000 2014,High,A High-severity Assault / Violence incident was reported via Text at Ontario. The reported time was Sat Feb 01 06:32:41 +0000 2014.,false
+INC_TXT_039,Text,Assault / Violence,"be fighting crime on the streets, a hiding spot waiting",Sat Feb 01 06:35:17 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at be fighting crime on the streets, a hiding spot waiting. The reported time was Sat Feb 01 06:35:17 +0000 2014.",false
+INC_TXT_038,Text,Other,"sunny spot med. MJ shop on 17th, San Francisco, CA",Sat Feb 01 06:35:45 +0000 2014,Low,"A Low-severity Other incident was reported via Text at sunny spot med. MJ shop on 17th, San Francisco, CA. The reported time was Sat Feb 01 06:35:45 +0000 2014.",false
+INC_TXT_037,Text,Other,Petaluma,Sat Feb 01 06:40:55 +0000 2014,Low,A Low-severity Other incident was reported via Text at Petaluma. The reported time was Sat Feb 01 06:40:55 +0000 2014.,false
+INC_TXT_036,Text,Other,FACEBOOK,Sat Feb 01 06:42:54 +0000 2014,Low,A Low-severity Other incident was reported via Text at FACEBOOK. The reported time was Sat Feb 01 06:42:54 +0000 2014.,false
+INC_TXT_035,Text,Other,"showdown, Cranston, RI",Sat Feb 01 06:42:57 +0000 2014,Low,"A Low-severity Other incident was reported via Text at showdown, Cranston, RI. The reported time was Sat Feb 01 06:42:57 +0000 2014.",false
+INC_TXT_034,Text,Other,"prevent a crime or arrest the suspect, California",Sat Feb 01 06:43:11 +0000 2014,Low,"On Saturday, February 1 2014 at 06:43:11 UTC, a text report indicated an other type of incident occurring in California, involving prevention of a crime or arrest of a suspect. The incident was classified as low severity.",false
+INC_TXT_033,Text,Other,"Onitsha, Ilorin, Kwara State, Nigeria",Sat Feb 01 06:43:22 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Onitsha, Ilorin, Kwara State, Nigeria. The reported time was Sat Feb 01 06:43:22 +0000 2014.",false
+INC_TXT_032,Text,Other,"capital by govnment, b present ther b4 crime take place, South Africa",Sat Feb 01 06:43:47 +0000 2014,Low,"A text report described an other incident taking place in South Africa’s capital, where a person was present before a crime occurred. The event occurred on Saturday, February 1, 2014, at 06:43:47 GMT. The incident is classified as low severity.",false
+INC_TXT_031,Text,Fire / Arson,"grass fires, FACEBOOK",Sat Feb 01 06:46:27 +0000 2014,High,A high severity fire or arson incident occurred at grass fires observed through FACEBOOK. The event was reported on Sat Feb 01 06:46:27 +0000 2014. The source of the report was a text message.,false
+INC_TXT_030,Text,Other,Sydney Australia,Sat Feb 01 06:48:08 +0000 2014,Low,A Low-severity Other incident was reported via Text at Sydney Australia. The reported time was Sat Feb 01 06:48:08 +0000 2014.,false
+INC_TXT_029,Text,Other,"a playlist World's Scariest, Victoria bc",Sat Feb 01 06:48:16 +0000 2014,Low,"Text reported an Other event occurring at a playlist titled World's Scariest in Victoria BC on Sat Feb 01 2014 at 06:48:16 +0000, rated as Low severity.",false
+INC_TXT_028,Text,Other,"Delhi. Home minister, France",Sat Feb 01 06:51:32 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Delhi. Home minister, France. The reported time was Sat Feb 01 06:51:32 +0000 2014.",false
+INC_TXT_027,Text,Other,"High Court, Mumbai jail for 10 years, Karachi Pakistan",Sat Feb 01 06:51:55 +0000 2014,Low,"On Sat Feb 01 06:51:55 +0000 2014, a low‑severity incident labeled “Other” occurred at the High Court, Mumbai jail for 10 years, Karachi Pakistan.",false
+INC_TXT_026,Text,Other,"Rs 8 cr heist, Karachi Pakistan",Sat Feb 01 06:51:55 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Rs 8 cr heist, Karachi Pakistan. The reported time was Sat Feb 01 06:51:55 +0000 2014.",false
+INC_TXT_025,Text,Other,USC '15 • D(M)V,Sat Feb 01 06:53:10 +0000 2014,Low,A Low-severity Other incident was reported via Text at USC '15 • D(M)V. The reported time was Sat Feb 01 06:53:10 +0000 2014.,false
+INC_TXT_024,Text,Other,Delhi. Home minister,Sat Feb 01 06:54:05 +0000 2014,Low,A Low-severity Other incident was reported via Text at Delhi. Home minister. The reported time was Sat Feb 01 06:54:05 +0000 2014.,false
+INC_TXT_023,Text,Assault / Violence,"a crime scene, Berlin",Sat Feb 01 06:54:09 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at a crime scene, Berlin. The reported time was Sat Feb 01 06:54:09 +0000 2014.",false
+INC_TXT_022,Text,Other,SIGMA LAND blasting Hatch,Sat Feb 01 06:54:50 +0000 2014,Low,"An incident of type „Other” was reported at SIGMA LAND blasting Hatch on Saturday, February 1, 2014, at 06:54:50 UTC. The event was classified as low severity. The source is a text message.",false
+INC_TXT_021,Text,Other,Delhi. Home minister,Sat Feb 01 06:55:13 +0000 2014,Low,"A low severity incident labeled Other was reported at Delhi involving the Home minister on Sat Feb 01 06:55:13 +0000 2014, according to a text source.",false
+INC_TXT_020,Text,Other,University of Southern Comfort,Sat Feb 01 06:57:23 +0000 2014,Low,A Low-severity Other incident was reported via Text at University of Southern Comfort. The reported time was Sat Feb 01 06:57:23 +0000 2014.,false
+INC_TXT_019,Text,Other,Delhi. Home minister,Sat Feb 01 06:58:28 +0000 2014,Low,"A low‑severity incident was reported on Sat Feb 01 2014 at 06:58:28 +0000, involving the Home Minister in Delhi. The event was categorized as Other, with the source identified as Text.",false
+INC_TXT_018,Text,Other,"Delhi. Home minister, Mumbai",Sat Feb 01 06:58:52 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Delhi. Home minister, Mumbai. The reported time was Sat Feb 01 06:58:52 +0000 2014.",false
+INC_TXT_017,Text,Other,"Delhi. Home minister, Bhilai",Sat Feb 01 07:00:47 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Delhi. Home minister, Bhilai. The reported time was Sat Feb 01 07:00:47 +0000 2014.",false
+INC_TXT_016,Text,Other,"cry foul, CITY OF DREAMS (BOMBAYY",Sat Feb 01 07:01:12 +0000 2014,Low,"An incident marked as ""Other"" was reported at cry foul, CITY OF DREAMS (BOMBAYY). It occurred on Saturday, February 1, 2014, at 07:01:12 UTC, and was rated as Low severity.",false
+INC_TXT_015,Text,Other,"river, York,North Yorkshire",Fri Jan 31 13:04:37 +0000 2014,Low,"A Low-severity Other incident was reported via Text at river, York,North Yorkshire. The reported time was Fri Jan 31 13:04:37 +0000 2014.",false
+INC_TXT_014,Text,Assault / Violence,"Badger Guns suit, Washington, D.C",Thu Jan 30 20:23:16 +0000 2014,High,"An assault incident with high severity occurred at Badger Guns suit, Washington, D.C., on Thu Jan 30 20:23:16 +0000 2014, as reported by a text source.",false
+INC_TXT_013,Text,Other,"Devon and Cornwall, England",Fri Jan 31 12:49:56 +0000 2014,Low,"An incident classified as ""Other"" occurred at Devon and Cornwall, England, reported via Text on Fri Jan 31 12:49:56 +0000 2014, with a Low severity.",false
+INC_TXT_012,Text,Assault / Violence,a crime scene,Fri Jan 31 22:25:01 +0000 2014,High,A High-severity Assault / Violence incident was reported via Text at a crime scene. The reported time was Fri Jan 31 22:25:01 +0000 2014.,false
+INC_TXT_011,Text,Other,"co-ordinated raids, Essex, England",Fri Jan 31 08:20:12 +0000 2014,Low,"On Fri Jan 31 08:20:12 +0000 2014, a low‑severity event involving other type of activity was reported at co‑ordinated raids in Essex, England.",false
+INC_TXT_010,Text,Other,"end the violent MJ trade, Baltimore, MD",Fri Jan 31 04:37:05 +0000 2014,Low,"A Low-severity Other incident was reported via Text at end the violent MJ trade, Baltimore, MD. The reported time was Fri Jan 31 04:37:05 +0000 2014.",false
+INC_TXT_009,Text,Assault / Violence,"A Crime Scene, Washington, DC",Thu Jan 30 18:24:27 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at A Crime Scene, Washington, DC. The reported time was Thu Jan 30 18:24:27 +0000 2014.",false
+INC_TXT_008,Text,Other,"lack of, Pakistan become easy targets for crime, Washington, D.C",Thu Jan 30 14:31:21 +0000 2014,Low,"A Low-severity Other incident was reported via Text at lack of, Pakistan become easy targets for crime, Washington, D.C. The reported time was Thu Jan 30 14:31:21 +0000 2014.",false
+INC_TXT_007,Text,Theft / Robbery,"Buffalo, NY",Thu Jan 30 22:19:37 +0000 2014,Medium,"A Medium-severity Theft / Robbery incident was reported via Text at Buffalo, NY. The reported time was Thu Jan 30 22:19:37 +0000 2014.",false
+INC_TXT_006,Text,Other,"stamp out, London","Today, Fri Jan 31 07:22:18 +0000 2014",Low,"A Low-severity Other incident was reported via Text at stamp out, London. The reported time was Today, Fri Jan 31 07:22:18 +0000 2014.",false
+INC_TXT_005,Text,Assault / Violence,"stamp out, domestic violence, London",Thu Jan 30 23:18:45 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at stamp out, domestic violence, London. The reported time was Thu Jan 30 23:18:45 +0000 2014.",false
+INC_TXT_004,Text,Assault / Violence,A Crime Scene,Fri Jan 31 02:33:17 +0000 2014,High,A High-severity Assault / Violence incident was reported via Text at A Crime Scene. The reported time was Fri Jan 31 02:33:17 +0000 2014.,false
+INC_TXT_003,Text,Other,"public via, Northern Virginia",Fri Jan 31 18:10:37 +0000 2014,Low,"A Low-severity Other incident was reported via Text at public via, Northern Virginia. The reported time was Fri Jan 31 18:10:37 +0000 2014.",false
+INC_TXT_002,Text,Assault / Violence,"Monday shooting, Rocky Mount, N.C",Fri Jan 31 05:01:39 +0000 2014,High,"A High-severity Assault / Violence incident was reported via Text at Monday shooting, Rocky Mount, N.C. The reported time was Fri Jan 31 05:01:39 +0000 2014.",false
+INC_TXT_001,Text,Assault / Violence,"Jeff, Hoover, AL, Alabama",Fri Jan 31 05:51:59 +0000 2014,High,"An assault/violence incident occurred at Jeff in Hoover, AL, Alabama, on 31 January 2014 at 05:51:59 UTC. The event is classified as high severity.",false
