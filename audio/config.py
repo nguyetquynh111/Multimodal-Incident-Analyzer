@@ -17,5 +17,6 @@ OUTPUT_COLUMNS = [
 SUPPORTED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".m4a"}
 UNKNOWN = "Unknown"
 
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
+DEFAULT_WHISPER_MODEL = "small.en"
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", DEFAULT_WHISPER_MODEL)
 LOCATION_LABELS = {"street address", "location", "building", "floor", "city"}

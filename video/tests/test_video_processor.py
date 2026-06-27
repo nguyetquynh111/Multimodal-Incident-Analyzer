@@ -21,6 +21,7 @@ import pytest
 cv2 = pytest.importorskip("cv2", reason="OpenCV is required for video processor tests.")
 np = pytest.importorskip("numpy", reason="NumPy is required for video processor tests.")
 
+from video import processor
 from video.processor import (
     DRAFT_COLUMNS,
     classify_event,
@@ -101,6 +102,43 @@ class VideoDraftSchemaTests(unittest.TestCase):
         _make_synthetic_video(long_video, duration_seconds=301)
         with self.assertRaisesRegex(ValueError, "five-minute MVP limit"):
             process_video_file(str(long_video))
+
+
+class YoloPerformanceConfigTests(unittest.TestCase):
+    def test_yolo_stride_runs_only_on_configured_candidates(self) -> None:
+        decisions = [
+            processor._should_run_yolo(True, candidate_index, stride=2)
+            for candidate_index in range(5)
+        ]
+
+        self.assertEqual(decisions, [True, False, True, False, True])
+        self.assertFalse(processor._should_run_yolo(False, 0, stride=2))
+
+    def test_run_yolo_uses_configured_image_size(self) -> None:
+        class FakeModel:
+            names = {}
+
+            def __call__(self, frame, *, verbose, imgsz, iou):
+                self.imgsz = imgsz
+                self.verbose = verbose
+                self.iou = iou
+                return []
+
+        model = FakeModel()
+        frame = np.zeros((180, 320, 3), dtype=np.uint8)
+
+        objects, confidence, collapsed, collapse_confidence, boxes = processor.run_yolo(
+            model, frame, imgsz=320
+        )
+
+        self.assertEqual(model.imgsz, 320)
+        self.assertFalse(model.verbose)
+        self.assertEqual(model.iou, 0.45)
+        self.assertEqual(objects, [])
+        self.assertEqual(confidence, 0.0)
+        self.assertFalse(collapsed)
+        self.assertEqual(collapse_confidence, 0.0)
+        self.assertEqual(boxes, [])
 
 
 class ClassifyEventTests(unittest.TestCase):

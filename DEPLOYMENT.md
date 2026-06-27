@@ -82,6 +82,19 @@ incident evidence is an explicit requirement.
 
 - Uploaded files and processor CSVs use the container's writable filesystem.
   Cloud Run storage is ephemeral, so Supabase remains the durable data store.
+- Whisper and YOLO have safe defaults; set these only when you want to override
+  runtime behavior:
+
+  ```sh
+  WHISPER_MODEL=small.en
+  WHISPER_DEVICE=cpu
+  VIDEO_YOLO_SAMPLE_STRIDE=2
+  VIDEO_YOLO_IMAGE_SIZE=640
+  VIDEO_YOLO_MODEL_PATH=video/yolov8s.pt
+  ```
+
+  Use `WHISPER_MODEL=medium.en` for higher accuracy on a faster instance, or
+  `WHISPER_MODEL=base.en` if startup/latency matters more.
 - Whisper and YOLO download model weights on first use. This increases the
   first processing request's latency, and each new instance has its own cache.
 - FFmpeg and Tesseract are installed in the image for audio transcription and

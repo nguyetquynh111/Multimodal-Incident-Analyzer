@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -29,16 +30,40 @@ DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "output" / "video_output
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg", ".wmv"}
 _SAMPLE_SECONDS = 0.5
 _MAX_DURATION_SECONDS = 300  # reject clips longer than 5 minutes
+_DEFAULT_YOLO_IMAGE_SIZE = 640
+_DEFAULT_YOLO_SAMPLE_STRIDE = 2
+_DEFAULT_YOLO_MODEL_PATH = "video/yolov8s.pt"
 
 PERSON_CONF_THRESHOLD = 0.15
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle", "bicycle"}
 VEHICLE_CONF_THRESHOLD = 0.40
 
 
+def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
+    try:
+        value = int(os.getenv(name, "").strip() or default)
+    except ValueError:
+        return default
+    return max(minimum, value)
+
+
+def _yolo_image_size() -> int:
+    return _env_int("VIDEO_YOLO_IMAGE_SIZE", _DEFAULT_YOLO_IMAGE_SIZE, minimum=320)
+
+
+def _yolo_sample_stride() -> int:
+    return _env_int("VIDEO_YOLO_SAMPLE_STRIDE", _DEFAULT_YOLO_SAMPLE_STRIDE, minimum=1)
+
+
+def _should_run_yolo(eligible: bool, candidate_index: int, stride: int) -> bool:
+    return eligible and candidate_index % max(1, stride) == 0
+
+
 def load_yolo_model():
     try:
         from ultralytics import YOLO
-        return YOLO("video/yolov8s.pt")
+
+        return YOLO(os.getenv("VIDEO_YOLO_MODEL_PATH", _DEFAULT_YOLO_MODEL_PATH))
     except Exception:
         return None
 
@@ -52,12 +77,12 @@ def enhance_frame(frame):
     return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
 
-def run_yolo(model, frame):
+def run_yolo(model, frame, *, imgsz: int | None = None):
     """Run YOLO once and return objects, max confidence, collapse flag, and filtered boxes for annotation."""
     if model is None:
         return [], 0.0, False, 0.0, []
 
-    results = model(frame, verbose=False, imgsz=1280, iou=0.45)
+    results = model(frame, verbose=False, imgsz=imgsz or _yolo_image_size(), iou=0.45)
     objects: List[str] = []
     max_confidence = 0.0
     collapsed = False
@@ -265,8 +290,11 @@ def process_video_file(
         raise ValueError("Video exceeds the five-minute MVP limit.")
 
     sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
+    yolo_sample_stride = _yolo_sample_stride()
+    yolo_imgsz = _yolo_image_size()
     mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
     frame_index = 0
+    yolo_candidate_index = 0
     extractor_rows = []
 
     while True:
@@ -286,8 +314,14 @@ def process_video_file(
                 continue
 
             enhanced = enhance_frame(resized)
-            if qualifies_for_detection:
-                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(model, enhanced)
+            yolo_eligible = qualifies_for_detection and not fire_detected
+            run_yolo_now = _should_run_yolo(yolo_eligible, yolo_candidate_index, yolo_sample_stride)
+            if yolo_eligible:
+                yolo_candidate_index += 1
+            if run_yolo_now:
+                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
+                    model, enhanced, imgsz=yolo_imgsz
+                )
             else:
                 objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
 
@@ -300,7 +334,7 @@ def process_video_file(
                         collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
                         break
 
-            yolo_ran = qualifies_for_detection and model is not None
+            yolo_ran = run_yolo_now and model is not None
 
             if fire_detected:
                 event, confidence = "Fire detected", fire_confidence
@@ -361,8 +395,11 @@ def process_video_stream(
         raise ValueError("Video exceeds the five-minute MVP limit.")
 
     sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
+    yolo_sample_stride = _yolo_sample_stride()
+    yolo_imgsz = _yolo_image_size()
     mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
     frame_index = 0
+    yolo_candidate_index = 0
 
     while True:
         ok, frame = cap.read()
@@ -381,8 +418,14 @@ def process_video_stream(
                 continue
 
             enhanced = enhance_frame(resized)
-            if qualifies_for_detection:
-                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(model, enhanced)
+            yolo_eligible = qualifies_for_detection and not fire_detected
+            run_yolo_now = _should_run_yolo(yolo_eligible, yolo_candidate_index, yolo_sample_stride)
+            if yolo_eligible:
+                yolo_candidate_index += 1
+            if run_yolo_now:
+                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
+                    model, enhanced, imgsz=yolo_imgsz
+                )
             else:
                 objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
 
@@ -394,7 +437,7 @@ def process_video_stream(
                         collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
                         break
 
-            yolo_ran = qualifies_for_detection and model is not None
+            yolo_ran = run_yolo_now and model is not None
 
             if fire_detected:
                 event, confidence = "Fire detected", fire_confidence

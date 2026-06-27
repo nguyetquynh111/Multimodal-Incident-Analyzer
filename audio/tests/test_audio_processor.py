@@ -11,9 +11,39 @@ import pandas as pd
 from audio.config import OUTPUT_COLUMNS
 from audio.extract import analyze_transcript
 from audio.processor import main, process_audio_file, process_audio_folder
+from audio import config
+from audio import transcribe
 
 
 class AudioProcessorTests(unittest.TestCase):
+    def test_default_whisper_model_is_higher_quality_english_model(self) -> None:
+        self.assertEqual(config.DEFAULT_WHISPER_MODEL, "small.en")
+
+    def test_whisper_transcribe_options_use_beam_search(self) -> None:
+        options = transcribe._transcribe_options("cpu", "en")
+
+        self.assertEqual(options["language"], "en")
+        self.assertEqual(options["beam_size"], 5)
+        self.assertEqual(options["temperature"], 0)
+        self.assertFalse(options["fp16"])
+        self.assertFalse(options["condition_on_previous_text"])
+
+    def test_preload_whisper_model_uses_configured_loader(self) -> None:
+        calls = []
+
+        def fake_load(model_name, device, download_root):
+            calls.append((model_name, device, download_root))
+            return object()
+
+        original = transcribe._load_whisper
+        transcribe._load_whisper = fake_load
+        try:
+            transcribe.preload_whisper_model("tiny.en", quiet=True)
+        finally:
+            transcribe._load_whisper = original
+
+        self.assertEqual(calls, [("tiny.en", "cpu", None)])
+
     def test_rule_based_analysis(self) -> None:
         row = analyze_transcript(
             "DEMO001",

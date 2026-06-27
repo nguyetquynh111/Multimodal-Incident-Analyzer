@@ -33,7 +33,8 @@ DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "output" / "image_output
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MODEL_ID = "fire-detection-data-pre/4"
-DEFAULT_API_URL = "https://detect.roboflow.com"
+DEFAULT_PERSON_MODEL_ID = "yolov8n-640"
+DEFAULT_API_URL = "https://serverless.roboflow.com"
 logger = logging.getLogger(__name__)
 
 
@@ -45,8 +46,12 @@ def _load_image_environment() -> None:
 
 def classify_scene(labels: list[str]) -> str:
     labels_lower = [label.lower() for label in labels]
+    if "fire" in labels_lower and "person" in labels_lower:
+        return "Fire and Smoke Scene"
+    if "fire" in labels_lower and "smoke" in labels_lower:
+        return "Fire and Smoke Scene"
     if "fire" in labels_lower:
-        return "Fire / Arson"
+        return "Fire Scene"
     if "smoke" in labels_lower:
         return "Smoke Scene"
     if "person" in labels_lower:
@@ -85,26 +90,44 @@ def _infer_detection_result(img_path: str) -> tuple[list[dict[str, Any]], bool]:
             api_url=os.getenv("ROBOFLOW_API_URL", DEFAULT_API_URL),
             api_key=api_key,
         )
-        result = client.infer(
-            img_path,
-            model_id=os.getenv("ROBOFLOW_MODEL_ID", DEFAULT_MODEL_ID),
-        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "Roboflow inference failed for %s (%s); using fallback.",
+            "Roboflow client setup failed for %s (%s); using fallback.",
             Path(img_path).name,
             type(exc).__name__,
         )
         return [], False
 
-    predictions = result.get("predictions", []) if isinstance(result, dict) else []
-    return [
-        detection
-        for pred in predictions
-        if isinstance(pred, Mapping)
-        for detection in [_normalize_prediction(pred)]
-        if detection is not None
-    ], True
+    model_specs = (
+        (os.getenv("ROBOFLOW_MODEL_ID", DEFAULT_MODEL_ID), None),
+        (os.getenv("ROBOFLOW_PERSON_MODEL_ID", DEFAULT_PERSON_MODEL_ID), "person"),
+    )
+    detections: list[dict[str, Any]] = []
+    inference_available = False
+    for model_id, class_filter in model_specs:
+        try:
+            result = client.infer(img_path, model_id=model_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Roboflow inference failed for %s with %s (%s); continuing.",
+                Path(img_path).name,
+                model_id,
+                type(exc).__name__,
+            )
+            continue
+
+        inference_available = True
+        predictions = result.get("predictions", []) if isinstance(result, dict) else []
+        for pred in predictions:
+            if not isinstance(pred, Mapping):
+                continue
+            if class_filter is not None and pred.get("class") != class_filter:
+                continue
+            detection = _normalize_prediction(pred)
+            if detection is not None:
+                detections.append(detection)
+
+    return detections, inference_available
 
 
 def _infer_detections(img_path: str) -> list[dict[str, Any]]:
@@ -112,22 +135,36 @@ def _infer_detections(img_path: str) -> list[dict[str, Any]]:
     return detections
 
 
+def _bounded_confidence(value: Any) -> float | None:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, score))
+
+
+def _confidence_score(detections: list[dict[str, Any]], *, fallback_confidence: float) -> float:
+    confidences = [
+        score
+        for det in detections
+        for score in [_bounded_confidence(det.get("confidence"))]
+        if score is not None
+    ]
+    if not confidences:
+        return fallback_confidence
+    return round(sum(confidences) / len(confidences), 2)
+
+
 def _labels_and_confidence(detections: list[dict[str, Any]], *, fallback_confidence: float) -> tuple[list[str], float]:
     labels = [str(det.get("class")) for det in detections if det.get("class")]
-    confidences = [
-        float(det.get("confidence"))
-        for det in detections
-        if det.get("confidence") is not None
-    ]
-    top_confidence = round(max(confidences), 2) if confidences else fallback_confidence
-    return labels, top_confidence
+    return labels, _confidence_score(detections, fallback_confidence=fallback_confidence)
 
 
 def _infer_labels(img_path: str) -> tuple[list[str], float]:
     """Compatibility wrapper for code/tests that only need label + confidence."""
 
-    detections, inference_available = _infer_detection_result(img_path)
-    fallback_confidence = 0.5 if inference_available else 0.0
+    detections, _inference_available = _infer_detection_result(img_path)
+    fallback_confidence = 0.5
     return _labels_and_confidence(detections, fallback_confidence=fallback_confidence)
 
 
@@ -149,13 +186,7 @@ def _clean_ocr_candidate(text: str, *, max_length: int = 160) -> str:
 
 
 def _ocr_text(img_path: str) -> str:
-    """Read sparse text/watermarks from the image corners before full-scene OCR.
-
-    Evidence photos often contain a small agency or publisher credit in a
-    corner. Running OCR across the entire fire/smoke scene produces noise that
-    obscures that text, so the corner crops are enlarged and tried in both
-    normal and inverted contrast first.
-    """
+    """Run full-image grayscale OCR, matching the original image draft flow."""
 
     try:
         import cv2  # type: ignore
@@ -166,34 +197,9 @@ def _ocr_text(img_path: str) -> str:
             logger.warning("Could not read image %s for OCR; using N/A.", Path(img_path).name)
             return NO_TEXT
 
-        height, width = img.shape[:2]
-        # These regions cover the conventional locations for source credits,
-        # without sending the visually busy centre of an evidence photo to OCR.
-        corners = (
-            img[: int(height * 0.50), : int(width * 0.70)],  # top-left
-            img[int(height * 0.75):, int(width * 0.68):],  # bottom-right
-        )
-        readings: list[str] = []
-        for crop in corners:
-            if crop.size == 0:
-                continue
-            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-            enlarged = cv2.resize(gray, None, fx=6, fy=6, interpolation=cv2.INTER_CUBIC)
-            inverted = cv2.threshold(
-                enlarged, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-            )[1]
-            for candidate in (enlarged, inverted):
-                text = pytesseract.image_to_string(candidate, config="--psm 11")
-                cleaned = _clean_ocr_candidate(text)
-                if cleaned:
-                    readings.append(cleaned)
-
-        if readings:
-            # Prefer the longest readable crop result. This keeps OCR data
-            # source-driven instead of accepting only known sample phrases.
-            return max(readings, key=lambda value: (len(re.sub(r"[^A-Za-z0-9]", "", value)), len(value)))
-
-        return NO_TEXT
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        ocr_text = pytesseract.image_to_string(gray).strip().replace("\n", " ")
+        return ocr_text if len(ocr_text) > 3 else NO_TEXT
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "OCR failed for %s (%s); using N/A.", Path(img_path).name, type(exc).__name__
@@ -206,10 +212,10 @@ def _analyze_image_with_detections(
     image_id: str = "IMG_001",
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     path = Path(img_path)
-    detections, inference_available = _infer_detection_result(str(path))
+    detections, _inference_available = _infer_detection_result(str(path))
     labels, confidence = _labels_and_confidence(
         detections,
-        fallback_confidence=0.5 if inference_available else 0.0,
+        fallback_confidence=0.5,
     )
     ocr_text = _ocr_text(str(path))
     return {

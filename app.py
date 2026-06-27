@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import threading
 from pathlib import Path
 
 import altair as alt
@@ -762,7 +763,7 @@ def view_ingest() -> None:
     st.write("")
 
     if source_type == "audio":
-        st.info("We'll create a written transcript from this recording automatically.")
+        st.info("We'll create a written transcript from this recording.")
 
     if st.button("Review evidence", type="primary", icon=":material/play_arrow:"):
         with st.spinner("Reviewing your file…"):
@@ -1013,15 +1014,18 @@ def _add_incident_dialog(existing_ids: list) -> None:
     location = st.text_input("Location", "Unknown")
     time_val = st.text_input("Time", "Unknown")
     severity = st.selectbox("Severity", SEVERITY_ORDER, index=1)
+    incident_summary = st.text_area("Incident summary", "Unknown", height=90)
     if st.button("Save", type="primary", icon=":material/save:"):
         draft = pd.DataFrame([{
             "Event": event,
             "Location": location or "Unknown",
             "Time": time_val or "Unknown",
             "Severity": severity,
-            "Summary": "Unknown",
+            "Summary": incident_summary or "Unknown",
         }])
         row = ig.integrate_records(draft, source_type, existing_ids)
+        if incident_summary and incident_summary.strip():
+            row["Incident_Summary"] = incident_summary.strip()
         try:
             upload_incidents(row)
             st.success(f"Added {row.iloc[0]['Incident_ID']}")
@@ -1096,7 +1100,7 @@ def view_manage() -> None:
 
         field_labels = st.multiselect(
             "Fields to update",
-            ["Event", "Location", "Time", "Severity"],
+            ["Event", "Location", "Time", "Severity", "Incident summary"],
             help="Only selected fields will be overwritten.",
             key="bulk_fields",
         )
@@ -1117,6 +1121,12 @@ def view_manage() -> None:
         if "Severity" in field_labels:
             bulk_values["severity"] = input_columns[1].selectbox(
                 "New severity", SEVERITY_ORDER, index=1, key="bulk_severity"
+            )
+        if "Incident summary" in field_labels:
+            bulk_values["incident_summary"] = st.text_area(
+                "New incident summary",
+                key="bulk_incident_summary",
+                height=90,
             )
 
         target_count = len(target_labels)
@@ -1185,7 +1195,7 @@ def view_manage() -> None:
     _section("Incident list")
     st.caption("Edit any unlocked cell. Select Remove for records you no longer need, then apply your changes.")
 
-    editable = df.loc[:, ["Incident_ID", "source", "event", "location", "time", "severity"]].copy()
+    editable = df.loc[:, ["Incident_ID", "source", "event", "location", "time", "severity", "incident_summary"]].copy()
     editable["remove"] = False
 
     with st.form("incident_table_form"):
@@ -1194,7 +1204,16 @@ def view_manage() -> None:
             width="stretch",
             hide_index=True,
             disabled=["Incident_ID", "source"],
-            column_order=["Incident_ID", "source", "event", "location", "time", "severity", "remove"],
+            column_order=[
+                "Incident_ID",
+                "source",
+                "event",
+                "location",
+                "time",
+                "severity",
+                "incident_summary",
+                "remove",
+            ],
             column_config={
                 "Incident_ID": st.column_config.TextColumn("Incident ID", width="small"),
                 "source": st.column_config.TextColumn("Source", width="small"),
@@ -1206,6 +1225,11 @@ def view_manage() -> None:
                     options=SEVERITY_ORDER,
                     required=True,
                     width="small",
+                ),
+                "incident_summary": st.column_config.TextColumn(
+                    "Incident summary",
+                    width="large",
+                    required=True,
                 ),
                 "remove": st.column_config.CheckboxColumn(
                     "Remove",
@@ -1258,6 +1282,9 @@ def view_manage() -> None:
                     else clean(row[field]) != clean(current[field])
                 )
             }
+            summary = clean(row["incident_summary"])
+            if summary != clean(current["incident_summary"]):
+                changes["incident_summary"] = summary
             if ig.normalize_event(row["event"]) == "Unknown":
                 changes["severity"] = "Low"
             if changes:
@@ -1301,6 +1328,20 @@ def _bridge_streamlit_secrets() -> None:
             os.environ[key] = str(secrets[key])
 
 
+@st.cache_resource(show_spinner=False)
+def _start_whisper_preload() -> bool:
+    def load() -> None:
+        try:
+            from audio.transcribe import preload_whisper_model
+
+            preload_whisper_model(quiet=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Whisper preload skipped: %s", type(exc).__name__)
+
+    threading.Thread(target=load, name="whisper-preload", daemon=True).start()
+    return True
+
+
 PAGES = [
     ("Add Incident", ":material/upload_file:", view_ingest),
     ("Combine Reports", ":material/hub:", view_integrate),
@@ -1312,6 +1353,7 @@ PAGES = [
 def main() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
     _bridge_streamlit_secrets()
+    _start_whisper_preload()
     page_names = {name for name, _, _ in PAGES}
     if st.session_state.get("page") not in page_names:
         st.session_state["page"] = PAGES[0][0]

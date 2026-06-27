@@ -44,7 +44,7 @@ processor may return an empty DataFrame when no incident candidate is found.
 
 ### 4.1 Audio Processor
 
-The audio processor transcribes one audio file and extracts event and location signals. It assigns `Calm`, `Concerned`, or `Distressed` sentiment and an independent urgency score from `0.0` to `1.0`. A transcription failure raises an error that the Streamlit app displays; it does not create a fallback audio artifact row.
+The audio processor transcribes one audio file with local Whisper and extracts event and location signals. It defaults to `small.en` with deterministic beam-search decoding for better English emergency-call transcripts than `base`; deployments may override `WHISPER_MODEL`, `WHISPER_DEVICE`, `WHISPER_LANGUAGE`, `WHISPER_MODEL_DIR`, and `WHISPER_BEAM_SIZE`. It assigns `Calm`, `Concerned`, or `Distressed` sentiment and an independent urgency score from `0.0` to `1.0`. A transcription failure raises an error that the Streamlit app displays; it does not create a fallback audio artifact row.
 
 ```text
 Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
@@ -74,12 +74,15 @@ kept as session metadata for the Streamlit Visual Evidence overlay, while the
 required CSV artifact remains five columns. Image location handling happens in
 Integration: OCR writes `Text_Extracted`, Integration calls
 `llm_summarizer.update_image_location(...)` to fill a missing `Location`, and only
-then Integration calls `summarize_incident(...)`. It reports only supported labels and uses a confidence from `0.0` to
-`1.0`. When no supported object is returned, the artifact uses `General Scene`,
+then Integration calls `summarize_incident(...)`. It runs the fire Roboflow model
+plus the person model, reports only supported labels, uses `Fire Scene` /
+`Fire and Smoke Scene` labels, and averages valid detection confidence bounded
+from `0.0` to `1.0`. When no supported object is returned, the artifact uses `General Scene`,
 `Objects_Detected = None`, and a neutral `Confidence_Score` of `0.5`; empty OCR
 text uses `Text_Extracted = N/A`. If Roboflow is unavailable, quota is
 exhausted, or the API key is missing, the processor writes the same safe empty
-artifact values with a `0.0` confidence instead of crashing.
+artifact values with neutral `0.5` confidence instead of crashing. OCR runs on
+the full grayscale image.
 
 ```text
 Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score
@@ -89,7 +92,11 @@ Integration maps scene/object labels to Event and the score to Severity.
 
 ### 4.4 Video Processor
 
+<<<<<<< HEAD
 The Streamlit path rejects clips longer than five minutes and samples frames every 0.5 seconds. It records elapsed `HH:MM:SS` timestamps and `FRM_NNN` IDs based on the original frame index, applies MOG2 background subtraction motion detection, and runs object detection only on qualifying motion frames. Activity labels require documented temporal or rule-based evidence; an object detection alone is insufficient.
+=======
+The Streamlit path rejects clips longer than five minutes and samples frames every 0.5 seconds. It records elapsed `HH:MM:SS` timestamps and `FRM_NNN` IDs based on the original frame index, applies frame-difference motion detection, and runs object detection only on qualifying motion frames. YOLO runs on every configured motion-sampled candidate by default, uses `VIDEO_YOLO_SAMPLE_STRIDE=2` and `VIDEO_YOLO_IMAGE_SIZE=640` unless overridden, and can load an alternate path such as an exported ONNX model through `VIDEO_YOLO_MODEL_PATH`. Activity labels require documented temporal or rule-based evidence; an object detection alone is insufficient.
+>>>>>>> d7b3730 (refactor images)
 
 ```text
 Timestamp, Frame_ID, Event_Detected, Objects, Confidence
