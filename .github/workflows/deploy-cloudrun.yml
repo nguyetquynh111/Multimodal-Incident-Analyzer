@@ -1,0 +1,50 @@
+name: Deploy to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  SERVICE_NAME: incident-analyzer
+  REGION: us-central1
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+
+jobs:
+  deploy:
+    name: Deploy Streamlit app to Cloud Run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          source: .
+          flags: --memory=8Gi --cpu=4 --timeout=1200 --concurrency=10 --max-instances=2 --min-instances=0
+          env_vars: |
+            APP_ENV=production
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+            OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+            ROBOFLOW_API_KEY=${{ secrets.ROBOFLOW_API_KEY }}
+      - name: Show Cloud Run URL
+        run: echo "Cloud Run URL is ${{ steps.deploy.outputs.url }}"

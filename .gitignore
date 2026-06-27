@@ -54,6 +54,17 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Generated modality/integration outputs
+audio/output/
+images/output/
+integration/output/
+pdf/output/
+text/output/
+video/output/
+
+# Local model weights downloaded by Ultralytics.
+*.pt
+
 # Translations
 *.mo
 *.pot
