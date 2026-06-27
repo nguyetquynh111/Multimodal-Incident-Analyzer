@@ -266,7 +266,11 @@ def test_delete_incident_uses_incident_key(
     assert summary["data"] == response.data
 
 
-@pytest.mark.parametrize("column", ["id", "created_at", "unknown"])
+def test_validate_incident_key_accepts_documented_ids() -> None:
+    assert supabase_client.validate_incident_key(" INC_TXT_007 ") == "INC_TXT_007"
+
+
+@pytest.mark.parametrize("column", ["id", "created_at", "incident_id", "source", "unknown"])
 def test_update_incident_rejects_protected_columns(column: str) -> None:
     with pytest.raises(ValueError, match="Unsupported update columns"):
         supabase_client.update_incident("INC_TXT_007", {column: "value"})

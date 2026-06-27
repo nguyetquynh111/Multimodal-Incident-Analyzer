@@ -7,6 +7,7 @@ from .supabase_client import (
     insert_incidents,
     query_incidents,
     update_incident,
+    validate_incident_key,
 )
 from .upload_service import upload_incidents
 from .validators import validate_incidents_df
@@ -19,5 +20,6 @@ __all__ = [
     "query_incidents",
     "upload_incidents",
     "update_incident",
+    "validate_incident_key",
     "validate_incidents_df",
 ]

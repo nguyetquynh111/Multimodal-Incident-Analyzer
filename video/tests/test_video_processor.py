@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -118,27 +119,57 @@ class YoloPerformanceConfigTests(unittest.TestCase):
         class FakeModel:
             names = {}
 
-            def __call__(self, frame, *, verbose, imgsz, iou):
+            def __call__(self, frame, *, verbose, imgsz, iou, device=None):
                 self.imgsz = imgsz
                 self.verbose = verbose
                 self.iou = iou
+                self.device = device
                 return []
 
         model = FakeModel()
         frame = np.zeros((180, 320, 3), dtype=np.uint8)
 
         objects, confidence, collapsed, collapse_confidence, boxes = processor.run_yolo(
-            model, frame, imgsz=320
+            model, frame, imgsz=320, device="cuda"
         )
 
         self.assertEqual(model.imgsz, 320)
         self.assertFalse(model.verbose)
         self.assertEqual(model.iou, 0.45)
+        self.assertEqual(model.device, "cuda")
         self.assertEqual(objects, [])
         self.assertEqual(confidence, 0.0)
         self.assertFalse(collapsed)
         self.assertEqual(collapse_confidence, 0.0)
         self.assertEqual(boxes, [])
+
+    def test_yolo_auto_device_uses_cuda_when_available(self) -> None:
+        original = processor._cuda_available
+        env_value = os.environ.get("VIDEO_YOLO_DEVICE")
+        processor._cuda_available = lambda: True
+        os.environ.pop("VIDEO_YOLO_DEVICE", None)
+        try:
+            self.assertEqual(processor._yolo_device(), "cuda")
+        finally:
+            processor._cuda_available = original
+            if env_value is None:
+                os.environ.pop("VIDEO_YOLO_DEVICE", None)
+            else:
+                os.environ["VIDEO_YOLO_DEVICE"] = env_value
+
+    def test_yolo_cuda_device_falls_back_to_cpu_when_unavailable(self) -> None:
+        original = processor._cuda_available
+        env_value = os.environ.get("VIDEO_YOLO_DEVICE")
+        processor._cuda_available = lambda: False
+        os.environ["VIDEO_YOLO_DEVICE"] = "cuda"
+        try:
+            self.assertEqual(processor._yolo_device(), "cpu")
+        finally:
+            processor._cuda_available = original
+            if env_value is None:
+                os.environ.pop("VIDEO_YOLO_DEVICE", None)
+            else:
+                os.environ["VIDEO_YOLO_DEVICE"] = env_value
 
 
 class ClassifyEventTests(unittest.TestCase):

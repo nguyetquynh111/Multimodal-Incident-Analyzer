@@ -3,8 +3,8 @@
 ## 1. Approved End-to-End Behavior
 
 ```text
-1. User opens the Streamlit app.
-2. User uploads exactly one supported file.
+1. User starts the app with `streamlit run app.py` and opens the Streamlit app.
+2. User uploads exactly one supported file on the Add Incident page.
 3. App detects the file type and source abbreviation.
 4. App runs the correct extractor synchronously.
 5. Processor returns its documented modality draft DataFrame.
@@ -14,7 +14,7 @@
 9. Integration adds `Incident_Summary` to each row.
 10. Integration generates INC_TYPE_NUMBER `Incident_ID` values and returns final rows.
 11. App shows final Integration rows for confirmation, then maps confirmed rows to the Supabase insert payload and inserts them.
-12. The dashboard and its final nine-field CSV export read from Supabase. The separate Combine Reports view can download a session-local seven-field Integration preview.
+12. The dashboard, Manage Incidents page, and final nine-field CSV export read from Supabase. The separate Combine Reports view can download a session-local seven-field Integration preview from completed reviews.
 ```
 
 ## 2. Input Contract
@@ -22,13 +22,14 @@
 | **Input Type** | **Extensions** | **Source Abbreviation** | **MVP Behavior** |
 | --- | --- | --- | --- |
 | Audio | .wav, .mp3, .m4a | AUD | Transcribe locally, then extract event, location, sentiment, and urgency signals; transcription errors are shown to the user |
-| PDF | .pdf | PDF | Extract whole-document text directly; use whole-document OCR only when direct text is near-empty |
+| PDF | .pdf | PDF | Extract embedded text per page; OCR scanned pages when possible |
 | Image | .jpg, .jpeg, .png | IMG | Run OCR/object detection if available, then extract incident signals |
 | Video | .mp4, .mov, .mpg, .mpeg | VID | Reject videos longer than 5 minutes; sample frames and analyze motion frames |
 | Text | .txt, .csv | TXT | Read free text; parse CSV rows as structured text evidence; `.json` uploads are unsupported |
 
 Rules:
-- The Streamlit uploader accepts exactly one file per processing run.
+- The Add Incident uploader accepts exactly one file per processing run.
+- Completed review drafts may be kept in a browser-session queue for the Combine Reports preview.
 - A single uploaded file can produce zero, one, or many incident rows.
 - Raw files are processed in memory or temporary local storage only.
 - Raw files are not uploaded to Supabase Storage in the MVP.
@@ -44,17 +45,22 @@ processor may return an empty DataFrame when no incident candidate is found.
 
 ### 4.1 Audio Processor
 
-The audio processor transcribes one audio file with local Whisper and extracts event and location signals. It defaults to `small.en` with deterministic beam-search decoding for better English emergency-call transcripts than `base`; deployments may override `WHISPER_MODEL`, `WHISPER_DEVICE`, `WHISPER_LANGUAGE`, `WHISPER_MODEL_DIR`, and `WHISPER_BEAM_SIZE`. It assigns `Calm`, `Concerned`, or `Distressed` sentiment and an independent urgency score from `0.0` to `1.0`. A transcription failure raises an error that the Streamlit app displays; it does not create a fallback audio artifact row.
+The audio processor transcribes one audio file with local Whisper and extracts
+event, location, sentiment, and urgency. It defaults to `small.en`; deployments
+may override `WHISPER_MODEL`, `WHISPER_DEVICE`, `WHISPER_LANGUAGE`,
+`WHISPER_MODEL_DIR`, and `WHISPER_BEAM_SIZE`. A transcription failure raises an
+error for the Streamlit app.
 
 ```text
 Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
 ```
 
-Integration maps event and location directly; urgency determines severity.
+Integration maps event and location directly; urgency contributes to severity
+after event-category rules are applied.
 
 ### 4.2 PDF Processor
 
-The PDF processor extracts text from the entire PDF directly. If the complete direct-text result is near-empty, it OCRs the complete PDF at 300 DPI. It produces one artifact row per uploaded PDF; missing fields use `Unknown`.
+The PDF processor extracts text from every page directly and OCRs scanned pages at 300 DPI when possible. It produces one artifact row per uploaded PDF; missing fields use `Unknown`.
 
 ```text
 Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome
@@ -91,7 +97,8 @@ OCR still runs independently and may still populate `Text_Extracted`.
 Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score
 ```
 
-Integration maps scene/object labels to Event and the score to Severity.
+Integration maps scene/object labels to Event. Event-category rules are applied
+before the score is used for Severity.
 
 ### 4.4 Video Processor
 
@@ -99,7 +106,7 @@ The Streamlit path rejects clips longer than five minutes and samples frames
 every 0.5 seconds. It records elapsed `HH:MM:SS` timestamps and `FRM_NNN` IDs
 based on the original frame index, applies MOG2 background subtraction motion
 detection, and runs object detection only on qualifying motion frames. YOLO uses
-`VIDEO_YOLO_SAMPLE_STRIDE=2` and `VIDEO_YOLO_IMAGE_SIZE=640` unless overridden,
+`VIDEO_YOLO_SAMPLE_STRIDE=4` and `VIDEO_YOLO_IMAGE_SIZE=320` unless overridden,
 and can load an alternate path such as an exported ONNX model through
 `VIDEO_YOLO_MODEL_PATH`. Activity labels require documented temporal or
 rule-based evidence; an object detection alone is insufficient.
@@ -108,8 +115,9 @@ rule-based evidence; an object detection alone is insufficient.
 Timestamp, Frame_ID, Event_Detected, Objects, Confidence
 ```
 
-Integration maps event and timestamp directly and derives Severity from
-Confidence. One video may produce zero, one, or many rows.
+Integration maps event and timestamp directly. Event-category rules are applied
+before Confidence is used for Severity. One video may produce zero, one, or many
+rows.
 
 ### 4.5 Text Processor
 
@@ -159,7 +167,11 @@ Integration responsibilities:
 - Normalize event names.
 - Normalize location and time fields.
 - Convert missing fields to Unknown.
-- Compute or normalize severity to Low, Medium, High, or Unknown. An Unknown event must use Low severity.
+- Compute or normalize severity to Low, Medium, High, or Unknown. Event-category
+  rules run before generic confidence scoring: Unknown, Other, and No Activity
+  are Low; fire/arson/assault/violence and other configured safety-critical
+  terms are High; theft/robbery/burglary/disturbance/property damage are at
+  least Medium.
 - For image rows with no explicit `Location`, call
   `llm_summarizer.update_image_location(...)` before final summarization.
 - Call `llm_summarizer.summarize_incident(...)` for each standardized row.
@@ -246,8 +258,8 @@ id, created_at, incident_id, source, event, location, time, severity, incident_s
 
 ## 9. Dashboard Specifications
 
-The Streamlit dashboard must:
-- Upload exactly one supported file.
+The Streamlit app must:
+- Upload exactly one supported file per Add Incident review run.
 - Show processing status and errors.
 - Show number of extractor rows and integrated rows.
 - Preview successful rows and insert them into Supabase after user confirmation.
@@ -255,6 +267,8 @@ The Streamlit dashboard must:
 - Filter by user-friendly dashboard labels: Incident_ID, Source, Event, Location, and Severity. These are display labels and may map to lower-case Supabase columns in code.
 - Show `incident_summary` for selected rows.
 - Export the final nine-field CSV from Supabase.
+- Provide a Combine Reports view that rebuilds and downloads a session-local seven-field Integration preview from completed reviews.
+- Provide a Manage Incidents view for manual add, edit, bulk update, and delete operations against Supabase rows; `incident_id` and `source` remain immutable in edits.
 
 ## 10. Acceptance Criteria
 
@@ -262,7 +276,7 @@ The Streamlit dashboard must:
 | --- | --- | --- |
 | AC-001 | User uploads one supported file | Correct extractor route is selected |
 | AC-002 | Audio processor runs | Extractor DataFrame is returned, or the app displays a transcription/processing error |
-| AC-003 | PDF processor runs | Whole-document direct extraction or near-empty whole-document OCR fallback produces the one-row, eight-column PDF artifact |
+| AC-003 | PDF processor runs | Page-aware direct extraction plus OCR fallback produces the one-row, eight-column PDF artifact |
 | AC-004 | Image processor runs | Supported scene/object/OCR results use the five-field artifact, and available Roboflow boxes appear in the image visual evidence overlay |
 | AC-005 | Video processor runs | Motion-gated sampled frames produce correctly formatted event rows |
 | AC-006 | Text processor runs | Text and CSV inputs map through the text modality contract; `.json` uploads are rejected |
@@ -270,15 +284,16 @@ The Streamlit dashboard must:
 | AC-008 | LLM summary module runs | Integration gives each row `Incident_Summary`, with fallback if needed |
 | AC-009 | ID generation runs | Integration gives each row valid `INC_TYPE_NUMBER` `Incident_ID` |
 | AC-010 | Supabase insert runs | Confirmed rows appear in Supabase `incidents` table |
-| AC-011 | Dashboard launches | Dataset table, filters, and summaries appear |
+| AC-011 | Dashboard launches | Charts, dataset table, filters, and summaries appear |
 | AC-012 | Final export runs | CSV has exactly nine approved fields and no null values |
 | AC-013 | Hosted demo runs | App connects to Supabase without exposing credentials |
+| AC-014 | Manage Incidents runs | User can add, edit, bulk update, or remove Supabase-backed incidents without changing immutable incident IDs or sources |
 
 ## 11. Edge Cases
 
 | **Edge Case** | **Expected Behavior** |
 | --- | --- |
-| PDF has no extractable text | Attempt whole-document OCR; use Unknown fields if OCR is unavailable or fails |
+| PDF page has no extractable text | Attempt scanned-page OCR; use Unknown fields if OCR is unavailable or fails |
 | Audio transcription fails | Show a processing error and do not insert rows |
 | Image model detects no supported objects | Keep image artifact values such as `Objects_Detected = None` and `Text_Extracted = N/A` when appropriate; final Integration fields still map safely |
 | Video exceeds 5 minutes | Reject with clear message and no insert |

@@ -31,7 +31,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TABLE_NAME = "incidents"
 SELECT_COLUMNS = ("id", "created_at", *INCIDENT_COLUMNS)
 QUERY_COLUMNS = frozenset(SELECT_COLUMNS)
-UPDATABLE_COLUMNS = frozenset(INCIDENT_COLUMNS)
+UPDATABLE_COLUMNS = frozenset(INCIDENT_COLUMNS) - {"incident_id", "source"}
 
 
 def get_supabase_client() -> Client:
@@ -179,6 +179,12 @@ def get_incident(incident_id: Any) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def validate_incident_key(incident_id: Any) -> str:
+    """Return a validated documented incident key for CRUD operations."""
+
+    return _validate_incident_id(incident_id)
+
+
 def update_incident(
     incident_id: Any,
     updates: Mapping[str, Any],
@@ -186,6 +192,8 @@ def update_incident(
     """Update incident rows selected by their ``incident_id`` business key.
 
     Database-generated ``id`` and ``created_at`` fields cannot be updated.
+    ``incident_id`` is the immutable business key used to select the row, not a
+    mutable field.
     """
     validated_id = _validate_incident_id(incident_id)
     payload = _validate_updates(updates)
@@ -285,8 +293,6 @@ def _validate_updates(updates: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("Unsupported update columns: " + ", ".join(invalid_columns))
 
     payload = dict(updates)
-    if "incident_id" in payload:
-        payload["incident_id"] = _validate_incident_id(payload["incident_id"])
     if "event" in payload:
         payload["event"] = normalize_event(payload["event"])
     if "severity" in payload:

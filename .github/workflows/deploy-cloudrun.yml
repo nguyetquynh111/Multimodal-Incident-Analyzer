@@ -31,6 +31,50 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Reset existing Cloud Run service before GPU deploy
+        run: |
+          set -euo pipefail
+
+          if gcloud run services describe "${SERVICE_NAME}" \
+            --region="${REGION}" \
+            --project="${PROJECT_ID}" >/dev/null 2>&1; then
+
+            echo "Existing service found. Resetting GPU/scaling config before deploy..."
+
+            # Detach GPU from current latest revision if it exists.
+            # This is safe to ignore if the service does not have GPU yet.
+            gcloud run services update "${SERVICE_NAME}" \
+              --region="${REGION}" \
+              --project="${PROJECT_ID}" \
+              --gpu=0 \
+              --quiet || true
+
+            # Reduce service/revision resource allocation before deploying the new GPU revision.
+            gcloud run services update "${SERVICE_NAME}" \
+              --region="${REGION}" \
+              --project="${PROJECT_ID}" \
+              --memory=512Mi \
+              --cpu=1 \
+              --concurrency=1 \
+              --max=1 \
+              --max-instances=1 \
+              --min=0 \
+              --min-instances=0 \
+              --quiet || true
+
+            # Make sure traffic is not split across old revisions.
+            gcloud run services update-traffic "${SERVICE_NAME}" \
+              --region="${REGION}" \
+              --project="${PROJECT_ID}" \
+              --to-latest \
+              --quiet || true
+          else
+            echo "No existing service found. First deploy will create it."
+          fi
+
       - name: Deploy to Cloud Run
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v3
@@ -39,12 +83,43 @@ jobs:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
           source: .
-          flags: --memory=8Gi --cpu=4 --timeout=1200 --concurrency=10 --max-instances=2 --min-instances=0
+          flags: >-
+            --memory=16Gi
+            --cpu=4
+            --timeout=1200
+            --concurrency=1
+            --max=1
+            --max-instances=1
+            --min=0
+            --min-instances=0
+            --gpu=1
+            --gpu-type=nvidia-l4
+            --execution-environment=gen2
+            --no-gpu-zonal-redundancy
+            --no-cpu-throttling
+            --allow-unauthenticated
           env_vars: |
             APP_ENV=production
+            WHISPER_DEVICE=auto
+            VIDEO_YOLO_DEVICE=auto
+            VIDEO_YOLO_SAMPLE_STRIDE=4
+            VIDEO_YOLO_IMAGE_SIZE=320
+            PDF_OCR_WORKERS=4
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
             ROBOFLOW_API_KEY=${{ secrets.ROBOFLOW_API_KEY }}
+
+      - name: Route all traffic to latest revision
+        run: |
+          set -euo pipefail
+
+          gcloud run services update-traffic "${SERVICE_NAME}" \
+            --region="${REGION}" \
+            --project="${PROJECT_ID}" \
+            --to-latest \
+            --quiet
+
       - name: Show Cloud Run URL
-        run: echo "Cloud Run URL is ${{ steps.deploy.outputs.url }}"
+        run: |
+          echo "Cloud Run URL is ${{ steps.deploy.outputs.url }}"

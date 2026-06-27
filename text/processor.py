@@ -183,6 +183,7 @@ _PERSON_PATTERN = re.compile(
 _HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
 
 _SPACY_MODEL: Any = False  # False = not loaded, None = unavailable.
+_SPACY_CHUNK_CHARS = 4000
 
 
 def _load_spacy_model() -> Any:
@@ -210,6 +211,23 @@ def _entity_label(spacy_label: str) -> str | None:
         "DATE": "DATE",
         "TIME": "DATE",
     }.get(spacy_label)
+
+
+def _iter_text_chunks(text: str, max_chars: int = _SPACY_CHUNK_CHARS) -> Iterable[str]:
+    """Yield bounded chunks so spaCy can scan long evidence text."""
+
+    start = 0
+    length = len(text)
+    while start < length:
+        end = min(start + max_chars, length)
+        if end < length:
+            split = text.rfind(" ", start, end)
+            if split > start:
+                end = split
+        chunk = text[start:end].strip()
+        if chunk:
+            yield chunk
+        start = end + 1 if end < length and text[end:end + 1].isspace() else end
 
 
 def _clean_candidate(text: str) -> str:
@@ -253,11 +271,12 @@ def extract_entities(text: str) -> list[dict[str, str]]:
     nlp = _load_spacy_model()
     if nlp is not None:
         try:
-            doc = nlp(text[:5000])
-            for ent in doc.ents:
-                label = _entity_label(ent.label_)
-                if label:
-                    _add_entity(entities, seen, ent.text, label)
+            for chunk in _iter_text_chunks(text):
+                doc = nlp(chunk)
+                for ent in doc.ents:
+                    label = _entity_label(ent.label_)
+                    if label:
+                        _add_entity(entities, seen, ent.text, label)
         except Exception:
             pass
 

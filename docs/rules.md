@@ -12,14 +12,12 @@
 | Python required | Use Python for all processing and Streamlit dashboard code |
 | No paid APIs | Do not require paid LLM, paid OCR, paid speech, or paid cloud inference APIs |
 | No committed secrets | Do not commit Supabase keys, API keys, credentials, or private data |
-| Single-file upload | The MVP processes exactly one uploaded file per Streamlit processing run |
+| Single-file upload | The Add Incident page processes exactly one uploaded file per review run; Combine Reports may only combine completed session reviews |
 | Synchronous processing | Processing occurs inside the Streamlit session; rows are inserted only after the user confirms the final Integration result |
-| Supabase source of truth | After insert, dashboard and export must read from Supabase `incidents` table |
+| Supabase source of truth | After insert, dashboard, management actions, and export must read/write Supabase `incidents` rows |
 | One main table | Use one Supabase table named `incidents` for structured incident rows and the `incident_summary` column |
 | LLM summary is separate | LLM summary code must live in `llm_summarizer/`, not inside extractors or hidden inside Integration |
 | No raw Supabase Storage in MVP | Do not upload raw evidence files to Supabase Storage as a required MVP feature |
-| No watch-folder flow | Do not implement local watch-folder monitoring as the main pipeline |
-| No SQLite source of truth | Do not use SQLite or local CSV files as the persistent source of truth |
 
 ## 2. Incident ID Rules
 
@@ -49,8 +47,7 @@ INC_TYPE_NUMBER
 | Example | If the highest existing video ID is `INC_VID_009`, the next video incident is `INC_VID_010` |
 | One file can create many IDs | If one uploaded video produces three incidents, assign `INC_VID_001`, `INC_VID_002`, and `INC_VID_003` as needed |
 | Supabase-aware generation | Before insert, query existing Supabase rows to avoid reusing IDs |
-| Single-user assumption | For the class demo, simple max-number lookup is acceptable. Production concurrency is out of scope |
-| No old ID format | Do not use the old `INC_001` format in new code or docs |
+| Single-user assumption | Simple max-number lookup is acceptable for the class demo |
 
 ## 3. Schema Rules
 
@@ -83,7 +80,7 @@ default before Integration.
 | **Modality** | **Exact Columns** | **Key Rule** |
 | --- | --- | --- |
 | Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm`, `Concerned`, or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
-| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Extract whole-document text first; OCR the whole PDF only when its direct text is near-empty; emit one artifact row per uploaded PDF |
+| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Extract embedded text per page; OCR scanned pages when possible; emit one artifact row per uploaded PDF |
 | Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use the fire Roboflow model plus the person model, average valid detection confidences from the model response, bound the result from 0.0 to 1.0, and use labels such as `Fire Scene`, `Smoke Scene`, and `Fire and Smoke Scene`. Confidence is the rounded model-derived average; neutral confidence `0.5` is used only when no detection confidence is available. For an empty detection response, use `General Scene`, the string `None`, and neutral confidence `0.5`; empty OCR text uses `N/A`. OCR runs on the full grayscale image, keeps cleaned lines with at least three alphanumeric characters, and may still populate `Text_Extracted` when Roboflow is unavailable. During Integration, `llm_summarizer.update_image_location(...)` may populate final `Location` only when OCR text contains an explicit place. |
 | Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, source-frame-index `FRM_NNN` IDs, motion gating, and documented event logic |
 | Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` | Preserve `Raw_Text`; unsupported topics use `Other` |
@@ -112,6 +109,8 @@ incident_id, source, event, location, time, severity, incident_summary
 ```
 
 It must not include extra fields at insert time. After insertion, Supabase stored rows and final CSV export contain the full nine-field schema including database-generated `id` and `created_at`. Supabase insert happens only after Integration produces `Incident_Summary` and `Incident_ID`, the user confirms the final rows, and the app maps them to `incident_summary` and `incident_id`.
+
+The app may also provide Supabase-backed management actions for already-saved rows. Updates may change `event`, `location`, `time`, `severity`, and `incident_summary`; `incident_id`, `source`, `id`, and `created_at` remain immutable through the UI.
 
 ## 6. LLM Summarizer Rules
 
@@ -154,14 +153,14 @@ LLM summary rules:
 
 | **Signal** | **Severity** |
 | --- | --- |
-| Fire, weapon, trapped person, collapse, fighting, severe crash | High |
+| Fire, arson, assault/violence, weapon, trapped person, collapse, fighting, severe crash | High |
 | Audio urgency score >= 0.70 | High |
 | Audio urgency score from 0.30 up to 0.69 | Medium |
-| Theft, robbery, public disturbance, property damage | Medium |
-| Neutral report or low-confidence non-violent event | Low |
+| Theft, robbery, burglary, public disturbance, property damage | Medium |
+| Other, neutral report, no activity, or low-confidence non-violent event | Low |
 | No reliable signal | Low with Event = Unknown |
 
-Integration first forces configured high-risk event terms to `High`, preserves a valid explicit severity when provided, and otherwise maps a confidence or urgency score on a 0–1 scale as `< 0.30 = Low`, `< 0.70 = Medium`, and `>= 0.70 = High`. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. When Event is `Unknown`, Severity must be `Low`, even if an upstream value says otherwise.
+Integration first applies event safety/category rules: `Unknown`, `Other`, and `No Activity` are `Low`; configured high-risk event terms are `High`; configured medium-risk event terms are at least `Medium`. It then preserves a valid explicit severity when no event category rule applies, and otherwise maps a confidence or urgency score on a 0–1 scale as `< 0.30 = Low`, `< 0.70 = Medium`, and `>= 0.70 = High`. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. When Event is `Unknown`, Severity must be `Low`, even if an upstream value says otherwise.
 
 ## 8. Per-Modality Mapping Rules
 
@@ -183,7 +182,7 @@ from different modalities. The current mappings are:
 | Unsupported file type | Show clear Streamlit error and do not insert rows |
 | Extractor returns empty DataFrame | Show no incident found message; insert nothing |
 | Failed audio transcription | Show a processing error and do not insert rows |
-| PDF direct extraction near-empty | Try whole-document OCR fallback |
+| PDF page direct extraction near-empty | Try page OCR fallback |
 | OCR unavailable or failed | Use Unknown fields and continue |
 | Image model detects no supported objects | Keep image artifact values such as `Objects_Detected = None` and `Text_Extracted = N/A` when appropriate; Integration must still map final missing fields safely |
 | Roboflow unavailable, quota exhausted, or API key missing | Write safe scene/object placeholders (`General Scene`, `None`, confidence `0.5`) and do not crash; OCR still runs and may write readable `Text_Extracted` or `N/A` |
@@ -196,7 +195,7 @@ from different modalities. The current mappings are:
 
 ## 10. Logging Rules
 
-Each processing run must log or display:
+Each processing run should log or display the applicable available details:
 - Uploaded filename.
 - Detected source type.
 - Processor selected.
@@ -218,6 +217,6 @@ Minimum required tests:
 | test_integration_schema.py | Integration returns final `Incident_ID, Source, Event, Location, Time, Severity, Incident_Summary` columns |
 | test_llm_summarizer.py | LLM summarizer returns required keys and fallback works |
 | test_id_generator.py | IDs follow `INC_TYPE_NUMBER` and increment by source type |
-| test_supabase_mapping.py | Supabase payload maps all required table columns |
+| test_supabase_mapping.py | Supabase payload maps all seven app-owned insert columns and omits database-generated fields |
 | test_final_export_schema.py | Final CSV export has exact nine fields and no null values |
 | test_dashboard_smoke.py | Streamlit app can load without crashing |

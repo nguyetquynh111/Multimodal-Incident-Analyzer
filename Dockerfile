@@ -20,11 +20,11 @@ RUN apt-get update \
 
 COPY requirements.txt ./
 
-# Install CPU-only PyTorch wheels to keep the Cloud Run image free of CUDA
-# libraries. The matching entries in requirements.txt are then already met.
+# Install CUDA-enabled PyTorch wheels so Cloud Run GPU instances expose CUDA to
+# Whisper and YOLO. The matching entries in requirements.txt are then already met.
 RUN python -m pip install --upgrade pip setuptools wheel \
     && python -m pip install \
-        --index-url https://download.pytorch.org/whl/cpu \
+        --index-url https://download.pytorch.org/whl/cu121 \
         torch==2.2.2 torchvision==0.17.2 \
     && python -m pip install -r requirements.txt
 

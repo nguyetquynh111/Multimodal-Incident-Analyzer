@@ -30,8 +30,8 @@ DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "output" / "video_output
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg", ".wmv"}
 _SAMPLE_SECONDS = 0.5
 _MAX_DURATION_SECONDS = 300  # reject clips longer than 5 minutes
-_DEFAULT_YOLO_IMAGE_SIZE = 640
-_DEFAULT_YOLO_SAMPLE_STRIDE = 2
+_DEFAULT_YOLO_IMAGE_SIZE = 320
+_DEFAULT_YOLO_SAMPLE_STRIDE = 4
 _DEFAULT_YOLO_MODEL_PATH = "video/yolov8s.pt"
 
 PERSON_CONF_THRESHOLD = 0.15
@@ -53,6 +53,24 @@ def _yolo_image_size() -> int:
 
 def _yolo_sample_stride() -> int:
     return _env_int("VIDEO_YOLO_SAMPLE_STRIDE", _DEFAULT_YOLO_SAMPLE_STRIDE, minimum=1)
+
+
+def _cuda_available() -> bool:
+    try:
+        import torch
+    except Exception:
+        return False
+    return bool(torch.cuda.is_available())
+
+
+def _yolo_device() -> str | None:
+    requested = (os.getenv("VIDEO_YOLO_DEVICE", "auto").strip() or "auto")
+    normalized = requested.lower()
+    if normalized == "auto":
+        return "cuda" if _cuda_available() else None
+    if normalized.startswith("cuda") and not _cuda_available():
+        return "cpu"
+    return requested
 
 
 def _should_run_yolo(eligible: bool, candidate_index: int, stride: int) -> bool:
@@ -77,12 +95,15 @@ def enhance_frame(frame):
     return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
 
-def run_yolo(model, frame, *, imgsz: int | None = None):
+def run_yolo(model, frame, *, imgsz: int | None = None, device: str | None = None):
     """Run YOLO once and return objects, max confidence, collapse flag, and filtered boxes for annotation."""
     if model is None:
         return [], 0.0, False, 0.0, []
 
-    results = model(frame, verbose=False, imgsz=imgsz or _yolo_image_size(), iou=0.45)
+    options = {"verbose": False, "imgsz": imgsz or _yolo_image_size(), "iou": 0.45}
+    if device:
+        options["device"] = device
+    results = model(frame, **options)
     objects: List[str] = []
     max_confidence = 0.0
     collapsed = False
@@ -292,6 +313,7 @@ def process_video_file(
     sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
     yolo_sample_stride = _yolo_sample_stride()
     yolo_imgsz = _yolo_image_size()
+    yolo_device = _yolo_device()
     mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
     frame_index = 0
     yolo_candidate_index = 0
@@ -321,7 +343,7 @@ def process_video_file(
                     yolo_candidate_index += 1
                 if run_yolo_now:
                     objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
-                        model, enhanced, imgsz=yolo_imgsz
+                        model, enhanced, imgsz=yolo_imgsz, device=yolo_device
                     )
                 else:
                     objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
@@ -398,6 +420,7 @@ def process_video_stream(
     sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
     yolo_sample_stride = _yolo_sample_stride()
     yolo_imgsz = _yolo_image_size()
+    yolo_device = _yolo_device()
     mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
     frame_index = 0
     yolo_candidate_index = 0
@@ -426,7 +449,7 @@ def process_video_stream(
                     yolo_candidate_index += 1
                 if run_yolo_now:
                     objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
-                        model, enhanced, imgsz=yolo_imgsz
+                        model, enhanced, imgsz=yolo_imgsz, device=yolo_device
                     )
                 else:
                     objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []

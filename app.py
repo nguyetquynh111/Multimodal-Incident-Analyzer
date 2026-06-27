@@ -18,9 +18,11 @@ from cloud_deployment.supabase_client import (
     delete_incident,
     query_incidents,
     update_incident,
+    validate_incident_key,
 )
 from cloud_deployment.exporter import export_incidents_csv
 from cloud_deployment.upload_service import upload_incidents
+from integration.dashboard_time import incident_dates
 
 st.set_page_config(
     page_title="Incident Analyzer", page_icon=":material/emergency:",
@@ -350,17 +352,17 @@ def _top_locations(view: pd.DataFrame):
 
 
 def _timeline(view: pd.DataFrame):
-    if "created_at" not in view.columns:
-        return None
     t = view.copy()
-    t["Date"] = pd.to_datetime(t["created_at"], errors="coerce").dt.date
+    t["Date"] = incident_dates(t)
     t = t.dropna(subset=["Date"])
     if t.empty:
         return None
     g = t.groupby("Date", as_index=False).size().rename(columns={"size": "Count"})
     return (
         alt.Chart(g).mark_area(line={"color": "#6366F1"}, opacity=0.25, color="#A5B4FC").encode(
-            x=alt.X("Date:T", title=None), y=alt.Y("Count:Q", title=None), tooltip=["Date", "Count"]
+            x=alt.X("Date:T", title="Incident date"),
+            y=alt.Y("Count:Q", title=None),
+            tooltip=["Date", "Count"],
         ).properties(height=240)
     )
 
@@ -516,10 +518,9 @@ def _show_pdf_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> 
     full_text = ""
     if file_path:
         try:
-            import fitz as _fitz
-            doc = _fitz.open(file_path)
-            full_text = "\n\n".join(page.get_text() for page in doc).strip()
-            doc.close()
+            from pdf.processor import extract_pdf_text
+
+            full_text = extract_pdf_text(file_path).strip()
         except Exception:
             pass
     if not full_text:
@@ -849,14 +850,6 @@ def view_ingest() -> None:
         _section("Incident record")
         st.dataframe(_style_table(final_df), width="stretch", hide_index=True)
 
-    _section("Visual evidence")
-    _show_visual_evidence(
-        result.get("source_type", source_type),
-        result["draft"],
-        result.get("path"),
-        uploaded_filename,
-    )
-
     if st.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
         try:
             summary = upload_incidents(final_df)
@@ -865,6 +858,14 @@ def view_ingest() -> None:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Incident upload failed")
             st.error(_friendly_error(exc, "add this incident"))
+
+    _section("Visual evidence")
+    _show_visual_evidence(
+        result.get("source_type", source_type),
+        result["draft"],
+        result.get("path"),
+        uploaded_filename,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1205,8 +1206,10 @@ def view_manage() -> None:
             label = str(target["Incident_ID"])
             try:
                 if do_bulk_remove:
-                    delete_incident(target["incident_id"])
+                    incident_key = validate_incident_key(target["incident_id"])
+                    delete_incident(incident_key)
                 else:
+                    incident_key = validate_incident_key(target["incident_id"])
                     payload = {
                         field: (
                             ig.normalize_event(value)
@@ -1217,7 +1220,7 @@ def view_manage() -> None:
                     }
                     if ig.normalize_event(payload.get("event", target["event"])) == "Unknown":
                         payload["severity"] = "Low"
-                    update_incident(target["incident_id"], payload)
+                    update_incident(incident_key, payload)
                 succeeded += 1
             except Exception:  # noqa: BLE001
                 logger.exception("Bulk incident action failed for %s", label)
@@ -1305,8 +1308,8 @@ def view_manage() -> None:
     for _, row in edited.iterrows():
         label = str(row["Incident_ID"])
         current = original.loc[label]
-        incident_id = current["incident_id"]
         try:
+            incident_id = validate_incident_key(current["incident_id"])
             if bool(row["remove"]):
                 delete_incident(incident_id)
                 deleted_count += 1
