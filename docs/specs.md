@@ -89,7 +89,7 @@ Integration maps scene/object labels to Event and the score to Severity.
 
 ### 4.4 Video Processor
 
-The Streamlit path rejects clips longer than five minutes and samples frames every 0.5 seconds. It records elapsed `HH:MM:SS` timestamps and `FRM_NNN` IDs based on the original frame index, applies frame-difference motion detection, and runs object detection only on qualifying motion frames. Activity labels require documented temporal or rule-based evidence; an object detection alone is insufficient.
+The Streamlit path rejects clips longer than five minutes and samples frames every 0.5 seconds. It records elapsed `HH:MM:SS` timestamps and `FRM_NNN` IDs based on the original frame index, applies MOG2 background subtraction motion detection, and runs object detection only on qualifying motion frames. Activity labels require documented temporal or rule-based evidence; an object detection alone is insufficient.
 
 ```text
 Timestamp, Frame_ID, Event_Detected, Objects, Confidence
