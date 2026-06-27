@@ -3,7 +3,7 @@ name: Deploy to Google Cloud Run
 on:
   push:
     branches:
-      - dev
+      - main
   workflow_dispatch:
 
 permissions:
@@ -88,12 +88,8 @@ jobs:
             --cpu=4
             --timeout=1200
             --concurrency=10
-            --max=1
             --max-instances=1
-            --min=0
             --min-instances=0
-            --gpu=1
-            --gpu-type=nvidia-l4
             --execution-environment=gen2
             --no-gpu-zonal-redundancy
             --no-cpu-throttling
