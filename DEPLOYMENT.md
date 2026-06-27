@@ -65,14 +65,16 @@ gcloud run deploy "$SERVICE" \
   --no-allow-unauthenticated \
   --cpu 2 \
   --memory 4Gi \
-  --concurrency 1 \
+  --concurrency 10 \
   --timeout 3600 \
+  --max-instances 2 \
   --set-secrets="SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest"
 ```
 
-The conservative concurrency setting prevents multiple Whisper or YOLO jobs
-from competing for the same instance memory. Adjust CPU, memory, concurrency,
-and timeout after observing real evidence sizes and processing duration.
+The moderate concurrency setting leaves room for Streamlit's browser requests,
+file uploads, and WebSocket session traffic. Avoid `--concurrency 1` with
+`--max-instances 1`; Cloud Run can return HTTP 429 when the open Streamlit
+session consumes the only available request slot.
 
 The command keeps the service private. Grant intended users the Cloud Run
 Invoker role. Use `--allow-unauthenticated` only if public access to uploaded
