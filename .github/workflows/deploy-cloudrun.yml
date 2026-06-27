@@ -31,15 +31,6 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Cap existing Cloud Run service before GPU deploy
-        run: |
-          set -euo pipefail
-          gcloud run services update "${SERVICE_NAME}" \
-            --region="${REGION}" \
-            --project="${PROJECT_ID}" \
-            --max-instances=1 \
-            --quiet || true
-
       - name: Delete old non-serving Cloud Run revisions
         run: |
           set -euo pipefail
@@ -76,5 +67,22 @@ jobs:
             SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
             ROBOFLOW_API_KEY=${{ secrets.ROBOFLOW_API_KEY }}
+
+      - name: Delete replaced Cloud Run revisions
+        run: |
+          set -euo pipefail
+          revisions="$(gcloud run revisions list \
+            --service="${SERVICE_NAME}" \
+            --region="${REGION}" \
+            --project="${PROJECT_ID}" \
+            --filter='status.conditions.type:Active AND status.conditions.status:False' \
+            --format='value(metadata.name)' 2>/dev/null || true)"
+          if [ -n "${revisions}" ]; then
+            printf '%s\n' "${revisions}" | xargs -r -n 1 gcloud run revisions delete \
+              --region="${REGION}" \
+              --project="${PROJECT_ID}" \
+              --quiet
+          fi
+
       - name: Show Cloud Run URL
         run: echo "Cloud Run URL is ${{ steps.deploy.outputs.url }}"

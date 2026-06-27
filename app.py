@@ -849,14 +849,6 @@ def view_ingest() -> None:
         _section("Incident record")
         st.dataframe(_style_table(final_df), width="stretch", hide_index=True)
 
-    _section("Visual evidence")
-    _show_visual_evidence(
-        result.get("source_type", source_type),
-        result["draft"],
-        result.get("path"),
-        uploaded_filename,
-    )
-
     if st.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
         try:
             summary = upload_incidents(final_df)
@@ -865,6 +857,14 @@ def view_ingest() -> None:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Incident upload failed")
             st.error(_friendly_error(exc, "add this incident"))
+
+    _section("Visual evidence")
+    _show_visual_evidence(
+        result.get("source_type", source_type),
+        result["draft"],
+        result.get("path"),
+        uploaded_filename,
+    )
 
 
 # --------------------------------------------------------------------------- #
