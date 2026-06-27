@@ -16,7 +16,7 @@ Set the project-specific shell variables used below:
 ```sh
 export PROJECT_ID="your-google-cloud-project"
 export REGION="us-central1"
-export SERVICE="multimodal-incident-analyzer"
+export SERVICE="incident-analyzer"
 gcloud config set project "$PROJECT_ID"
 ```
 
@@ -32,14 +32,16 @@ gcloud services enable \
 
 ## Configure secrets
 
-Create Secret Manager secrets named `SUPABASE_URL` and `SUPABASE_KEY` through
-the Google Cloud console or CLI. Do not put their values in the Dockerfile,
-source code, build arguments, or a committed `.env` file.
+Create Secret Manager or GitHub Actions secrets named `SUPABASE_URL` and a
+Supabase key. The app accepts `SUPABASE_SERVICE_ROLE_KEY`,
+`SUPABASE_ANON_KEY`, or the backward-compatible `SUPABASE_KEY`; the checked-in
+GitHub workflow currently passes `SUPABASE_KEY`. Do not put secret values in
+the Dockerfile, source code, build arguments, or a committed `.env` file.
 
-The identity used by the Cloud Run service needs the
-`roles/secretmanager.secretAccessor` role for these two secrets. For tighter
-access control, use a dedicated service account rather than the project's
-default compute service account.
+When Cloud Run reads Google Secret Manager secrets directly, the identity used
+by the Cloud Run service needs the `roles/secretmanager.secretAccessor` role for
+those secrets. The GitHub Actions workflow instead reads GitHub secrets during
+deploy and sets them as Cloud Run environment variables.
 
 ## Build locally (optional)
 
@@ -62,7 +64,7 @@ gcloud run deploy "$SERVICE" \
   --source . \
   --region "$REGION" \
   --platform managed \
-  --no-allow-unauthenticated \
+  --allow-unauthenticated \
   --cpu 4 \
   --memory 16Gi \
   --concurrency 1 \
@@ -80,9 +82,10 @@ revision reserves 16Gi of regional memory quota. If deploy validation reports
 `MemAllocPerProjectRegion`, cap the existing service at one max instance and
 delete old non-serving revisions before deploying the next GPU revision.
 
-The command keeps the service private. Grant intended users the Cloud Run
-Invoker role. Use `--allow-unauthenticated` only if public access to uploaded
-incident evidence is an explicit requirement.
+The checked-in GitHub workflow uses `--allow-unauthenticated` for the classroom
+demo. For a private demo, switch both the workflow and manual command to
+`--no-allow-unauthenticated` and grant intended users the Cloud Run Invoker
+role.
 
 ## Runtime behavior
 

@@ -12,14 +12,12 @@
 | Python required | Use Python for all processing and Streamlit dashboard code |
 | No paid APIs | Do not require paid LLM, paid OCR, paid speech, or paid cloud inference APIs |
 | No committed secrets | Do not commit Supabase keys, API keys, credentials, or private data |
-| Single-file upload | The MVP processes exactly one uploaded file per Streamlit processing run |
+| Single-file upload | The Add Incident page processes exactly one uploaded file per review run; Combine Reports may only combine completed session reviews |
 | Synchronous processing | Processing occurs inside the Streamlit session; rows are inserted only after the user confirms the final Integration result |
-| Supabase source of truth | After insert, dashboard and export must read from Supabase `incidents` table |
+| Supabase source of truth | After insert, dashboard, management actions, and export must read/write Supabase `incidents` rows |
 | One main table | Use one Supabase table named `incidents` for structured incident rows and the `incident_summary` column |
 | LLM summary is separate | LLM summary code must live in `llm_summarizer/`, not inside extractors or hidden inside Integration |
 | No raw Supabase Storage in MVP | Do not upload raw evidence files to Supabase Storage as a required MVP feature |
-| No watch-folder flow | Do not implement local watch-folder monitoring as the main pipeline |
-| No SQLite source of truth | Do not use SQLite or local CSV files as the persistent source of truth |
 
 ## 2. Incident ID Rules
 
@@ -49,8 +47,7 @@ INC_TYPE_NUMBER
 | Example | If the highest existing video ID is `INC_VID_009`, the next video incident is `INC_VID_010` |
 | One file can create many IDs | If one uploaded video produces three incidents, assign `INC_VID_001`, `INC_VID_002`, and `INC_VID_003` as needed |
 | Supabase-aware generation | Before insert, query existing Supabase rows to avoid reusing IDs |
-| Single-user assumption | For the class demo, simple max-number lookup is acceptable. Production concurrency is out of scope |
-| No old ID format | Do not use the old `INC_001` format in new code or docs |
+| Single-user assumption | Simple max-number lookup is acceptable for the class demo |
 
 ## 3. Schema Rules
 
@@ -112,6 +109,8 @@ incident_id, source, event, location, time, severity, incident_summary
 ```
 
 It must not include extra fields at insert time. After insertion, Supabase stored rows and final CSV export contain the full nine-field schema including database-generated `id` and `created_at`. Supabase insert happens only after Integration produces `Incident_Summary` and `Incident_ID`, the user confirms the final rows, and the app maps them to `incident_summary` and `incident_id`.
+
+The app may also provide Supabase-backed management actions for already-saved rows. Updates may change `event`, `location`, `time`, `severity`, and `incident_summary`; `incident_id`, `source`, `id`, and `created_at` remain immutable through the UI.
 
 ## 6. LLM Summarizer Rules
 
@@ -196,7 +195,7 @@ from different modalities. The current mappings are:
 
 ## 10. Logging Rules
 
-Each processing run must log or display:
+Each processing run should log or display the applicable available details:
 - Uploaded filename.
 - Detected source type.
 - Processor selected.
@@ -218,6 +217,6 @@ Minimum required tests:
 | test_integration_schema.py | Integration returns final `Incident_ID, Source, Event, Location, Time, Severity, Incident_Summary` columns |
 | test_llm_summarizer.py | LLM summarizer returns required keys and fallback works |
 | test_id_generator.py | IDs follow `INC_TYPE_NUMBER` and increment by source type |
-| test_supabase_mapping.py | Supabase payload maps all required table columns |
+| test_supabase_mapping.py | Supabase payload maps all seven app-owned insert columns and omits database-generated fields |
 | test_final_export_schema.py | Final CSV export has exact nine fields and no null values |
 | test_dashboard_smoke.py | Streamlit app can load without crashing |

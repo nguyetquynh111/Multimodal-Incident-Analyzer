@@ -6,11 +6,12 @@ then lets users review and save confirmed records to Supabase.
 
 ## Features
 
-- Process one uploaded evidence file at a time.
+- Process one uploaded evidence file at a time on the Add Incident page.
 - Extract modality-specific draft rows from audio, PDFs, images, videos, and text.
 - Standardize records with Integration, incident IDs, severity, and summaries.
 - Review before inserting into Supabase.
-- Browse, filter, edit, and export saved incidents from the dashboard.
+- Combine completed session reviews into a local seven-field preview.
+- Browse, filter, edit, bulk update, delete, and export saved incidents from Supabase.
 
 ## Supported Files
 
@@ -46,7 +47,9 @@ Create a local `.env` file and set Supabase values when persistence is needed:
 
 ```bash
 SUPABASE_URL=...
-SUPABASE_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...   # Preferred for trusted hosted demos
+SUPABASE_ANON_KEY=...           # Or use this / SUPABASE_KEY for local demos
+SUPABASE_KEY=...                # Backward-compatible alternative
 SUPABASE_TABLE=incidents
 ```
 
@@ -54,13 +57,22 @@ Useful optional settings:
 
 ```bash
 OPENROUTER_API_KEY=...          # Enables LLM summaries
+LLM_MODEL_NAME=openai/gpt-oss-20b:free
+LLM_TIMEOUT_SECONDS=6.0
 ROBOFLOW_API_KEY=...            # Enables image object detection
+ROBOFLOW_MODEL_ID=fire-detection-data-pre/4
+ROBOFLOW_PERSON_MODEL_ID=yolov8n-640
+ROBOFLOW_API_URL=https://detect.roboflow.com
 WHISPER_MODEL=small.en          # Audio transcription model
 WHISPER_DEVICE=auto             # auto uses cuda when available, otherwise cpu
+WHISPER_LANGUAGE=en
+WHISPER_MODEL_DIR=              # Optional local model cache
+WHISPER_BEAM_SIZE=5
 VIDEO_YOLO_DEVICE=auto          # auto uses cuda when available, otherwise default
 VIDEO_YOLO_SAMPLE_STRIDE=4      # Skip YOLO work on more video frames for speed
 VIDEO_YOLO_IMAGE_SIZE=320
 VIDEO_YOLO_MODEL_PATH=video/yolov8s.pt
+TESSERACT_CMD=                  # Optional path when tesseract is outside PATH
 PDF_OCR_WORKERS=8               # Parallel scanned-page OCR workers
 ```
 

@@ -22,6 +22,7 @@ from cloud_deployment.supabase_client import (
 )
 from cloud_deployment.exporter import export_incidents_csv
 from cloud_deployment.upload_service import upload_incidents
+from integration.dashboard_time import incident_dates
 
 st.set_page_config(
     page_title="Incident Analyzer", page_icon=":material/emergency:",
@@ -351,17 +352,17 @@ def _top_locations(view: pd.DataFrame):
 
 
 def _timeline(view: pd.DataFrame):
-    if "created_at" not in view.columns:
-        return None
     t = view.copy()
-    t["Date"] = pd.to_datetime(t["created_at"], errors="coerce").dt.date
+    t["Date"] = incident_dates(t)
     t = t.dropna(subset=["Date"])
     if t.empty:
         return None
     g = t.groupby("Date", as_index=False).size().rename(columns={"size": "Count"})
     return (
         alt.Chart(g).mark_area(line={"color": "#6366F1"}, opacity=0.25, color="#A5B4FC").encode(
-            x=alt.X("Date:T", title=None), y=alt.Y("Count:Q", title=None), tooltip=["Date", "Count"]
+            x=alt.X("Date:T", title="Incident date"),
+            y=alt.Y("Count:Q", title=None),
+            tooltip=["Date", "Count"],
         ).properties(height=240)
     )
 
