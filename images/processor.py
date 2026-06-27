@@ -12,7 +12,7 @@ import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -34,8 +34,15 @@ SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MODEL_ID = "fire-detection-data-pre/4"
 DEFAULT_PERSON_MODEL_ID = "yolov8n-640"
-DEFAULT_API_URL = "https://serverless.roboflow.com"
+DEFAULT_API_URL = "https://detect.roboflow.com"
 logger = logging.getLogger(__name__)
+
+
+class RoboflowModelSpec(NamedTuple):
+    """One Roboflow model call and its optional class filter."""
+
+    model_id: str
+    class_filter: str | None = None
 
 
 def _load_image_environment() -> None:
@@ -45,7 +52,7 @@ def _load_image_environment() -> None:
 
 
 def classify_scene(labels: list[str]) -> str:
-    labels_lower = [label.lower() for label in labels]
+    labels_lower = {label.casefold() for label in labels}
     if "fire" in labels_lower and "person" in labels_lower:
         return "Fire and Smoke Scene"
     if "fire" in labels_lower and "smoke" in labels_lower:
@@ -77,41 +84,64 @@ def _normalize_prediction(prediction: Mapping[str, Any]) -> dict[str, Any] | Non
     return detection
 
 
+def _env_text(name: str, default: str) -> str:
+    """Read a non-empty string from the environment."""
+
+    return os.getenv(name, "").strip() or default
+
+
+def _roboflow_model_specs() -> tuple[RoboflowModelSpec, ...]:
+    """Return the configured fire/smoke and person-detection model calls."""
+
+    return (
+        RoboflowModelSpec(_env_text("ROBOFLOW_MODEL_ID", DEFAULT_MODEL_ID)),
+        RoboflowModelSpec(
+            _env_text("ROBOFLOW_PERSON_MODEL_ID", DEFAULT_PERSON_MODEL_ID),
+            "person",
+        ),
+    )
+
+
+def _build_roboflow_client(api_key: str, image_name: str) -> Any | None:
+    """Create the Roboflow client, or None when the dependency is unavailable."""
+
+    try:
+        from inference_sdk import InferenceHTTPClient  # type: ignore
+
+        return InferenceHTTPClient(
+            api_url=_env_text("ROBOFLOW_API_URL", DEFAULT_API_URL),
+            api_key=api_key,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Roboflow client setup failed for %s (%s); using fallback.",
+            image_name,
+            type(exc).__name__,
+        )
+        return None
+
+
 def _infer_detection_result(img_path: str) -> tuple[list[dict[str, Any]], bool]:
     _load_image_environment()
     api_key = os.getenv("ROBOFLOW_API_KEY", "").strip()
     if not api_key:
         logger.warning("ROBOFLOW_API_KEY is not configured; using image detection fallback.")
         return [], False
-    try:
-        from inference_sdk import InferenceHTTPClient  # type: ignore
 
-        client = InferenceHTTPClient(
-            api_url=os.getenv("ROBOFLOW_API_URL", DEFAULT_API_URL),
-            api_key=api_key,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Roboflow client setup failed for %s (%s); using fallback.",
-            Path(img_path).name,
-            type(exc).__name__,
-        )
+    client = _build_roboflow_client(api_key, Path(img_path).name)
+    if client is None:
         return [], False
 
-    model_specs = (
-        (os.getenv("ROBOFLOW_MODEL_ID", DEFAULT_MODEL_ID), None),
-        (os.getenv("ROBOFLOW_PERSON_MODEL_ID", DEFAULT_PERSON_MODEL_ID), "person"),
-    )
     detections: list[dict[str, Any]] = []
     inference_available = False
-    for model_id, class_filter in model_specs:
+    for model_spec in _roboflow_model_specs():
         try:
-            result = client.infer(img_path, model_id=model_id)
+            result = client.infer(img_path, model_id=model_spec.model_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Roboflow inference failed for %s with %s: %s: %r",
                 Path(img_path).name,
-                model_id,
+                model_spec.model_id,
                 type(exc).__name__,
                 exc,
             )
@@ -121,7 +151,10 @@ def _infer_detection_result(img_path: str) -> tuple[list[dict[str, Any]], bool]:
         for pred in predictions:
             if not isinstance(pred, Mapping):
                 continue
-            if class_filter is not None and pred.get("class") != class_filter:
+            if (
+                model_spec.class_filter is not None
+                and pred.get("class") != model_spec.class_filter
+            ):
                 continue
             detection = _normalize_prediction(pred)
             if detection is not None:
@@ -159,7 +192,11 @@ def _confidence_score(detections: list[dict[str, Any]], *, fallback_confidence: 
     return round(sum(confidences) / len(confidences), 2)
 
 
-def _labels_and_confidence(detections: list[dict[str, Any]], *, fallback_confidence: float) -> tuple[list[str], float]:
+def _labels_and_confidence(
+    detections: list[dict[str, Any]],
+    *,
+    fallback_confidence: float,
+) -> tuple[list[str], float]:
     labels = [str(det.get("class")) for det in detections if det.get("class")]
     return labels, _confidence_score(detections, fallback_confidence=fallback_confidence)
 
@@ -202,8 +239,8 @@ def _ocr_text(img_path: str) -> str:
             return NO_TEXT
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        ocr_text = pytesseract.image_to_string(gray).strip().replace("\n", " ")
-        return ocr_text if len(ocr_text) > 3 else NO_TEXT
+        cleaned_text = _clean_ocr_candidate(pytesseract.image_to_string(gray))
+        return cleaned_text if cleaned_text else NO_TEXT
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "OCR failed for %s (%s); using N/A.", Path(img_path).name, type(exc).__name__
@@ -265,7 +302,10 @@ def process_image(
     return frame
 
 
-def process_folder(input_path: str | Path, output_csv: str | Path = DEFAULT_OUTPUT_PATH) -> pd.DataFrame:
+def process_folder(
+    input_path: str | Path,
+    output_csv: str | Path = DEFAULT_OUTPUT_PATH,
+) -> pd.DataFrame:
     path = Path(input_path)
     image_files = sorted(
         file for file in path.iterdir()
@@ -355,7 +395,12 @@ def annotate_image_with_detections(
         text_height = text_bbox[3] - text_bbox[1]
         label_top = max(0, top - text_height - 2 * line_width)
         draw.rectangle(
-            (left, label_top, left + text_width + 2 * line_width, label_top + text_height + 2 * line_width),
+            (
+                left,
+                label_top,
+                left + text_width + 2 * line_width,
+                label_top + text_height + 2 * line_width,
+            ),
             fill="#22C55E",
         )
         draw.text(

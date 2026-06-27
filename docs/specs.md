@@ -66,8 +66,9 @@ and Time. Document `Summary` remains source-grounded supporting context.
 ### 4.3 Image Processor
 
 The image processor analyzes one scene image with the Roboflow Inference SDK and
-OCR. OCR runs on the full grayscale image, stores readable text when the OCR
-result is longer than three characters, and otherwise uses `N/A`. Roboflow
+OCR. OCR runs on the full grayscale image, keeps cleaned OCR lines with at least
+three alphanumeric characters, joins them into `Text_Extracted`, and otherwise
+uses `N/A`. Roboflow
 bounding-box coordinates are kept as session metadata for the Streamlit Visual
 Evidence overlay, while the required CSV artifact remains five columns. Image
 location handling happens in Integration: OCR writes `Text_Extracted`,
@@ -75,15 +76,16 @@ Integration calls
 `llm_summarizer.update_image_location(...)` to fill a missing `Location`, and only
 then Integration calls `summarize_incident(...)`. It runs the fire Roboflow model
 plus the person model through the default
-`https://serverless.roboflow.com` endpoint, uses labels such as `Fire Scene`,
+`https://detect.roboflow.com` endpoint, uses labels such as `Fire Scene`,
 `Smoke Scene`, and `Fire and Smoke Scene`, and averages valid detection
 confidences from the model response bounded from `0.0` to `1.0`. The score is
 the rounded model-derived average, and the neutral `0.5` confidence is used
 only when no valid detection confidence is available. When no object is
 returned, the artifact uses `General Scene`, `Objects_Detected = None`, and a
 neutral `Confidence_Score` of `0.5`. If Roboflow is unavailable, quota is
-exhausted, or the API key is missing, the processor writes the same safe empty
-artifact values with neutral `0.5` confidence instead of crashing.
+exhausted, or the API key is missing, the processor writes the same safe
+scene/object placeholders with neutral `0.5` confidence instead of crashing;
+OCR still runs independently and may still populate `Text_Extracted`.
 
 ```text
 Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score

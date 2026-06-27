@@ -33,7 +33,14 @@ def test_sample_image_returns_exact_draft_schema_without_network_calls(
         lambda _: (
             [
                 {"class": "fire", "confidence": 0.88, "x": 50, "y": 40, "width": 20, "height": 10},
-                {"class": "person", "confidence": 0.74, "x": 30, "y": 35, "width": 12, "height": 24},
+                {
+                    "class": "person",
+                    "confidence": 0.74,
+                    "x": 30,
+                    "y": 35,
+                    "width": 12,
+                    "height": 24,
+                },
             ],
             True,
         ),
@@ -44,15 +51,21 @@ def test_sample_image_returns_exact_draft_schema_without_network_calls(
 
     assert list(frame.columns) == processor.ARTIFACT_COLUMNS
     assert frame.iloc[0].to_dict() == {
-        "Image_ID": "IMG_001", "Scene_Type": "Fire and Smoke Scene", "Objects_Detected": "fire, person",
-        "Text_Extracted": "Main Street", "Confidence_Score": 0.81,
+        "Image_ID": "IMG_001",
+        "Scene_Type": "Fire and Smoke Scene",
+        "Objects_Detected": "fire, person",
+        "Text_Extracted": "Main Street",
+        "Confidence_Score": 0.81,
     }
     assert frame.attrs["image_detections"][0]["class"] == "fire"
     assert frame.attrs["image_detections"][0]["width"] == 20
     assert 0.0 <= float(frame.iloc[0]["Confidence_Score"]) <= 1.0
 
 
-def test_folder_processing_uses_the_samples_in_sorted_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_folder_processing_uses_the_samples_in_sorted_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     for sample in SAMPLE_IMAGES:
         shutil.copy2(sample, tmp_path / sample.name)
     monkeypatch.setattr(processor, "_infer_detection_result", lambda _: ([], False))
@@ -62,13 +75,17 @@ def test_folder_processing_uses_the_samples_in_sorted_order(monkeypatch: pytest.
     frame = processor.process_folder(tmp_path, output)
     saved = pd.read_csv(output, keep_default_na=False)
 
-    assert frame["Image_ID"].tolist() == [f"IMG_{index:03d}" for index in range(1, len(SAMPLE_IMAGES) + 1)]
+    assert frame["Image_ID"].tolist() == [
+        f"IMG_{index:03d}" for index in range(1, len(SAMPLE_IMAGES) + 1)
+    ]
     assert frame["Confidence_Score"].tolist() == [0.5] * len(SAMPLE_IMAGES)
     assert list(saved.columns) == processor.ARTIFACT_COLUMNS
     assert not saved.isnull().values.any()
 
 
-def test_no_image_signal_uses_documented_artifact_placeholders(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_image_signal_uses_documented_artifact_placeholders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(processor, "_infer_detection_result", lambda _: ([], True))
     monkeypatch.setattr(processor, "_ocr_text", lambda _: processor.NO_TEXT)
 
@@ -113,7 +130,9 @@ def test_near_one_image_confidence_rounds_naturally() -> None:
     assert confidence == 1.0
 
 
-def test_roboflow_inference_combines_fire_and_person_models(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_roboflow_inference_combines_fire_and_person_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[str] = []
     api_urls: list[str] = []
 
@@ -152,6 +171,54 @@ def test_roboflow_inference_combines_fire_and_person_models(monkeypatch: pytest.
         {"class": "fire", "confidence": 0.8},
         {"class": "person", "confidence": 0.6},
     ]
+
+
+def test_roboflow_blank_env_values_fall_back_to_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    api_urls: list[str] = []
+
+    class FakeInferenceHTTPClient:
+        def __init__(self, api_url: str, api_key: str) -> None:
+            api_urls.append(api_url)
+
+        def infer(self, img_path: str, model_id: str) -> dict[str, list[dict[str, float | str]]]:
+            calls.append(model_id)
+            return {"predictions": []}
+
+    monkeypatch.setenv("ROBOFLOW_API_KEY", "test-key")
+    monkeypatch.setenv("ROBOFLOW_MODEL_ID", "")
+    monkeypatch.setenv("ROBOFLOW_PERSON_MODEL_ID", "")
+    monkeypatch.setenv("ROBOFLOW_API_URL", "")
+    monkeypatch.setitem(
+        sys.modules,
+        "inference_sdk",
+        SimpleNamespace(InferenceHTTPClient=FakeInferenceHTTPClient),
+    )
+
+    detections, inference_available = processor._infer_detection_result("example.jpg")
+
+    assert inference_available is True
+    assert api_urls == [processor.DEFAULT_API_URL]
+    assert calls == [processor.DEFAULT_MODEL_ID, processor.DEFAULT_PERSON_MODEL_ID]
+    assert detections == []
+
+
+def test_roboflow_client_setup_failure_uses_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    class BrokenInferenceHTTPClient:
+        def __init__(self, api_url: str, api_key: str) -> None:
+            raise RuntimeError("client unavailable")
+
+    monkeypatch.setenv("ROBOFLOW_API_KEY", "test-key")
+    monkeypatch.setitem(
+        sys.modules,
+        "inference_sdk",
+        SimpleNamespace(InferenceHTTPClient=BrokenInferenceHTTPClient),
+    )
+
+    detections, inference_available = processor._infer_detection_result("example.jpg")
+
+    assert detections == []
+    assert inference_available is False
 
 
 @pytest.mark.parametrize(
@@ -194,8 +261,56 @@ def test_ocr_cleanup_preserves_generic_readable_text(readings, expected) -> None
     ]
 
     if cleaned:
-        actual = max(cleaned, key=lambda value: (len("".join(ch for ch in value if ch.isalnum())), len(value)))
+        actual = max(
+            cleaned,
+            key=lambda value: (
+                len("".join(ch for ch in value if ch.isalnum())),
+                len(value),
+            ),
+        )
     else:
         actual = processor.NO_TEXT
 
     assert actual == expected
+
+
+def test_ocr_text_uses_generic_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeCV2:
+        COLOR_BGR2GRAY = 1
+
+        @staticmethod
+        def imread(img_path: str) -> object:
+            return object()
+
+        @staticmethod
+        def cvtColor(img: object, color: int) -> object:
+            return img
+
+    fake_tesseract = SimpleNamespace(
+        image_to_string=lambda image: "  | Main Street\n!!!\n"
+    )
+
+    monkeypatch.setitem(sys.modules, "cv2", FakeCV2)
+    monkeypatch.setitem(sys.modules, "pytesseract", fake_tesseract)
+
+    assert processor._ocr_text("example.jpg") == "Main Street"
+
+
+def test_ocr_text_returns_no_text_when_image_cannot_be_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeCV2:
+        COLOR_BGR2GRAY = 1
+
+        @staticmethod
+        def imread(img_path: str) -> None:
+            return None
+
+        @staticmethod
+        def cvtColor(img: object, color: int) -> object:
+            return img
+
+    monkeypatch.setitem(sys.modules, "cv2", FakeCV2)
+    monkeypatch.setitem(sys.modules, "pytesseract", SimpleNamespace())
+
+    assert processor._ocr_text("example.jpg") == processor.NO_TEXT

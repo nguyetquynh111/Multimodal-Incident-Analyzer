@@ -130,7 +130,7 @@ The LLM summarizer uses OpenRouter when `OPENROUTER_API_KEY` is configured. The 
 | ROBOFLOW_API_KEY | No | Optional/free-tier Roboflow key for image inference; must come from environment variables, never committed |
 | ROBOFLOW_MODEL_ID | No | Optional Roboflow fire model id; defaults to `fire-detection-data-pre/4` when used |
 | ROBOFLOW_PERSON_MODEL_ID | No | Optional Roboflow person model id; defaults to `yolov8n-640` when used |
-| ROBOFLOW_API_URL | No | Optional image inference endpoint; defaults to `https://serverless.roboflow.com` |
+| ROBOFLOW_API_URL | No | Optional image inference endpoint; defaults to `https://detect.roboflow.com` |
 | VIDEO_YOLO_MODEL_PATH | No | Optional YOLO model path; defaults to `video/yolov8s.pt` and may point to an exported ONNX model |
 | VIDEO_YOLO_IMAGE_SIZE | No | Optional YOLO inference image size; defaults to `640` for faster CPU/GPU processing |
 | VIDEO_YOLO_SAMPLE_STRIDE | No | Optional stride over motion-sampled frames eligible for YOLO; defaults to `2` |
@@ -181,7 +181,7 @@ After user confirmation, the insert payload sent by the app contains only the se
 | ID collision if multiple users insert at the same time | For class demo, query current max per type before insert; document single-user assumption |
 | OCR setup is difficult | Use text-based PDF for the main demo; when direct extraction is near-empty, the processor attempts OCR and degrades to Unknown fields if it is unavailable |
 | Video processing is slow | Reject long videos, use a documented sample interval, run YOLO only on every configured motion-sampled frame, and keep YOLO image size configurable |
-| Roboflow image API unavailable, quota exhausted, or key missing | Treat Roboflow as optional/free-tier external inference; load the API key from environment variables and return safe image artifact placeholders without crashing |
+| Roboflow image API unavailable, quota exhausted, or key missing | Treat Roboflow as optional/free-tier external inference; load the API key from environment variables and return safe scene/object placeholders with neutral confidence without crashing; OCR still runs independently |
 | Object detections are mistaken for activities | Require documented temporal or rule-based evidence for video event labels |
 | Extractor returns nulls | Validators convert missing values to Unknown and ensure an Unknown event has Low severity |
 | Dashboard reads local stale data | Dashboard must query Supabase directly |
