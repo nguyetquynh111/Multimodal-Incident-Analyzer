@@ -780,6 +780,15 @@ def _show_visual_evidence(
             st.caption("Visual evidence is not available for this modality yet.")
 
 
+def _manual_summary_override(value: object) -> str | None:
+    """Return a real manual summary, ignoring blank/default placeholder values."""
+
+    text = str(value or "").strip()
+    if not text or text.casefold() == "unknown":
+        return None
+    return text
+
+
 # --------------------------------------------------------------------------- #
 # View 1: Ingest & Convert
 # --------------------------------------------------------------------------- #
@@ -1058,7 +1067,12 @@ def _add_incident_dialog(existing_ids: list) -> None:
     location = st.text_input("Location", "Unknown")
     time_val = st.text_input("Time", "Unknown")
     severity = st.selectbox("Severity", SEVERITY_ORDER, index=1)
-    incident_summary = st.text_area("Incident summary", "Unknown", height=90)
+    incident_summary = st.text_area(
+        "Incident summary",
+        "",
+        height=90,
+        placeholder="Leave blank to auto-generate a summary.",
+    )
     if st.button("Save", type="primary", icon=":material/save:"):
         draft = pd.DataFrame([{
             "Event": event,
@@ -1068,8 +1082,9 @@ def _add_incident_dialog(existing_ids: list) -> None:
             "Summary": incident_summary or "Unknown",
         }])
         row = ig.integrate_records(draft, source_type, existing_ids)
-        if incident_summary and incident_summary.strip():
-            row["Incident_Summary"] = incident_summary.strip()
+        summary_override = _manual_summary_override(incident_summary)
+        if summary_override is not None:
+            row["Incident_Summary"] = summary_override
         try:
             upload_incidents(row)
             st.success(f"Added {row.iloc[0]['Incident_ID']}")
