@@ -50,7 +50,8 @@ The audio processor transcribes one audio file with local Whisper and extracts e
 Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score
 ```
 
-Integration maps event and location directly; urgency determines severity.
+Integration maps event and location directly; urgency contributes to severity
+after event-category rules are applied.
 
 ### 4.2 PDF Processor
 
@@ -91,7 +92,8 @@ OCR still runs independently and may still populate `Text_Extracted`.
 Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score
 ```
 
-Integration maps scene/object labels to Event and the score to Severity.
+Integration maps scene/object labels to Event. Event-category rules are applied
+before the score is used for Severity.
 
 ### 4.4 Video Processor
 
@@ -108,8 +110,9 @@ rule-based evidence; an object detection alone is insufficient.
 Timestamp, Frame_ID, Event_Detected, Objects, Confidence
 ```
 
-Integration maps event and timestamp directly and derives Severity from
-Confidence. One video may produce zero, one, or many rows.
+Integration maps event and timestamp directly. Event-category rules are applied
+before Confidence is used for Severity. One video may produce zero, one, or many
+rows.
 
 ### 4.5 Text Processor
 
@@ -159,7 +162,11 @@ Integration responsibilities:
 - Normalize event names.
 - Normalize location and time fields.
 - Convert missing fields to Unknown.
-- Compute or normalize severity to Low, Medium, High, or Unknown. An Unknown event must use Low severity.
+- Compute or normalize severity to Low, Medium, High, or Unknown. Event-category
+  rules run before generic confidence scoring: Unknown, Other, and No Activity
+  are Low; fire/arson/assault/violence and other configured safety-critical
+  terms are High; theft/robbery/burglary/disturbance/property damage are at
+  least Medium.
 - For image rows with no explicit `Location`, call
   `llm_summarizer.update_image_location(...)` before final summarization.
 - Call `llm_summarizer.summarize_incident(...)` for each standardized row.

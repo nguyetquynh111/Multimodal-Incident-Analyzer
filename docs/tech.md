@@ -184,5 +184,5 @@ After user confirmation, the insert payload sent by the app contains only the se
 | Video processing is slow | Reject long videos, use a documented sample interval, run YOLO only on every configured motion-sampled frame, and keep YOLO image size configurable |
 | Roboflow image API unavailable, quota exhausted, or key missing | Treat Roboflow as optional/free-tier external inference; load the API key from environment variables and return safe scene/object placeholders with neutral confidence without crashing; OCR still runs independently |
 | Object detections are mistaken for activities | Require documented temporal or rule-based evidence for video event labels |
-| Extractor returns nulls | Validators convert missing values to Unknown and ensure an Unknown event has Low severity |
+| Extractor returns nulls or low-signal categories | Validators convert missing values to Unknown; Integration ensures Unknown, Other, and No Activity events have Low severity |
 | Dashboard reads local stale data | Dashboard must query Supabase directly |
