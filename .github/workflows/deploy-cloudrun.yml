@@ -31,6 +31,31 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
+      - name: Cap existing Cloud Run service before GPU deploy
+        run: |
+          set -euo pipefail
+          gcloud run services update "${SERVICE_NAME}" \
+            --region="${REGION}" \
+            --project="${PROJECT_ID}" \
+            --max-instances=1 \
+            --quiet || true
+
+      - name: Delete old non-serving Cloud Run revisions
+        run: |
+          set -euo pipefail
+          revisions="$(gcloud run revisions list \
+            --service="${SERVICE_NAME}" \
+            --region="${REGION}" \
+            --project="${PROJECT_ID}" \
+            --filter='status.conditions.type:Active AND status.conditions.status:False' \
+            --format='value(metadata.name)' 2>/dev/null || true)"
+          if [ -n "${revisions}" ]; then
+            printf '%s\n' "${revisions}" | xargs -r -n 1 gcloud run revisions delete \
+              --region="${REGION}" \
+              --project="${PROJECT_ID}" \
+              --quiet
+          fi
+
       - name: Deploy to Cloud Run
         id: deploy
         uses: google-github-actions/deploy-cloudrun@v3
@@ -39,9 +64,14 @@ jobs:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
           source: .
-          flags: '--memory=16Gi --cpu=4 --timeout=1200 --concurrency=1 --max-instances=1 --min-instances=0 --gpu=1 --gpu-type=nvidia-l4 --no-gpu-zonal-redundancy --no-cpu-throttling'          
+          flags: '--memory=16Gi --cpu=4 --timeout=1200 --concurrency=1 --max-instances=1 --min-instances=0 --gpu=1 --gpu-type=nvidia-l4 --no-gpu-zonal-redundancy --no-cpu-throttling'
           env_vars: |
             APP_ENV=production
+            WHISPER_DEVICE=auto
+            VIDEO_YOLO_DEVICE=auto
+            VIDEO_YOLO_SAMPLE_STRIDE=4
+            VIDEO_YOLO_IMAGE_SIZE=320
+            PDF_OCR_WORKERS=8
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}

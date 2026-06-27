@@ -21,7 +21,7 @@ Build a working class prototype that uploads one evidence file at a time through
 | T-007 | Build audio processor | Quynh | High | Produces the six-column audio artifact and extractor mapping |
 | T-008 | Extract audio event/location/urgency | Quynh | Medium | Sentiment is Calm, Concerned, or Distressed; urgency is independently bounded 0–1 |
 | T-009 | Build PDF processor | Rodney | High | Produces the eight-column PDF draft and integration mapping |
-| T-010 | Add PDF OCR fallback | Rodney | Medium | When whole-document direct extraction is near-empty, OCR the full PDF; failures use Unknown |
+| T-010 | Add PDF OCR fallback | Rodney | Medium | When page direct extraction is near-empty, OCR scanned pages in parallel through `PDF_OCR_WORKERS`; failures use Unknown |
 | T-011 | Build image processor | Zainab | High | Produces the five-column image artifact with supported labels and confidence |
 | T-012 | Add image OCR/object mapping | Zainab | Medium | Supported evidence maps to the image draft; available Roboflow bounding boxes appear in Visual Evidence; full-image grayscale OCR writes readable text or `N/A`; image OCR text may populate final Location through `llm_summarizer.update_image_location(...)`; no detected objects may use `None`, empty OCR may use `N/A`, and Roboflow failure writes safe scene/object placeholders without blocking OCR or crashing |
 | T-013 | Build video processor | Alex | High | Rejects long clips and produces formatted timestamps/frame IDs at a regular interval |

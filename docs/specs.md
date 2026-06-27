@@ -3,7 +3,7 @@
 ## 1. Approved End-to-End Behavior
 
 ```text
-1. User opens the Streamlit app.
+1. User starts the app with `streamlit run app.py` and opens the Streamlit app.
 2. User uploads exactly one supported file.
 3. App detects the file type and source abbreviation.
 4. App runs the correct extractor synchronously.
@@ -22,7 +22,7 @@
 | **Input Type** | **Extensions** | **Source Abbreviation** | **MVP Behavior** |
 | --- | --- | --- | --- |
 | Audio | .wav, .mp3, .m4a | AUD | Transcribe locally, then extract event, location, sentiment, and urgency signals; transcription errors are shown to the user |
-| PDF | .pdf | PDF | Extract whole-document text directly; use whole-document OCR only when direct text is near-empty |
+| PDF | .pdf | PDF | Extract embedded text per page; OCR scanned pages when possible |
 | Image | .jpg, .jpeg, .png | IMG | Run OCR/object detection if available, then extract incident signals |
 | Video | .mp4, .mov, .mpg, .mpeg | VID | Reject videos longer than 5 minutes; sample frames and analyze motion frames |
 | Text | .txt, .csv | TXT | Read free text; parse CSV rows as structured text evidence; `.json` uploads are unsupported |
@@ -55,7 +55,7 @@ after event-category rules are applied.
 
 ### 4.2 PDF Processor
 
-The PDF processor extracts text from the entire PDF directly. If the complete direct-text result is near-empty, it OCRs the complete PDF at 300 DPI. It produces one artifact row per uploaded PDF; missing fields use `Unknown`.
+The PDF processor extracts text from every page directly and OCRs scanned pages at 300 DPI when possible. It produces one artifact row per uploaded PDF; missing fields use `Unknown`.
 
 ```text
 Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome
@@ -101,7 +101,7 @@ The Streamlit path rejects clips longer than five minutes and samples frames
 every 0.5 seconds. It records elapsed `HH:MM:SS` timestamps and `FRM_NNN` IDs
 based on the original frame index, applies MOG2 background subtraction motion
 detection, and runs object detection only on qualifying motion frames. YOLO uses
-`VIDEO_YOLO_SAMPLE_STRIDE=2` and `VIDEO_YOLO_IMAGE_SIZE=640` unless overridden,
+`VIDEO_YOLO_SAMPLE_STRIDE=4` and `VIDEO_YOLO_IMAGE_SIZE=320` unless overridden,
 and can load an alternate path such as an exported ONNX model through
 `VIDEO_YOLO_MODEL_PATH`. Activity labels require documented temporal or
 rule-based evidence; an object detection alone is insufficient.
@@ -269,7 +269,7 @@ The Streamlit dashboard must:
 | --- | --- | --- |
 | AC-001 | User uploads one supported file | Correct extractor route is selected |
 | AC-002 | Audio processor runs | Extractor DataFrame is returned, or the app displays a transcription/processing error |
-| AC-003 | PDF processor runs | Whole-document direct extraction or near-empty whole-document OCR fallback produces the one-row, eight-column PDF artifact |
+| AC-003 | PDF processor runs | Page-aware direct extraction plus OCR fallback produces the one-row, eight-column PDF artifact |
 | AC-004 | Image processor runs | Supported scene/object/OCR results use the five-field artifact, and available Roboflow boxes appear in the image visual evidence overlay |
 | AC-005 | Video processor runs | Motion-gated sampled frames produce correctly formatted event rows |
 | AC-006 | Text processor runs | Text and CSV inputs map through the text modality contract; `.json` uploads are rejected |
@@ -285,7 +285,7 @@ The Streamlit dashboard must:
 
 | **Edge Case** | **Expected Behavior** |
 | --- | --- |
-| PDF has no extractable text | Attempt whole-document OCR; use Unknown fields if OCR is unavailable or fails |
+| PDF page has no extractable text | Attempt scanned-page OCR; use Unknown fields if OCR is unavailable or fails |
 | Audio transcription fails | Show a processing error and do not insert rows |
 | Image model detects no supported objects | Keep image artifact values such as `Objects_Detected = None` and `Text_Extracted = N/A` when appropriate; final Integration fields still map safely |
 | Video exceeds 5 minutes | Reject with clear message and no insert |

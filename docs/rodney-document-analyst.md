@@ -56,24 +56,22 @@ and matches the README's stated design decision.
 
 ---
 
-## 3. OCR strategy — whole-document fallback
+## 3. OCR strategy — page-aware fallback
 
 The public `process_pdf_file` path
-([`processor.py`](../pdf/processor.py#L631)) first uses whole-document direct
-text extraction through PyMuPDF, falling back to pdfplumber. If the resulting
-text is fewer than 20 characters, it OCRs every page at 300 DPI through
-`_extract_text_ocr` and `_ocr_pages`
-([`processor.py`](../pdf/processor.py#L595)).
+([`processor.py`](../pdf/processor.py#L631)) reads each page's embedded text
+through PyMuPDF, then OCRs pages whose direct text is fewer than 20 characters
+at 300 DPI through `_extract_pages_text` and `_ocr_pages`
+([`processor.py`](../pdf/processor.py#L547)).
 
 If `pytesseract` or the local `tesseract` executable is unavailable, OCR returns
 an empty result and field extractors emit `Unknown` rather than crashing. Set
-`TESSERACT_CMD` when the executable is installed outside `PATH`.
+`TESSERACT_CMD` when the executable is installed outside `PATH`. Scanned pages
+are OCR'd in parallel; `PDF_OCR_WORKERS` controls the worker count and defaults
+to 8 or the available CPU count, whichever is lower.
 
-The module contains an internal `_extract_pages_text` helper, but the active
-public processing path does not call it. Consequently, page-aware conditional
-OCR and splitting bundled PDFs into one row per agency are not current
-behavior. A bundle such as `LESO2.pdf` is represented by a single `RPT_001`
-artifact row.
+The public path still emits one `RPT_001` artifact row per uploaded PDF; it does
+not split bundled PDFs into one row per agency.
 
 ---
 

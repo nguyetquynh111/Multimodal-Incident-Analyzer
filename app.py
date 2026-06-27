@@ -517,10 +517,9 @@ def _show_pdf_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> 
     full_text = ""
     if file_path:
         try:
-            import fitz as _fitz
-            doc = _fitz.open(file_path)
-            full_text = "\n\n".join(page.get_text() for page in doc).strip()
-            doc.close()
+            from pdf.processor import extract_pdf_text
+
+            full_text = extract_pdf_text(file_path).strip()
         except Exception:
             pass
     if not full_text:
@@ -1206,10 +1205,10 @@ def view_manage() -> None:
             label = str(target["Incident_ID"])
             try:
                 if do_bulk_remove:
-                    incident_key = validate_incident_key(target["Incident_ID"])
+                    incident_key = validate_incident_key(target["incident_id"])
                     delete_incident(incident_key)
                 else:
-                    incident_key = validate_incident_key(target["Incident_ID"])
+                    incident_key = validate_incident_key(target["incident_id"])
                     payload = {
                         field: (
                             ig.normalize_event(value)
@@ -1309,7 +1308,7 @@ def view_manage() -> None:
         label = str(row["Incident_ID"])
         current = original.loc[label]
         try:
-            incident_id = validate_incident_key(current["Incident_ID"])
+            incident_id = validate_incident_key(current["incident_id"])
             if bool(row["remove"]):
                 delete_incident(incident_id)
                 deleted_count += 1

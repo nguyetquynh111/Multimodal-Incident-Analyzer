@@ -58,14 +58,19 @@ ROBOFLOW_API_KEY=...            # Enables image object detection
 WHISPER_MODEL=small.en          # Audio transcription model
 WHISPER_DEVICE=auto             # auto uses cuda when available, otherwise cpu
 VIDEO_YOLO_DEVICE=auto          # auto uses cuda when available, otherwise default
-VIDEO_YOLO_SAMPLE_STRIDE=2      # Skip YOLO work on some video frames
-VIDEO_YOLO_IMAGE_SIZE=640
+VIDEO_YOLO_SAMPLE_STRIDE=4      # Skip YOLO work on more video frames for speed
+VIDEO_YOLO_IMAGE_SIZE=320
 VIDEO_YOLO_MODEL_PATH=video/yolov8s.pt
+PDF_OCR_WORKERS=8               # Parallel scanned-page OCR workers
 ```
 
 Without OpenRouter, summaries use the deterministic fallback.
 
 ## Run Processors Directly
+
+Run these commands from the repository root. Use slashes for file paths
+(`audio/processor.py`) or module mode (`python -m audio.processor`), not
+`audio.processor.py`.
 
 ```bash
 python audio/processor.py --input "path/to/call.wav" --output "output/audio.csv"

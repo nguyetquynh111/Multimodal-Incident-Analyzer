@@ -4,13 +4,23 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 from typing import Any, Callable
 
 import pandas as pd
 
-from .config import OUTPUT_COLUMNS, SUPPORTED_AUDIO_EXTENSIONS
-from .extract import analyze_transcript
-from .transcribe import transcribe_audio
+try:
+    from .config import OUTPUT_COLUMNS, SUPPORTED_AUDIO_EXTENSIONS
+    from .extract import analyze_transcript
+    from .transcribe import transcribe_audio
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from audio.config import OUTPUT_COLUMNS, SUPPORTED_AUDIO_EXTENSIONS
+    from audio.extract import analyze_transcript
+    from audio.transcribe import transcribe_audio
+
+
+DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "output" / "audio_output.csv"
 
 
 def _validate_audio_path(audio_path: str | Path) -> Path:
@@ -88,7 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--input", help="A supported audio file or a folder of audio files")
     source.add_argument("--demo-transcript", help="Analyze text without running Whisper")
     parser.add_argument("--call-id", default=None, help="Optional ID for one file/demo row")
-    parser.add_argument("--output", required=True, help="Destination CSV path")
+    parser.add_argument(
+        "--output",
+        default=str(DEFAULT_OUTPUT_PATH),
+        help=f"Destination CSV path; defaults to {DEFAULT_OUTPUT_PATH}",
+    )
     return parser
 
 

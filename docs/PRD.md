@@ -81,7 +81,7 @@ Incident evidence can arrive as emergency calls, PDF reports, scene photos, surv
 | **Input Type** | **MVP Limit** | **Required Result** |
 | --- | --- | --- |
 | Audio | Exactly 1 uploaded file per run | Speech transcription and urgency/event extraction |
-| PDF | Exactly 1 uploaded file per run | Whole-document direct text extraction, with whole-document OCR fallback only when the direct text is near-empty, and structured report fields |
+| PDF | Exactly 1 uploaded file per run | Page-aware direct text extraction, OCR fallback for scanned pages, and structured report fields |
 | Image | Exactly 1 uploaded file per run | Scene/object detection, OCR, and bounded confidence |
 | Video | Exactly 1 uploaded file per run; max 5 minutes | Regular frame sampling, motion gating, and timestamped event signals |
 | Text | Exactly 1 uploaded `.txt` or `.csv` file per run | Preserved source text or structured CSV text evidence, with entities, sentiment/topic, or incident-like fields |

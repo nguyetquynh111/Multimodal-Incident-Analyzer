@@ -27,6 +27,7 @@ import logging
 import os
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Callable
@@ -469,6 +470,7 @@ def _extract_pages_direct(pdf_path: str) -> list[str]:
 # Default install location of the Tesseract engine on Windows. Used as a last
 # resort when the binary is not on PATH and no override is set.
 _WINDOWS_TESSERACT_DEFAULT = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+_DEFAULT_PDF_OCR_WORKERS = 8
 
 
 def _configure_tesseract_cmd(pytesseract: Any) -> None:
@@ -495,6 +497,25 @@ def _configure_tesseract_cmd(pytesseract: Any) -> None:
             return
 
 
+def _pdf_ocr_worker_count(page_count: int) -> int:
+    """Return a bounded OCR worker count for scanned PDF pages."""
+
+    if page_count <= 1:
+        return 1
+
+    raw = os.environ.get("PDF_OCR_WORKERS", "").strip()
+    if raw:
+        try:
+            requested = int(raw)
+        except ValueError:
+            logger.warning("Ignoring invalid PDF_OCR_WORKERS=%r; using default.", raw)
+            requested = _DEFAULT_PDF_OCR_WORKERS
+    else:
+        requested = min(_DEFAULT_PDF_OCR_WORKERS, os.cpu_count() or 1)
+
+    return max(1, min(requested, page_count))
+
+
 def _ocr_pages(pdf_path: str, page_indices: Iterable[int]) -> tuple[dict[int, str], bool]:
     """OCR only the given page indices.
 
@@ -504,7 +525,7 @@ def _ocr_pages(pdf_path: str, page_indices: Iterable[int]) -> tuple[dict[int, st
     crashing. Pages not listed in ``page_indices`` are never rendered/OCR'd.
     """
 
-    wanted = set(page_indices)
+    wanted = sorted(set(page_indices))
     if not wanted:
         return {}, True
 
@@ -527,20 +548,40 @@ def _ocr_pages(pdf_path: str, page_indices: Iterable[int]) -> tuple[dict[int, st
     except Exception:
         return {}, False
 
-    import io
-
     result: dict[int, str] = {}
-    try:
+    workers = _pdf_ocr_worker_count(len(wanted))
+    logger.info("OCR'ing %d scanned PDF page(s) with %d worker(s).", len(wanted), workers)
+
+    def ocr_one_page(index: int) -> tuple[int, str]:
+        import io
+
         with fitz.open(pdf_path) as doc:
-            for index, page in enumerate(doc):
-                if index not in wanted:
-                    continue
-                pix = page.get_pixmap(dpi=300)  # higher DPI improves OCR accuracy
-                image = Image.open(io.BytesIO(pix.tobytes("png")))
-                result[index] = pytesseract.image_to_string(image)
-    except Exception:
-        # Partial OCR is still useful; the binary was available, so report so.
+            if index >= doc.page_count:
+                return index, ""
+            page = doc.load_page(index)
+            pix = page.get_pixmap(dpi=300)  # higher DPI improves OCR accuracy
+            with Image.open(io.BytesIO(pix.tobytes("png"))) as image:
+                image.load()
+                return index, pytesseract.image_to_string(image)
+
+    if workers == 1:
+        for index in wanted:
+            try:
+                page_index, text = ocr_one_page(index)
+                result[page_index] = text
+            except Exception:
+                logger.warning("OCR failed for PDF page %d.", index + 1)
         return result, True
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(ocr_one_page, index): index for index in wanted}
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                page_index, text = future.result()
+                result[page_index] = text
+            except Exception:
+                logger.warning("OCR failed for PDF page %d.", index + 1)
     return result, True
 
 
@@ -614,6 +655,13 @@ def _extract_text_ocr(pdf_path: str) -> str:
     return "\n".join(ocr_by_index.get(i, "") for i in range(page_count))
 
 
+def extract_pdf_text(pdf_path: str | Path) -> str:
+    """Extract text from every PDF page, OCR'ing scanned pages when possible."""
+
+    pages, _used_ocr = _extract_pages_text(str(pdf_path))
+    return "\n".join(page for page in pages if page.strip())
+
+
 def _validate_pdf_path(pdf_path: str | Path) -> Path:
     path = Path(pdf_path).expanduser()
     if not path.is_file():
@@ -639,16 +687,19 @@ def process_pdf_file(
 ) -> pd.DataFrame:
     """Process one PDF and return the eight-column PDF draft.
 
-    Direct text extraction is tried first; OCR runs only when direct
-    extraction is empty or near-empty. When ``write_artifact`` is true, the
-    same eight-column result is written under ``pdf/output/``.
+    Direct text extraction is tried per page; scanned or near-empty pages are
+    OCR'd when possible. When ``write_artifact`` is true, the same eight-column
+    result is written under ``pdf/output/``.
     """
 
     path = _validate_pdf_path(pdf_path)
 
-    text = (text_extractor or _extract_text_direct)(str(path))
-    if len(text.strip()) < _MIN_DIRECT_TEXT_CHARS:
-        text = (ocr_extractor or _extract_text_ocr)(str(path))
+    if text_extractor is None and ocr_extractor is None:
+        text = extract_pdf_text(path)
+    else:
+        text = (text_extractor or _extract_text_direct)(str(path))
+        if len(text.strip()) < _MIN_DIRECT_TEXT_CHARS:
+            text = (ocr_extractor or _extract_text_ocr)(str(path))
 
     artifact_rows = [analyze_document(report_id or "RPT_001", text)]
 
@@ -723,6 +774,7 @@ __all__ = [
     "ARTIFACT_COLUMNS",
     "analyze_document",
     "classify_incident",
+    "extract_pdf_text",
     "process_pdf",
     "process_pdf_file",
     "save_artifact",

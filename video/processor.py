@@ -30,8 +30,8 @@ DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "output" / "video_output
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg", ".wmv"}
 _SAMPLE_SECONDS = 0.5
 _MAX_DURATION_SECONDS = 300  # reject clips longer than 5 minutes
-_DEFAULT_YOLO_IMAGE_SIZE = 640
-_DEFAULT_YOLO_SAMPLE_STRIDE = 2
+_DEFAULT_YOLO_IMAGE_SIZE = 320
+_DEFAULT_YOLO_SAMPLE_STRIDE = 4
 _DEFAULT_YOLO_MODEL_PATH = "video/yolov8s.pt"
 
 PERSON_CONF_THRESHOLD = 0.15

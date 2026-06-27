@@ -83,7 +83,7 @@ default before Integration.
 | **Modality** | **Exact Columns** | **Key Rule** |
 | --- | --- | --- |
 | Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm`, `Concerned`, or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
-| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Extract whole-document text first; OCR the whole PDF only when its direct text is near-empty; emit one artifact row per uploaded PDF |
+| PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Extract embedded text per page; OCR scanned pages when possible; emit one artifact row per uploaded PDF |
 | Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use the fire Roboflow model plus the person model, average valid detection confidences from the model response, bound the result from 0.0 to 1.0, and use labels such as `Fire Scene`, `Smoke Scene`, and `Fire and Smoke Scene`. Confidence is the rounded model-derived average; neutral confidence `0.5` is used only when no detection confidence is available. For an empty detection response, use `General Scene`, the string `None`, and neutral confidence `0.5`; empty OCR text uses `N/A`. OCR runs on the full grayscale image, keeps cleaned lines with at least three alphanumeric characters, and may still populate `Text_Extracted` when Roboflow is unavailable. During Integration, `llm_summarizer.update_image_location(...)` may populate final `Location` only when OCR text contains an explicit place. |
 | Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, source-frame-index `FRM_NNN` IDs, motion gating, and documented event logic |
 | Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` | Preserve `Raw_Text`; unsupported topics use `Other` |
@@ -183,7 +183,7 @@ from different modalities. The current mappings are:
 | Unsupported file type | Show clear Streamlit error and do not insert rows |
 | Extractor returns empty DataFrame | Show no incident found message; insert nothing |
 | Failed audio transcription | Show a processing error and do not insert rows |
-| PDF direct extraction near-empty | Try whole-document OCR fallback |
+| PDF page direct extraction near-empty | Try page OCR fallback |
 | OCR unavailable or failed | Use Unknown fields and continue |
 | Image model detects no supported objects | Keep image artifact values such as `Objects_Detected = None` and `Text_Extracted = N/A` when appropriate; Integration must still map final missing fields safely |
 | Roboflow unavailable, quota exhausted, or API key missing | Write safe scene/object placeholders (`General Scene`, `None`, confidence `0.5`) and do not crash; OCR still runs and may write readable `Text_Extracted` or `N/A` |
