@@ -14,7 +14,6 @@ multimodal-incident-analyzer/
 ├── .streamlit/
 ├── audio/
 ├── cloud_deployment/
-├── diagrams/
 ├── docs/
 │   ├── PRD.md
 │   ├── specs.md
@@ -31,8 +30,11 @@ multimodal-incident-analyzer/
 └── tests/
     ├── test_file_type_detector.py
     ├── test_extractor_schema.py
+    ├── test_event_formatting.py
     ├── test_image_processor.py
+    ├── test_text_processor.py
     ├── test_modality_output_schemas.py
+    ├── test_modality_dispatch.py
     ├── test_integration_schema.py
     ├── test_integration_mapping.py
     ├── test_llm_summarizer.py
@@ -57,7 +59,7 @@ and `cloud_deployment/tests/test_cloud_deployment.py`.
 | cloud_deployment/exporter.py | Query Supabase and export the final approved nine-field CSV |
 | audio/ | Transcribe audio and output `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` |
 | pdf/ | Extract whole-document fields and use whole-document OCR only when direct extraction is near-empty; output `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` |
-| images/ | Use the Roboflow Inference SDK for supported scene/object signals and session-only bounding-box overlays; OCR enlarged corner crops and keep generic readable text after cleanup; output `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` |
+| images/ | Use the Roboflow Inference SDK for scene/object signals, average detection confidences, keep session-only bounding-box overlays, run full-image grayscale OCR, and output `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` |
 | video/ | Sample frames, gate detection by motion, and output `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` |
 | text/ | Preserve source text, run NLP analysis, and output `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` |
 | Structured text files | The Integration dispatcher reads incident-like CSVs directly; text-oriented CSVs are parsed by `text/processor.py`; JSON uploads are unsupported; conventional text artifacts live under `text/output/` |
@@ -97,21 +99,8 @@ Recommended call location:
 ```text
 final_df = integrate_records(draft_df, source_type)
 
-rows_to_insert = []
-for row in final_df.to_dict(orient="records"):
-    payload = {
-        "incident_id": row["Incident_ID"],
-        "source": row["Source"],
-        "event": row["Event"],
-        "location": row["Location"],
-        "time": row["Time"],
-        "severity": row["Severity"],
-        "incident_summary": row["Incident_Summary"],
-    }
-    rows_to_insert.append(payload)
-
 # Called only after the user confirms the final Integration result.
-insert_incidents(rows_to_insert)
+upload_incidents(final_df)
 ```
 
 The LLM summarizer uses OpenRouter when `OPENROUTER_API_KEY` is configured. The fallback in `fallback.py` must always work without model downloads or paid APIs.
@@ -124,7 +113,7 @@ The LLM summarizer uses OpenRouter when `OPENROUTER_API_KEY` is configured. The 
 | Supabase | supabase |
 | Audio | openai-whisper, torch, and the FFmpeg system command |
 | PDF | pymupdf, pdfplumber, pytesseract, plus the Conda `tesseract` executable for whole-document OCR fallback |
-| Image | opencv-python, pillow, pytesseract, inference-sdk, plus the Conda `tesseract` executable for OCR |
+| Image | opencv-python, pillow, pytesseract, inference_sdk, plus the Conda `tesseract` executable for OCR |
 | Video | opencv-python, ultralytics |
 | NLP/LLM optional | spacy and the OpenRouter HTTP client (`requests`) |
 | Testing | pytest |

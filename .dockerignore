@@ -24,6 +24,14 @@ env
 .ruff_cache
 *.egg-info
 
+# Generated modality/integration outputs
+audio/output/
+images/output/
+integration/output/
+pdf/output/
+text/output/
+video/output/
+
 # Local caches and downloaded model weights
 .cache
 **/.cache
@@ -43,3 +51,4 @@ audio/sample_data
 build
 dist
 Dockerfile.*
+*.log

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import tempfile
 import threading
 from pathlib import Path
@@ -163,15 +164,43 @@ def load_incidents() -> pd.DataFrame:
 def existing_incident_ids() -> list:
     try:
         return [r.get("incident_id") for r in query_incidents(limit=1000) if r.get("incident_id") is not None]
-    except Exception:
+    except Exception as exc:
+        logger.warning("Could not load existing incident IDs; using local counters. %s", type(exc).__name__)
         return []
+
+
+def _safe_upload_filename(uploaded) -> str:
+    """Return a basename-only filename safe to place inside a temp directory."""
+
+    filename = Path(str(getattr(uploaded, "name", ""))).name.strip()
+    return filename or "uploaded_evidence"
 
 
 def _save_upload_to_tempdir(uploaded) -> Path:
     tmpdir = Path(tempfile.mkdtemp(prefix="incident_"))
-    path = tmpdir / uploaded.name
+    path = tmpdir / _safe_upload_filename(uploaded)
     path.write_bytes(uploaded.getbuffer())
     return path
+
+
+def _cleanup_temp_path(path_value: str | os.PathLike[str] | None) -> None:
+    """Remove app-created temp upload directories without touching user files."""
+
+    if not path_value:
+        return
+    try:
+        path = Path(path_value).resolve()
+        parent = path.parent
+        if parent.name.startswith("incident_") and parent.parent == Path(tempfile.gettempdir()).resolve():
+            shutil.rmtree(parent, ignore_errors=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Temp upload cleanup skipped for %s: %s", path_value, type(exc).__name__)
+
+
+def _clear_ingest_state() -> None:
+    result = st.session_state.pop("ingest", None)
+    if isinstance(result, dict):
+        _cleanup_temp_path(result.get("path"))
 
 
 # --------------------------------------------------------------------------- #
@@ -654,16 +683,26 @@ def _show_video_evidence(file_path: str | None, filename: str) -> None:
         import subprocess as _sp, tempfile as _tf
         with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             tmp_path = tmp.name
-        result = _sp.run(
-            ["ffmpeg", "-y", "-i", file_path,
-             "-vcodec", "libx264", "-acodec", "aac",
-             "-movflags", "+faststart", tmp_path],
-            capture_output=True,
-        )
-        if result.returncode == 0:
-            video_bytes = _Path(tmp_path).read_bytes()
-        else:
+        try:
+            result = _sp.run(
+                [
+                    "ffmpeg", "-y", "-i", file_path,
+                    "-vcodec", "libx264", "-acodec", "aac",
+                    "-movflags", "+faststart", tmp_path,
+                ],
+                capture_output=True,
+                timeout=180,
+            )
+            if result.returncode == 0:
+                video_bytes = _Path(tmp_path).read_bytes()
+            else:
+                logger.warning("ffmpeg preview transcode failed for %s.", filename)
+                video_bytes = _Path(file_path).read_bytes()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ffmpeg preview transcode skipped for %s: %s", filename, type(exc).__name__)
             video_bytes = _Path(file_path).read_bytes()
+        finally:
+            _Path(tmp_path).unlink(missing_ok=True)
         st.session_state[cache_key] = video_bytes
     st.video(video_bytes)
 
@@ -751,7 +790,8 @@ def view_ingest() -> None:
         st.info("You can add an audio recording, document, image, text file, or CSV file.")
         return
 
-    source_type = ig.detect_source_type(uploaded.name)
+    uploaded_filename = _safe_upload_filename(uploaded)
+    source_type = ig.detect_source_type(uploaded_filename)
     if source_type is None:
         st.error("We can't review this file type yet. Please choose an audio, document, image, video, text, or CSV file.")
         return
@@ -766,31 +806,34 @@ def view_ingest() -> None:
         st.info("We'll create a written transcript from this recording.")
 
     if st.button("Review evidence", type="primary", icon=":material/play_arrow:"):
+        path: Path | None = None
         with st.spinner("Reviewing your file…"):
             try:
+                _clear_ingest_state()
                 path = _save_upload_to_tempdir(uploaded)
                 draft_df = ig.run_modality(source_type, path)
                 final_df = ig.integrate_records(
                     draft_df,
                     source_type,
                     existing_incident_ids(),
-                    source_filename=uploaded.name,
+                    source_filename=uploaded_filename,
                 )
-                _queue_review(uploaded.name, source_type, draft_df)
+                _queue_review(uploaded_filename, source_type, draft_df)
                 st.session_state["ingest"] = {
                     "draft": draft_df,
                     "final": final_df,
-                    "filename": uploaded.name,
+                    "filename": uploaded_filename,
                     "source_type": source_type,
                     "path": str(path),
                 }
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Evidence processing failed")
-                st.session_state.pop("ingest", None)
+                _cleanup_temp_path(path)
+                _clear_ingest_state()
                 st.error(_friendly_error(exc, "review this evidence"))
 
     result = st.session_state.get("ingest")
-    if not result or result.get("filename") != uploaded.name:
+    if not result or result.get("filename") != uploaded_filename:
         return
 
     final_df = result["final"]
@@ -811,14 +854,14 @@ def view_ingest() -> None:
         result.get("source_type", source_type),
         result["draft"],
         result.get("path"),
-        uploaded.name,
+        uploaded_filename,
     )
 
     if st.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
         try:
             summary = upload_incidents(final_df)
             st.success(f"Added {summary['inserted_count']} incident record(s).")
-            st.session_state.pop("ingest", None)
+            _clear_ingest_state()
         except Exception as exc:  # noqa: BLE001
             logger.exception("Incident upload failed")
             st.error(_friendly_error(exc, "add this incident"))

@@ -94,7 +94,7 @@ incident evidence is an explicit requirement.
   ```
 
   Use `WHISPER_MODEL=medium.en` for higher accuracy on a faster instance, or
-  `WHISPER_MODEL=base.en` if startup/latency matters more.
+  `WHISPER_MODEL=small.en` if startup/latency matters more.
 - Whisper and YOLO download model weights on first use. This increases the
   first processing request's latency, and each new instance has its own cache.
 - FFmpeg and Tesseract are installed in the image for audio transcription and

@@ -297,74 +297,75 @@ def process_video_file(
     yolo_candidate_index = 0
     extractor_rows = []
 
-    while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
 
-        resized = cv2.resize(frame, (640, 360))
-        fgmask = mog2.apply(resized)
+            resized = cv2.resize(frame, (640, 360))
+            fgmask = mog2.apply(resized)
 
-        if frame_index % sample_every_frames == 0:
-            score, moving_regions, motion_boxes = apply_mog2(fgmask)
-            fire_detected, fire_confidence = detect_fire(resized)
-            qualifies_for_detection = moving_regions > 0 and score >= 0.02
-            if not qualifies_for_detection and not fire_detected:
-                frame_index += 1
-                continue
+            if frame_index % sample_every_frames == 0:
+                score, moving_regions, motion_boxes = apply_mog2(fgmask)
+                fire_detected, fire_confidence = detect_fire(resized)
+                qualifies_for_detection = moving_regions > 0 and score >= 0.02
+                if not qualifies_for_detection and not fire_detected:
+                    frame_index += 1
+                    continue
 
-            enhanced = enhance_frame(resized)
-            yolo_eligible = qualifies_for_detection and not fire_detected
-            run_yolo_now = _should_run_yolo(yolo_eligible, yolo_candidate_index, yolo_sample_stride)
-            if yolo_eligible:
-                yolo_candidate_index += 1
-            if run_yolo_now:
-                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
-                    model, enhanced, imgsz=yolo_imgsz
+                enhanced = enhance_frame(resized)
+                yolo_eligible = qualifies_for_detection and not fire_detected
+                run_yolo_now = _should_run_yolo(yolo_eligible, yolo_candidate_index, yolo_sample_stride)
+                if yolo_eligible:
+                    yolo_candidate_index += 1
+                if run_yolo_now:
+                    objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
+                        model, enhanced, imgsz=yolo_imgsz
+                    )
+                else:
+                    objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
+
+                # MOG2 collapse fallback: overhead cameras make lying people invisible to YOLO
+                if not collapsed and "person" not in objects:
+                    for (mx1, my1, mx2, my2) in motion_boxes:
+                        mw, mh = mx2 - mx1, my2 - my1
+                        if mh > 0 and (mw / mh) > 2.0 and mw > 60:
+                            collapsed = True
+                            collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
+                            break
+
+                yolo_ran = run_yolo_now and model is not None
+
+                if fire_detected:
+                    event, confidence = "Fire detected", fire_confidence
+                elif collapsed:
+                    event, confidence = "Person collapsing", max(collapse_confidence, yolo_confidence)
+                else:
+                    event, event_confidence = classify_event(score, objects, moving_regions, yolo_ran)
+                    confidence = max(event_confidence, yolo_confidence)
+
+                frame_id = f"FRM_{frame_index:03d}"
+                timestamp = format_timestamp(frame_index / fps)
+                objects_str = format_objects(objects, moving_regions)
+
+                save_annotated_frame(
+                    filtered_boxes, motion_boxes, enhanced,
+                    event, round(float(confidence), 2),
+                    annotated_frames_dir, path.stem, frame_id,
                 )
-            else:
-                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
 
-            # MOG2 collapse fallback: overhead cameras make lying people invisible to YOLO
-            if not collapsed and "person" not in objects:
-                for (mx1, my1, mx2, my2) in motion_boxes:
-                    mw, mh = mx2 - mx1, my2 - my1
-                    if mh > 0 and (mw / mh) > 2.0 and mw > 60:
-                        collapsed = True
-                        collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
-                        break
+                extractor_rows.append({
+                    "Timestamp": timestamp,
+                    "Frame_ID": frame_id,
+                    "Event_Detected": event,
+                    "Objects": objects_str,
+                    "Confidence": round(float(confidence), 2),
+                })
 
-            yolo_ran = run_yolo_now and model is not None
-
-            if fire_detected:
-                event, confidence = "Fire detected", fire_confidence
-            elif collapsed:
-                event, confidence = "Person collapsing", max(collapse_confidence, yolo_confidence)
-            else:
-                event, event_confidence = classify_event(score, objects, moving_regions, yolo_ran)
-                confidence = max(event_confidence, yolo_confidence)
-
-            frame_id = f"FRM_{frame_index:03d}"
-            timestamp = format_timestamp(frame_index / fps)
-            objects_str = format_objects(objects, moving_regions)
-
-            save_annotated_frame(
-                filtered_boxes, motion_boxes, enhanced,
-                event, round(float(confidence), 2),
-                annotated_frames_dir, path.stem, frame_id,
-            )
-
-            extractor_rows.append({
-                "Timestamp": timestamp,
-                "Frame_ID": frame_id,
-                "Event_Detected": event,
-                "Objects": objects_str,
-                "Confidence": round(float(confidence), 2),
-            })
-
-        frame_index += 1
-
-    cap.release()
+            frame_index += 1
+    finally:
+        cap.release()
     return pd.DataFrame(extractor_rows, columns=DRAFT_COLUMNS)
 
 
@@ -401,73 +402,74 @@ def process_video_stream(
     frame_index = 0
     yolo_candidate_index = 0
 
-    while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
 
-        resized = cv2.resize(frame, (640, 360))
-        fgmask = mog2.apply(resized)
+            resized = cv2.resize(frame, (640, 360))
+            fgmask = mog2.apply(resized)
 
-        if frame_index % sample_every_frames == 0:
-            score, moving_regions, motion_boxes = apply_mog2(fgmask)
-            fire_detected, fire_confidence = detect_fire(resized)
-            qualifies_for_detection = moving_regions > 0 and score >= 0.02
-            if not qualifies_for_detection and not fire_detected:
-                frame_index += 1
-                continue
+            if frame_index % sample_every_frames == 0:
+                score, moving_regions, motion_boxes = apply_mog2(fgmask)
+                fire_detected, fire_confidence = detect_fire(resized)
+                qualifies_for_detection = moving_regions > 0 and score >= 0.02
+                if not qualifies_for_detection and not fire_detected:
+                    frame_index += 1
+                    continue
 
-            enhanced = enhance_frame(resized)
-            yolo_eligible = qualifies_for_detection and not fire_detected
-            run_yolo_now = _should_run_yolo(yolo_eligible, yolo_candidate_index, yolo_sample_stride)
-            if yolo_eligible:
-                yolo_candidate_index += 1
-            if run_yolo_now:
-                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
-                    model, enhanced, imgsz=yolo_imgsz
+                enhanced = enhance_frame(resized)
+                yolo_eligible = qualifies_for_detection and not fire_detected
+                run_yolo_now = _should_run_yolo(yolo_eligible, yolo_candidate_index, yolo_sample_stride)
+                if yolo_eligible:
+                    yolo_candidate_index += 1
+                if run_yolo_now:
+                    objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
+                        model, enhanced, imgsz=yolo_imgsz
+                    )
+                else:
+                    objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
+
+                if not collapsed and "person" not in objects:
+                    for (mx1, my1, mx2, my2) in motion_boxes:
+                        mw, mh = mx2 - mx1, my2 - my1
+                        if mh > 0 and (mw / mh) > 2.0 and mw > 60:
+                            collapsed = True
+                            collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
+                            break
+
+                yolo_ran = run_yolo_now and model is not None
+
+                if fire_detected:
+                    event, confidence = "Fire detected", fire_confidence
+                elif collapsed:
+                    event, confidence = "Person collapsing", max(collapse_confidence, yolo_confidence)
+                else:
+                    event, event_confidence = classify_event(score, objects, moving_regions, yolo_ran)
+                    confidence = max(event_confidence, yolo_confidence)
+
+                frame_id = f"FRM_{frame_index:03d}"
+                timestamp = format_timestamp(frame_index / fps)
+                objects_str = format_objects(objects, moving_regions)
+
+                frame_path = save_annotated_frame(
+                    filtered_boxes, motion_boxes, enhanced,
+                    event, round(float(confidence), 2),
+                    annotated_frames_dir, path.stem, frame_id,
                 )
-            else:
-                objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
 
-            if not collapsed and "person" not in objects:
-                for (mx1, my1, mx2, my2) in motion_boxes:
-                    mw, mh = mx2 - mx1, my2 - my1
-                    if mh > 0 and (mw / mh) > 2.0 and mw > 60:
-                        collapsed = True
-                        collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
-                        break
+                yield {
+                    "Timestamp": timestamp,
+                    "Frame_ID": frame_id,
+                    "Event_Detected": event,
+                    "Objects": objects_str,
+                    "Confidence": round(float(confidence), 2),
+                }, frame_path
 
-            yolo_ran = run_yolo_now and model is not None
-
-            if fire_detected:
-                event, confidence = "Fire detected", fire_confidence
-            elif collapsed:
-                event, confidence = "Person collapsing", max(collapse_confidence, yolo_confidence)
-            else:
-                event, event_confidence = classify_event(score, objects, moving_regions, yolo_ran)
-                confidence = max(event_confidence, yolo_confidence)
-
-            frame_id = f"FRM_{frame_index:03d}"
-            timestamp = format_timestamp(frame_index / fps)
-            objects_str = format_objects(objects, moving_regions)
-
-            frame_path = save_annotated_frame(
-                filtered_boxes, motion_boxes, enhanced,
-                event, round(float(confidence), 2),
-                annotated_frames_dir, path.stem, frame_id,
-            )
-
-            yield {
-                "Timestamp": timestamp,
-                "Frame_ID": frame_id,
-                "Event_Detected": event,
-                "Objects": objects_str,
-                "Confidence": round(float(confidence), 2),
-            }, frame_path
-
-        frame_index += 1
-
-    cap.release()
+            frame_index += 1
+    finally:
+        cap.release()
 
 
 def process_video(

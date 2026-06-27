@@ -62,6 +62,9 @@ pdf/output/
 text/output/
 video/output/
 
+# Local model weights downloaded by Ultralytics.
+*.pt
+
 # Translations
 *.mo
 *.pot

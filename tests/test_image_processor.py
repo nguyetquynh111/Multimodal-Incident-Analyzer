@@ -105,13 +105,23 @@ def test_image_confidence_is_bounded_before_averaging() -> None:
     assert confidence == 0.5
 
 
+def test_near_one_image_confidence_rounds_naturally() -> None:
+    detections = [{"class": "fire", "confidence": 0.999998}]
+
+    _labels, confidence = processor._labels_and_confidence(detections, fallback_confidence=0.5)
+
+    assert confidence == 1.0
+
+
 def test_roboflow_inference_combines_fire_and_person_models(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
+    api_urls: list[str] = []
 
     class FakeInferenceHTTPClient:
         def __init__(self, api_url: str, api_key: str) -> None:
             self.api_url = api_url
             self.api_key = api_key
+            api_urls.append(api_url)
 
         def infer(self, img_path: str, model_id: str) -> dict[str, list[dict[str, float | str]]]:
             calls.append(model_id)
@@ -136,6 +146,7 @@ def test_roboflow_inference_combines_fire_and_person_models(monkeypatch: pytest.
     detections, inference_available = processor._infer_detection_result("example.jpg")
 
     assert inference_available is True
+    assert api_urls == [processor.DEFAULT_API_URL]
     assert calls == [processor.DEFAULT_MODEL_ID, processor.DEFAULT_PERSON_MODEL_ID]
     assert detections == [
         {"class": "fire", "confidence": 0.8},

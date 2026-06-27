@@ -66,23 +66,24 @@ and Time. Document `Summary` remains source-grounded supporting context.
 ### 4.3 Image Processor
 
 The image processor analyzes one scene image with the Roboflow Inference SDK and
-OCR. OCR enlarges the top-left and bottom-right corner crops first, which makes
-small corner text readable without treating the full scene as text. OCR
-post-processing keeps the longest readable result after generic cleanup rather
-than whitelisting known sample phrases. Roboflow bounding-box coordinates are
-kept as session metadata for the Streamlit Visual Evidence overlay, while the
-required CSV artifact remains five columns. Image location handling happens in
-Integration: OCR writes `Text_Extracted`, Integration calls
+OCR. OCR runs on the full grayscale image, stores readable text when the OCR
+result is longer than three characters, and otherwise uses `N/A`. Roboflow
+bounding-box coordinates are kept as session metadata for the Streamlit Visual
+Evidence overlay, while the required CSV artifact remains five columns. Image
+location handling happens in Integration: OCR writes `Text_Extracted`,
+Integration calls
 `llm_summarizer.update_image_location(...)` to fill a missing `Location`, and only
 then Integration calls `summarize_incident(...)`. It runs the fire Roboflow model
-plus the person model, reports only supported labels, uses `Fire Scene` /
-`Fire and Smoke Scene` labels, and averages valid detection confidence bounded
-from `0.0` to `1.0`. When no supported object is returned, the artifact uses `General Scene`,
-`Objects_Detected = None`, and a neutral `Confidence_Score` of `0.5`; empty OCR
-text uses `Text_Extracted = N/A`. If Roboflow is unavailable, quota is
+plus the person model through the default
+`https://serverless.roboflow.com` endpoint, uses labels such as `Fire Scene`,
+`Smoke Scene`, and `Fire and Smoke Scene`, and averages valid detection
+confidences from the model response bounded from `0.0` to `1.0`. The score is
+the rounded model-derived average, and the neutral `0.5` confidence is used
+only when no valid detection confidence is available. When no object is
+returned, the artifact uses `General Scene`, `Objects_Detected = None`, and a
+neutral `Confidence_Score` of `0.5`. If Roboflow is unavailable, quota is
 exhausted, or the API key is missing, the processor writes the same safe empty
-artifact values with neutral `0.5` confidence instead of crashing. OCR runs on
-the full grayscale image.
+artifact values with neutral `0.5` confidence instead of crashing.
 
 ```text
 Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score
@@ -92,11 +93,14 @@ Integration maps scene/object labels to Event and the score to Severity.
 
 ### 4.4 Video Processor
 
-<<<<<<< HEAD
-The Streamlit path rejects clips longer than five minutes and samples frames every 0.5 seconds. It records elapsed `HH:MM:SS` timestamps and `FRM_NNN` IDs based on the original frame index, applies MOG2 background subtraction motion detection, and runs object detection only on qualifying motion frames. Activity labels require documented temporal or rule-based evidence; an object detection alone is insufficient.
-=======
-The Streamlit path rejects clips longer than five minutes and samples frames every 0.5 seconds. It records elapsed `HH:MM:SS` timestamps and `FRM_NNN` IDs based on the original frame index, applies frame-difference motion detection, and runs object detection only on qualifying motion frames. YOLO runs on every configured motion-sampled candidate by default, uses `VIDEO_YOLO_SAMPLE_STRIDE=2` and `VIDEO_YOLO_IMAGE_SIZE=640` unless overridden, and can load an alternate path such as an exported ONNX model through `VIDEO_YOLO_MODEL_PATH`. Activity labels require documented temporal or rule-based evidence; an object detection alone is insufficient.
->>>>>>> d7b3730 (refactor images)
+The Streamlit path rejects clips longer than five minutes and samples frames
+every 0.5 seconds. It records elapsed `HH:MM:SS` timestamps and `FRM_NNN` IDs
+based on the original frame index, applies MOG2 background subtraction motion
+detection, and runs object detection only on qualifying motion frames. YOLO uses
+`VIDEO_YOLO_SAMPLE_STRIDE=2` and `VIDEO_YOLO_IMAGE_SIZE=640` unless overridden,
+and can load an alternate path such as an exported ONNX model through
+`VIDEO_YOLO_MODEL_PATH`. Activity labels require documented temporal or
+rule-based evidence; an object detection alone is insufficient.
 
 ```text
 Timestamp, Frame_ID, Event_Detected, Objects, Confidence

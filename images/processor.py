@@ -109,13 +109,13 @@ def _infer_detection_result(img_path: str) -> tuple[list[dict[str, Any]], bool]:
             result = client.infer(img_path, model_id=model_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "Roboflow inference failed for %s with %s (%s); continuing.",
+                "Roboflow inference failed for %s with %s: %s: %r",
                 Path(img_path).name,
                 model_id,
                 type(exc).__name__,
+                exc,
             )
             continue
-
         inference_available = True
         predictions = result.get("predictions", []) if isinstance(result, dict) else []
         for pred in predictions:
@@ -140,6 +140,10 @@ def _bounded_confidence(value: Any) -> float | None:
         score = float(value)
     except (TypeError, ValueError):
         return None
+    if score < 0.0:
+        return 0.0
+    if score > 1.0:
+        return 1.0
     return max(0.0, min(1.0, score))
 
 

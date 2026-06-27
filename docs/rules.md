@@ -84,7 +84,7 @@ default before Integration.
 | --- | --- | --- |
 | Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm`, `Concerned`, or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
 | PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Extract whole-document text first; OCR the whole PDF only when its direct text is near-empty; emit one artifact row per uploaded PDF |
-| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use the fire Roboflow model plus the person model, average valid detection confidence bounded from 0.0 to 1.0, and use `Fire Scene` / `Fire and Smoke Scene` labels. For an empty detection response, use `General Scene`, the string `None`, and neutral confidence `0.5`; empty OCR text uses `N/A`. OCR runs on the full grayscale image. During Integration, `llm_summarizer.update_image_location(...)` may populate final `Location` only when OCR text contains an explicit place. |
+| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use the fire Roboflow model plus the person model, average valid detection confidences from the model response, bound the result from 0.0 to 1.0, and use labels such as `Fire Scene`, `Smoke Scene`, and `Fire and Smoke Scene`. Confidence is the rounded model-derived average; neutral confidence `0.5` is used only when no detection confidence is available. For an empty detection response, use `General Scene`, the string `None`, and neutral confidence `0.5`; empty OCR text uses `N/A`. OCR runs on the full grayscale image. During Integration, `llm_summarizer.update_image_location(...)` may populate final `Location` only when OCR text contains an explicit place. |
 | Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, source-frame-index `FRM_NNN` IDs, motion gating, and documented event logic |
 | Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` | Preserve `Raw_Text`; unsupported topics use `Other` |
 
@@ -186,7 +186,7 @@ from different modalities. The current mappings are:
 | PDF direct extraction near-empty | Try whole-document OCR fallback |
 | OCR unavailable or failed | Use Unknown fields and continue |
 | Image model detects no supported objects | Keep image artifact values such as `Objects_Detected = None` and `Text_Extracted = N/A` when appropriate; Integration must still map final missing fields safely |
-| Roboflow unavailable, quota exhausted, or API key missing | Write safe image artifact placeholders (`None`, `N/A`, confidence `0.0`) and do not crash |
+| Roboflow unavailable, quota exhausted, or API key missing | Write safe image artifact placeholders (`None`, `N/A`, confidence `0.5`) and do not crash |
 | Video model detects nothing | Use Unknown fields |
 | Video frame has no qualifying motion | Skip model inference for that frame and do not invent an event |
 | Text has no supported topic | Use `Other` |
