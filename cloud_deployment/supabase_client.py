@@ -1,7 +1,10 @@
 """Supabase client setup and CRUD helpers for incidents."""
 
+from __future__ import annotations
+
 import logging
 import os
+import re
 from collections.abc import Mapping
 from numbers import Integral
 from pathlib import Path
@@ -20,6 +23,7 @@ except ImportError:  # Allows validation-only use before dependencies are instal
     create_client = None
 
 from .validators import INCIDENT_COLUMNS
+from integration.integration import normalize_event, normalize_severity
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +85,17 @@ def get_supabase_client() -> Client:
         raise RuntimeError("Could not create the Supabase client.") from exc
 
 
+def get_table_name() -> str:
+    """Return the configured incidents table, defaulting to ``incidents``."""
+
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
+    return os.getenv("SUPABASE_TABLE", "").strip() or TABLE_NAME
+
+
 def insert_incidents(df: pd.DataFrame) -> dict[str, Any]:
     """Insert integration-ready incidents into the Supabase incidents table.
 
-    Only the six integration schema columns are sent. Database-generated
+    Only app-owned incident columns are sent. Database-generated
     ``id`` and ``created_at`` fields are intentionally omitted.
 
     Args:
@@ -98,21 +109,23 @@ def insert_incidents(df: pd.DataFrame) -> dict[str, Any]:
         RuntimeError: If Supabase rejects or cannot complete the insert.
     """
     upload_df = df.loc[:, list(INCIDENT_COLUMNS)].copy()
-    upload_df["incident_id"] = pd.to_numeric(upload_df["incident_id"]).astype("int64")
 
     # Object dtype allows pandas null values to become JSON-compatible None.
     upload_df = upload_df.astype(object).where(pd.notna(upload_df), None)
     records = upload_df.to_dict(orient="records")
-    for record in records:
-        record["incident_id"] = int(record["incident_id"])
 
     logger.info("Uploading %d incident rows to Supabase.", len(records))
     client = get_supabase_client()
 
     try:
-        response = client.table(TABLE_NAME).insert(records).execute()
+        response = client.table(get_table_name()).insert(records).execute()
     except Exception as exc:
         logger.exception("Supabase incident upload failed.")
+        if "invalid input syntax for type bigint" in str(exc) and "INC_" in str(exc):
+            raise RuntimeError(
+                "The Supabase incidents table still stores incident_id as bigint. "
+                "Change incident_id to text in the Supabase SQL Editor."
+            ) from exc
         raise RuntimeError("Failed to insert incidents into Supabase.") from exc
 
     response_data = getattr(response, "data", None)
@@ -133,7 +146,7 @@ def query_incidents(
 
     Args:
         filters: Optional column/value pairs. Supported columns are ``id``,
-            ``created_at``, and the six incident data columns.
+            ``created_at``, and the app-owned incident data columns.
         limit: Maximum number of rows to return, from 1 through 1000.
 
     Raises:
@@ -146,7 +159,7 @@ def query_incidents(
     client = get_supabase_client()
 
     try:
-        query = client.table(TABLE_NAME).select(",".join(SELECT_COLUMNS))
+        query = client.table(get_table_name()).select(",".join(SELECT_COLUMNS))
         for column, value in query_filters.items():
             query = query.eq(column, value)
         response = query.limit(query_limit).execute()
@@ -159,7 +172,7 @@ def query_incidents(
     return data
 
 
-def get_incident(incident_id: int) -> dict[str, Any] | None:
+def get_incident(incident_id: Any) -> dict[str, Any] | None:
     """Return one incident by ``incident_id``, or ``None`` if absent."""
     validated_id = _validate_incident_id(incident_id)
     rows = query_incidents({"incident_id": validated_id}, limit=1)
@@ -167,7 +180,7 @@ def get_incident(incident_id: int) -> dict[str, Any] | None:
 
 
 def update_incident(
-    incident_id: int,
+    incident_id: Any,
     updates: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Update incident rows selected by their ``incident_id`` business key.
@@ -180,7 +193,7 @@ def update_incident(
 
     try:
         response = (
-            client.table(TABLE_NAME)
+            client.table(get_table_name())
             .update(payload)
             .eq("incident_id", validated_id)
             .execute()
@@ -190,7 +203,7 @@ def update_incident(
         raise RuntimeError("Failed to update incident in Supabase.") from exc
 
     data = getattr(response, "data", None) or []
-    logger.info("Updated incident key %d.", validated_id)
+    logger.info("Updated incident key %s.", validated_id)
     return {
         "success": True,
         "updated_count": len(data),
@@ -198,14 +211,14 @@ def update_incident(
     }
 
 
-def delete_incident(incident_id: int) -> dict[str, Any]:
+def delete_incident(incident_id: Any) -> dict[str, Any]:
     """Delete incident rows selected by their ``incident_id`` business key."""
     validated_id = _validate_incident_id(incident_id)
     client = get_supabase_client()
 
     try:
         response = (
-            client.table(TABLE_NAME)
+            client.table(get_table_name())
             .delete()
             .eq("incident_id", validated_id)
             .execute()
@@ -215,7 +228,7 @@ def delete_incident(incident_id: int) -> dict[str, Any]:
         raise RuntimeError("Failed to delete incident from Supabase.") from exc
 
     data = getattr(response, "data", None) or []
-    logger.info("Deleted incident key %d.", validated_id)
+    logger.info("Deleted incident key %s.", validated_id)
     return {
         "success": True,
         "deleted_count": len(data),
@@ -274,17 +287,23 @@ def _validate_updates(updates: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(updates)
     if "incident_id" in payload:
         payload["incident_id"] = _validate_incident_id(payload["incident_id"])
+    if "event" in payload:
+        payload["event"] = normalize_event(payload["event"])
+    if "severity" in payload:
+        payload["severity"] = normalize_severity(payload["severity"])
+    if re.match(r"^unknown(?:\b|[_/-])", str(payload.get("event", "")).strip(), re.IGNORECASE):
+        payload["event"] = "Unknown"
+        payload["severity"] = "Low"
     return payload
 
 
-def _validate_incident_id(incident_id: Any) -> int:
+_INCIDENT_ID_PATTERN = re.compile(r"^INC_(AUD|PDF|IMG|VID|TXT)_\d{3,}$")
+
+
+def _validate_incident_id(incident_id: Any) -> str:
     if incident_id is None:
         raise ValueError("incident_id cannot be null.")
-    try:
-        numeric_id = pd.to_numeric(incident_id, errors="raise")
-        integer_id = int(numeric_id)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError("incident_id must be convertible to an integer.") from exc
-    if numeric_id != integer_id:
-        raise ValueError("incident_id must be a whole integer value.")
-    return integer_id
+    text = str(incident_id).strip()
+    if _INCIDENT_ID_PATTERN.match(text):
+        return text
+    raise ValueError("incident_id must follow INC_TYPE_NUMBER.")

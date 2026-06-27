@@ -3,13 +3,24 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from integration.integration import (
     FINAL_CSV_COLUMNS,
     INCIDENT_COLUMNS,
-    build_incidents,
+    detect_source_type,
+    generate_incident_id,
+    integrate_records,
+    to_supabase_payload_frame,
     to_final_csv_frame,
 )
+
+
+@pytest.fixture(autouse=True)
+def _disable_openrouter_for_mapping_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep exact mapping assertions independent of a developer's .env file."""
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
 
 def test_pdf_six_column_draft_maps_to_incident_schema() -> None:
@@ -22,23 +33,27 @@ def test_pdf_six_column_draft_maps_to_incident_schema() -> None:
                 "Location": "Main Street",
                 "Officer": "Officer Rivera",
                 "Summary": "A burglary was reported on Main Street.",
+                "Suspect_Description": "Unknown",
+                "Outcome": "Unknown",
             }
         ]
     )
 
-    result = build_incidents(draft, "pdf", existing_ids=[7])
+    result = integrate_records(draft, "pdf")
 
     assert list(result.columns) == list(INCIDENT_COLUMNS)
     assert result.to_dict(orient="records") == [
         {
-            "incident_id": 8,
-            "source": "PDF",
-            "event": "Burglary / Robbery",
-            "location": "Main Street",
-            "time": "June 23, 2026",
-            "severity": "Medium",
+            "Incident_ID": "INC_PDF_001",
+            "Source": "PDF",
+            "Event": "Burglary / Robbery",
+            "Location": "Main Street",
+            "Time": "June 23, 2026",
+            "Severity": "Medium",
+            "Incident_Summary": "A Medium-severity Burglary / Robbery incident was reported via PDF at Main Street. The reported time was June 23, 2026.",
         }
     ]
+    assert to_supabase_payload_frame(result).to_dict(orient="records")[0]["incident_id"] == "INC_PDF_001"
     assert list(to_final_csv_frame(result).columns) == list(FINAL_CSV_COLUMNS)
 
 
@@ -55,17 +70,18 @@ def test_video_five_column_draft_maps_to_incident_schema() -> None:
         ]
     )
 
-    result = build_incidents(draft, "video", existing_ids=[8])
+    result = integrate_records(draft, "video")
 
     assert list(result.columns) == list(INCIDENT_COLUMNS)
     assert result.to_dict(orient="records") == [
         {
-            "incident_id": 9,
-            "source": "Video",
-            "event": "Person Collapsing",
-            "location": "Unknown",
-            "time": "00:00:12",
-            "severity": "High",
+            "Incident_ID": "INC_VID_001",
+            "Source": "Video",
+            "Event": "Person Collapsing",
+            "Location": "Unknown",
+            "Time": "00:00:12",
+            "Severity": "High",
+            "Incident_Summary": "A High-severity Person Collapsing incident was reported via Video. The reported time was 00:00:12.",
         }
     ]
     assert list(to_final_csv_frame(result).columns) == list(FINAL_CSV_COLUMNS)
@@ -85,17 +101,139 @@ def test_text_six_column_draft_maps_labeled_entities_to_location_and_time() -> N
         ]
     )
 
-    result = build_incidents(draft, "text", existing_ids=[9])
+    result = integrate_records(draft, "text")
 
     assert list(result.columns) == list(INCIDENT_COLUMNS)
     assert result.to_dict(orient="records") == [
         {
-            "incident_id": 10,
-            "source": "Text",
-            "event": "Theft / Robbery",
-            "location": "Oak Street, Chicago",
-            "time": "9pm tonight",
-            "severity": "Medium",
+            "Incident_ID": "INC_TXT_001",
+            "Source": "Text",
+            "Event": "Theft / Robbery",
+            "Location": "Oak Street, Chicago",
+            "Time": "9pm tonight",
+            "Severity": "Medium",
+            "Incident_Summary": "A Medium-severity Theft / Robbery incident was reported via Text at Oak Street, Chicago. The reported time was 9pm tonight.",
         }
     ]
     assert list(to_final_csv_frame(result).columns) == list(FINAL_CSV_COLUMNS)
+
+
+def test_csv_inputs_belong_to_text_modality_and_json_is_rejected() -> None:
+    assert detect_source_type("records.csv") == "text"
+    assert detect_source_type("records.json") is None
+    assert generate_incident_id("csv", 1) == "INC_TXT_001"
+
+
+def test_structured_csv_draft_maps_through_text_modality() -> None:
+    draft = pd.DataFrame(
+        [
+            {
+                "Event": "fire",
+                "Location": "Main Street",
+                "Time": "June 25, 2026",
+                "Severity": "High",
+                "Summary": "Fire reported on Main Street.",
+                "Confidence": 0.9,
+            }
+        ]
+    )
+
+    result = integrate_records(draft, "text")
+
+    assert result.to_dict(orient="records") == [
+        {
+            "Incident_ID": "INC_TXT_001",
+            "Source": "Text",
+            "Event": "Fire",
+            "Location": "Main Street",
+            "Time": "June 25, 2026",
+            "Severity": "High",
+            "Incident_Summary": "A High-severity Fire incident was reported via Text at Main Street. The reported time was June 25, 2026.",
+        }
+    ]
+
+
+def test_image_artifact_placeholders_map_to_safe_final_values() -> None:
+    draft = pd.DataFrame(
+        [
+            {
+                "Image_ID": "IMG_001",
+                "Scene_Type": "Unknown",
+                "Objects_Detected": "None",
+                "Text_Extracted": "N/A",
+                "Confidence_Score": 0.0,
+            }
+        ]
+    )
+
+    result = integrate_records(draft, "image")
+
+    assert result.loc[0, "Event"] == "Unknown"
+    assert result.loc[0, "Severity"] == "Low"
+    assert "N/A" not in result.loc[0, "Incident_Summary"]
+
+
+def test_image_ocr_text_can_populate_location_with_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    import integration.integration as ig
+
+    draft = pd.DataFrame(
+        [
+            {
+                "Image_ID": "IMG_001",
+                "Scene_Type": "Fire / Arson",
+                "Objects_Detected": "fire",
+                "Text_Extracted": "SAN BERNARDINO COUNTY CALL BOX 1226",
+                "Confidence_Score": 0.91,
+            }
+        ]
+    )
+    monkeypatch.setattr(
+        ig,
+        "update_image_location_with_llm",
+        lambda row: {**dict(row), "Location": "San Bernardino County"},
+    )
+
+    result = ig.integrate_records(draft, "image")
+
+    assert result.loc[0, "Location"] == "San Bernardino County"
+    assert "San Bernardino County" in result.loc[0, "Incident_Summary"]
+
+
+def test_image_ocr_road_location_is_extracted_without_raw_text_summary() -> None:
+    draft = pd.DataFrame(
+        [
+            {
+                "Image_ID": "IMG_001",
+                "Scene_Type": "Fire / Arson",
+                "Objects_Detected": "fire",
+                "Text_Extracted": 'ALABAMA BANKHEAD HIGHWAY re P e — No ~ A, we ome + me Beer"" aes Bee no Pad',
+                "Confidence_Score": 0.91,
+            }
+        ]
+    )
+
+    result = integrate_records(draft, "image")
+
+    assert result.loc[0, "Location"] == "Alabama Bankhead Highway"
+    assert "Alabama Bankhead Highway" in result.loc[0, "Incident_Summary"]
+    assert "Raw text" not in result.loc[0, "Incident_Summary"]
+    assert "Beer" not in result.loc[0, "Incident_Summary"]
+
+
+def test_unknown_event_is_always_low_severity() -> None:
+    draft = pd.DataFrame(
+        [
+            {
+                "Event": "unknown emergency",
+                "Location": "Unknown",
+                "Time": "Unknown",
+                "Severity": "High",
+                "Summary": "No reliable event was identified.",
+            }
+        ]
+    )
+
+    result = integrate_records(draft, "text")
+
+    assert result.loc[0, "Event"] == "Unknown"
+    assert result.loc[0, "Severity"] == "Low"

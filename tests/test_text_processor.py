@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 
 import pandas as pd
+import pytest
 
 from text.processor import ARTIFACT_COLUMNS, analyze_text, process_text
 
@@ -96,3 +97,29 @@ def test_process_text_json_lines_txt_creates_one_row_per_record() -> None:
     assert frame["Topic"].tolist() == ["Assault / Violence", "Theft / Robbery"]
     assert "DATE:" in frame.iloc[0]["Entities"]
     assert "New Orleans" in frame.iloc[0]["Entities"]
+
+
+def test_process_text_rejects_json_file() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        input_path = Path(directory) / "incidents.json"
+        input_path.write_text(
+            json.dumps(
+                {
+                    "incidents": [
+                        {
+                            "event": "fire",
+                            "summary": "Fire reported near Main Street.",
+                            "created_at": "2026-06-25",
+                        },
+                        {
+                            "event": "robbery",
+                            "description": "Robbery reported downtown.",
+                        },
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="Unsupported text input type"):
+            process_text(input_path, output_csv_path=None, source="JSON")

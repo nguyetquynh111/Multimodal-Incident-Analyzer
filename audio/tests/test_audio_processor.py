@@ -11,9 +11,39 @@ import pandas as pd
 from audio.config import OUTPUT_COLUMNS
 from audio.extract import analyze_transcript
 from audio.processor import main, process_audio_file, process_audio_folder
+from audio import config
+from audio import transcribe
 
 
 class AudioProcessorTests(unittest.TestCase):
+    def test_default_whisper_model_is_higher_quality_english_model(self) -> None:
+        self.assertEqual(config.DEFAULT_WHISPER_MODEL, "small.en")
+
+    def test_whisper_transcribe_options_use_beam_search(self) -> None:
+        options = transcribe._transcribe_options("cpu", "en")
+
+        self.assertEqual(options["language"], "en")
+        self.assertEqual(options["beam_size"], 5)
+        self.assertEqual(options["temperature"], 0)
+        self.assertFalse(options["fp16"])
+        self.assertFalse(options["condition_on_previous_text"])
+
+    def test_preload_whisper_model_uses_configured_loader(self) -> None:
+        calls = []
+
+        def fake_load(model_name, device, download_root):
+            calls.append((model_name, device, download_root))
+            return object()
+
+        original = transcribe._load_whisper
+        transcribe._load_whisper = fake_load
+        try:
+            transcribe.preload_whisper_model("tiny.en", quiet=True)
+        finally:
+            transcribe._load_whisper = original
+
+        self.assertEqual(calls, [("tiny.en", "cpu", None)])
+
     def test_rule_based_analysis(self) -> None:
         row = analyze_transcript(
             "DEMO001",
@@ -87,17 +117,12 @@ class AudioProcessorTests(unittest.TestCase):
             self.assertGreaterEqual(row["Urgency_Score"], 0.0)
             self.assertLessEqual(row["Urgency_Score"], 1.0)
 
-    def test_process_audio_file_accepts_flac_with_custom_transcriber(self) -> None:
+    def test_process_audio_file_rejects_flac(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             audio_path = Path(directory) / "C009.flac"
             audio_path.touch()
-            row = process_audio_file(
-                str(audio_path),
-                transcriber=lambda _: "There are guns at 123 Main Street.",
-            )
-        self.assertEqual(row["Call_ID"], "C009")
-        self.assertEqual(row["Extracted_Event"], "shooting")
-        self.assertEqual(list(row), OUTPUT_COLUMNS)
+            with self.assertRaisesRegex(ValueError, "Unsupported audio type"):
+                process_audio_file(str(audio_path))
 
     def test_folder_processing_is_sorted_top_level_only_and_writes_csv(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

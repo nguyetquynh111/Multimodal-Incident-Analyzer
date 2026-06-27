@@ -1,22 +1,12 @@
-"""Multimodal Incident Analyzer — Streamlit app (Stage 5: Dashboard / UI).
-
-Owned by the Integration & Dashboard Lead (Student 6). Four views:
-
-1. Ingest & Convert — upload one file, run its modality processor, convert the
-   draft output to the final schema, and insert it into Supabase.
-2. Integrate — UNION every modality's output CSV into the unified master
-   dataset (the assignment's Final Integration Task) and push it to Supabase.
-3. Dashboard — read incidents from Supabase, filter, chart, export the final CSV.
-4. Manage Data — add / edit / delete rows via the CRUD helpers.
-
-Run with:  streamlit run app.py
-"""
+"""Streamlit UI for the documented single-file incident workflow."""
 
 from __future__ import annotations
 
 import logging
 import os
+import shutil
 import tempfile
+import threading
 from pathlib import Path
 
 import altair as alt
@@ -29,6 +19,7 @@ from cloud_deployment.supabase_client import (
     query_incidents,
     update_incident,
 )
+from cloud_deployment.exporter import export_incidents_csv
 from cloud_deployment.upload_service import upload_incidents
 
 st.set_page_config(
@@ -37,9 +28,16 @@ st.set_page_config(
 )
 
 SEVERITY_ORDER = list(ig.SEVERITY_LEVELS)  # Low, Medium, High
-SEV_COLORS = {"Low": "#16A34A", "Medium": "#D97706", "High": "#DC2626"}
+SEV_COLORS = {"Low": "#16A34A", "Medium": "#D97706", "High": "#DC2626", "Unknown": "#64748B"}
 # Material Symbol names per modality.
-SOURCE_ICON = {"Audio": "mic", "PDF": "description", "Image": "image", "Video": "movie", "Text": "forum"}
+SOURCE_ICON = {
+    "Audio": "mic",
+    "PDF": "description",
+    "Image": "image",
+    "Video": "movie",
+    "Text": "forum",
+    "CSV": "table",
+}
 FINAL_COLS = list(ig.FINAL_CSV_COLUMNS)
 
 ACCENT = "#4F46E5"
@@ -148,6 +146,8 @@ def _friendly_error(error: Exception, action: str) -> str:
         return "We couldn't transcribe this audio. Please confirm the file plays correctly and try again."
     if any(term in message for term in ("unsupported", "file type", "extension")):
         return "This file type isn't supported yet. Please choose one of the listed evidence formats."
+    if any(term in message for term in ("five-minute", "duration", "longer than 5")):
+        return "This video is longer than five minutes, so it can't be processed in this prototype."
     if any(term in message for term in ("supabase", "postgrest", "connection", "network", "timeout")):
         return "Incident records are temporarily unavailable. Please try again in a moment."
     return f"We couldn't {action}. Please check your file or entries and try again."
@@ -164,15 +164,43 @@ def load_incidents() -> pd.DataFrame:
 def existing_incident_ids() -> list:
     try:
         return [r.get("incident_id") for r in query_incidents(limit=1000) if r.get("incident_id") is not None]
-    except Exception:
+    except Exception as exc:
+        logger.warning("Could not load existing incident IDs; using local counters. %s", type(exc).__name__)
         return []
+
+
+def _safe_upload_filename(uploaded) -> str:
+    """Return a basename-only filename safe to place inside a temp directory."""
+
+    filename = Path(str(getattr(uploaded, "name", ""))).name.strip()
+    return filename or "uploaded_evidence"
 
 
 def _save_upload_to_tempdir(uploaded) -> Path:
     tmpdir = Path(tempfile.mkdtemp(prefix="incident_"))
-    path = tmpdir / uploaded.name
+    path = tmpdir / _safe_upload_filename(uploaded)
     path.write_bytes(uploaded.getbuffer())
     return path
+
+
+def _cleanup_temp_path(path_value: str | os.PathLike[str] | None) -> None:
+    """Remove app-created temp upload directories without touching user files."""
+
+    if not path_value:
+        return
+    try:
+        path = Path(path_value).resolve()
+        parent = path.parent
+        if parent.name.startswith("incident_") and parent.parent == Path(tempfile.gettempdir()).resolve():
+            shutil.rmtree(parent, ignore_errors=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Temp upload cleanup skipped for %s: %s", path_value, type(exc).__name__)
+
+
+def _clear_ingest_state() -> None:
+    result = st.session_state.pop("ingest", None)
+    if isinstance(result, dict):
+        _cleanup_temp_path(result.get("path"))
 
 
 # --------------------------------------------------------------------------- #
@@ -186,46 +214,42 @@ def _style_table(display_df: pd.DataFrame):
     styler = display_df.style
     if "Severity" in display_df.columns:
         styler = styler.map(sev, subset=["Severity"])
+    if "severity" in display_df.columns:
+        styler = styler.map(sev, subset=["severity"])
     return styler
 
 
 def _review_queue() -> dict[str, dict]:
-    """Return evidence reviewed during this browser session, keyed by filename."""
+    """Return reviews collected in this browser session, keyed by filename."""
 
     return st.session_state.setdefault("review_queue", {})
 
 
-def _queue_review(
-    filename: str,
-    source_type: str,
-    draft: pd.DataFrame,
-    *,
-    final: pd.DataFrame | None = None,
-    saved: bool | None = None,
-) -> None:
-    existing = _review_queue().get(filename, {})
-    _review_queue()[filename] = {
-        "source_type": source_type,
-        "draft": draft.copy(),
-        "final": final.copy() if final is not None else existing.get("final"),
-        "saved": existing.get("saved", False) if saved is None else saved,
-    }
+def _queue_review(filename: str, source_type: str, draft: pd.DataFrame) -> None:
+    """Save a completed review so it can be included in the master UNION."""
+
+    queue = _review_queue()
+    previous = queue.get(filename)
+    has_changed = (
+        previous is None
+        or previous["source_type"] != source_type
+        or not previous["draft"].equals(draft)
+    )
+    queue[filename] = {"source_type": source_type, "draft": draft.copy()}
+    if has_changed:
+        # A previously combined result is stale after a new or updated review.
+        st.session_state.pop("master", None)
 
 
 def _sync_current_review() -> None:
-    """Carry a review created before the session queue was introduced into it."""
+    """Include the currently displayed review in the session's master queue."""
 
     result = st.session_state.get("ingest")
     if not result or "draft" not in result or "filename" not in result:
         return
     source_type = result.get("source_type") or ig.detect_source_type(result["filename"])
     if source_type:
-        _queue_review(
-            result["filename"],
-            source_type,
-            result["draft"],
-            final=result.get("final"),
-        )
+        _queue_review(result["filename"], source_type, result["draft"])
 
 
 def _queued_review_status() -> dict[str, int]:
@@ -236,24 +260,20 @@ def _queued_review_status() -> dict[str, int]:
 
 
 def _build_queued_incidents(existing_ids: list) -> pd.DataFrame:
-    saved_frames = []
-    pending_frames = []
-    for item in _review_queue().values():
-        if item.get("saved"):
-            if item.get("final") is not None:
-                saved_frames.append(item["final"].copy())
-            continue
-        pending_frames.append(ig.integrate_records(item["draft"], item["source_type"]))
+    """Integrate and UNION each queued modality review into one master frame."""
 
-    if pending_frames:
-        pending = pd.concat(pending_frames, ignore_index=True)
-        pending = ig.assign_incident_ids(pending, ig.next_incident_number(existing_ids))
-    else:
-        pending = pd.DataFrame(columns=ig.INCIDENT_COLUMNS)
+    frames: list[pd.DataFrame] = []
+    used_ids = list(existing_ids)
+    for filename, item in _review_queue().items():
+        frame = ig.integrate_records(
+            item["draft"], item["source_type"], used_ids, source_filename=filename
+        )
+        frames.append(frame)
+        used_ids.extend(frame["Incident_ID"].tolist())
 
-    frames = [*saved_frames, pending]
-    nonempty = [frame for frame in frames if not frame.empty]
-    return pd.concat(nonempty, ignore_index=True) if nonempty else pending
+    if not frames:
+        return pd.DataFrame(columns=list(ig.INTEGRATION_OUTPUT_COLUMNS))
+    return pd.concat(frames, ignore_index=True)
 
 
 def _severity_donut(view: pd.DataFrame) -> alt.Chart:
@@ -404,6 +424,74 @@ def _show_audio_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -
         st.markdown(
             f'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;'
             f'padding:12px;font-size:.9rem;line-height:1.7">{highlighted}</div>',
+            unsafe_allow_html=True,
+        )
+
+
+def _show_image_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> None:
+    """Show the uploaded image with the processor's scene, object, and OCR evidence."""
+
+    import html as _html
+
+    if file_path and Path(file_path).exists():
+        detections = draft_df.attrs.get("image_detections", []) if isinstance(draft_df, pd.DataFrame) else []
+        try:
+            from images.processor import annotate_image_with_detections
+
+            annotated_image = annotate_image_with_detections(file_path, detections=detections)
+            has_boxes = bool(detections)
+            st.image(
+                annotated_image,
+                caption="Uploaded image with detection boxes" if has_boxes else "Uploaded image",
+                width="stretch",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not annotate image evidence: %s", exc)
+            st.image(file_path, caption="Uploaded image", width="stretch")
+    elif file_path:
+        st.caption("Source image is no longer available for preview.")
+
+    if draft_df.empty:
+        return
+
+    row = draft_df.iloc[0]
+    scene = str(row.get("Scene_Type", "Unknown")).strip()
+    objects = str(row.get("Objects_Detected", "Unknown")).strip()
+    extracted_text = str(row.get("Text_Extracted", "Unknown")).strip()
+    confidence_raw = row.get("Confidence_Score", 0)
+    try:
+        confidence = float(confidence_raw)
+        if pd.isna(confidence):
+            confidence = 0.0
+    except (TypeError, ValueError):
+        confidence = 0.0
+    confidence = max(0.0, min(1.0, confidence))
+
+    scene_display = "—" if scene.lower() in ("unknown", "nan", "") else scene
+    col_scene, col_confidence = st.columns(2)
+    col_scene.metric("Scene classification", scene_display)
+    col_confidence.metric("Detection confidence", f"{confidence:.0%}")
+    st.progress(confidence)
+
+    if objects.lower() not in ("unknown", "nan", ""):
+        chips = "".join(
+            f'<span style="display:inline-block;background:#EDE9FE;color:#5B21B6;'
+            f'padding:3px 9px;margin:2px 3px;border-radius:999px;'
+            f'font-size:.8rem;font-weight:700">{_html.escape(item.strip())}</span>'
+            for item in objects.split(",")
+            if item.strip()
+        )
+        if chips:
+            st.markdown("**Detected objects**")
+            st.markdown(chips, unsafe_allow_html=True)
+
+    if extracted_text.lower() not in ("unknown", "nan", ""):
+        st.markdown("**Text found in image**")
+        st.markdown(
+            f'<div style="background:#F8FAFC;border-left:4px solid {ACCENT};'
+            f'border-radius:0 8px 8px 0;padding:12px 16px;font-size:.9rem;'
+            f'line-height:1.7;color:#334155;white-space:pre-wrap">'
+            f'{_html.escape(extracted_text)}</div>',
             unsafe_allow_html=True,
         )
 
@@ -595,16 +683,26 @@ def _show_video_evidence(file_path: str | None, filename: str) -> None:
         import subprocess as _sp, tempfile as _tf
         with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             tmp_path = tmp.name
-        result = _sp.run(
-            ["ffmpeg", "-y", "-i", file_path,
-             "-vcodec", "libx264", "-acodec", "aac",
-             "-movflags", "+faststart", tmp_path],
-            capture_output=True,
-        )
-        if result.returncode == 0:
-            video_bytes = _Path(tmp_path).read_bytes()
-        else:
+        try:
+            result = _sp.run(
+                [
+                    "ffmpeg", "-y", "-i", file_path,
+                    "-vcodec", "libx264", "-acodec", "aac",
+                    "-movflags", "+faststart", tmp_path,
+                ],
+                capture_output=True,
+                timeout=180,
+            )
+            if result.returncode == 0:
+                video_bytes = _Path(tmp_path).read_bytes()
+            else:
+                logger.warning("ffmpeg preview transcode failed for %s.", filename)
+                video_bytes = _Path(file_path).read_bytes()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ffmpeg preview transcode skipped for %s: %s", filename, type(exc).__name__)
             video_bytes = _Path(file_path).read_bytes()
+        finally:
+            _Path(tmp_path).unlink(missing_ok=True)
         st.session_state[cache_key] = video_bytes
     st.video(video_bytes)
 
@@ -671,6 +769,8 @@ def _show_visual_evidence(
             _show_audio_evidence(draft_df, file_path)
         elif source_type == "pdf":
             _show_pdf_evidence(draft_df, file_path)
+        elif source_type == "image":
+            _show_image_evidence(draft_df, file_path)
         elif source_type == "video":
             _show_video_evidence(file_path, filename)
         elif source_type == "text":
@@ -683,16 +783,17 @@ def _show_visual_evidence(
 # View 1: Ingest & Convert
 # --------------------------------------------------------------------------- #
 def view_ingest() -> None:
-    _page_head("upload_file", "Add Evidence", "Choose a file and we'll turn it into a clear incident record.")
+    _page_head("upload_file", "Add Incident", "Choose a file and we'll turn it into a clear incident record.")
 
     uploaded = st.file_uploader("Choose an evidence file", type=ig.supported_extensions())
     if uploaded is None:
-        st.info("You can add an audio recording, document, image, video, or text file.")
+        st.info("You can add an audio recording, document, image, text file, or CSV file.")
         return
 
-    source_type = ig.detect_source_type(uploaded.name)
+    uploaded_filename = _safe_upload_filename(uploaded)
+    source_type = ig.detect_source_type(uploaded_filename)
     if source_type is None:
-        st.error("We can't review this file type yet. Please choose an audio, document, image, video, or text file.")
+        st.error("We can't review this file type yet. Please choose an audio, document, image, video, text, or CSV file.")
         return
 
     label = ig.source_label(source_type)
@@ -702,100 +803,65 @@ def view_ingest() -> None:
     st.write("")
 
     if source_type == "audio":
-        st.info("We'll create a written transcript from this recording automatically.")
+        st.info("We'll create a written transcript from this recording.")
 
     if st.button("Review evidence", type="primary", icon=":material/play_arrow:"):
+        path: Path | None = None
         with st.spinner("Reviewing your file…"):
             try:
+                _clear_ingest_state()
                 path = _save_upload_to_tempdir(uploaded)
                 draft_df = ig.run_modality(source_type, path)
-                final_df = ig.build_incidents(draft_df, source_type, existing_incident_ids())
-                _queue_review(
-                    uploaded.name,
-                    source_type,
+                final_df = ig.integrate_records(
                     draft_df,
-                    final=final_df,
-                    saved=False,
+                    source_type,
+                    existing_incident_ids(),
+                    source_filename=uploaded_filename,
                 )
+                _queue_review(uploaded_filename, source_type, draft_df)
                 st.session_state["ingest"] = {
                     "draft": draft_df,
                     "final": final_df,
-                    "filename": uploaded.name,
+                    "filename": uploaded_filename,
                     "source_type": source_type,
                     "path": str(path),
                 }
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Evidence processing failed")
-                if source_type == "image":
-                    import pandas as _pd
-                    import cv2 as _cv2
-                    import numpy as _np
-                    try:
-                        img = _cv2.imread(str(path))
-                        hsv = _cv2.cvtColor(img, _cv2.COLOR_BGR2HSV)
-                        fire_mask = _cv2.inRange(hsv, _np.array([0,100,100]), _np.array([20,255,255]))
-                        total = img.shape[0] * img.shape[1]
-                        fire_ratio = _cv2.countNonZero(fire_mask) / total
-                        scene = "Fire Scene" if fire_ratio > 0.02 else "General Scene"
-                        objects = "fire" if fire_ratio > 0.02 else "person"
-                        conf = round(min(0.99, 0.75 + fire_ratio * 3), 2) if fire_ratio > 0.02 else 0.65
-            except Exception:
-                        scene, objects, conf = "Fire Scene", "fire", 0.88
-                    draft_df = _pd.DataFrame([{
-                        "Image_ID": "IMG_001",
-                        "Scene_Type": scene,
-                        "Objects_Detected": objects,
-                        "Text_Extracted": "N/A",
-                        "Confidence_Score": conf
-                    }])
-                    final_df = ig.build_incidents(draft_df, source_type, existing_incident_ids())
-                    _queue_review(uploaded.name, source_type, draft_df, final=final_df, saved=False)
-                    st.session_state["ingest"] = {
-                        "draft": draft_df,
-                        "final": final_df,
-                        "filename": uploaded.name,
-                        "source_type": source_type,
-                        "path": str(path),
-                    }
-                else:
-                    st.session_state.pop("ingest", None)
-                    st.error(_friendly_error(exc, "review this evidence"))
+                _cleanup_temp_path(path)
+                _clear_ingest_state()
+                st.error(_friendly_error(exc, "review this evidence"))
 
     result = st.session_state.get("ingest")
-    if not result or result.get("filename") != uploaded.name:
+    if not result or result.get("filename") != uploaded_filename:
         return
 
     final_df = result["final"]
+    st.caption(f"Extractor rows: {len(result['draft'])} · Integrated incident rows: {len(final_df)}")
+    if final_df.empty:
+        st.info("No incidents were found in this evidence. Nothing will be inserted.")
+        return
     c1, c2 = st.columns(2)
     with c1:
         _section("What we found")
         st.dataframe(result["draft"], width="stretch", hide_index=True)
     with c2:
         _section("Incident record")
-        st.dataframe(_style_table(ig.to_final_csv_frame(final_df)), width="stretch", hide_index=True)
+        st.dataframe(_style_table(final_df), width="stretch", hide_index=True)
 
     _section("Visual evidence")
     _show_visual_evidence(
         result.get("source_type", source_type),
         result["draft"],
         result.get("path"),
-        uploaded.name,
+        uploaded_filename,
     )
 
-    d1, d2 = st.columns(2)
-    d1.download_button(
-        "Download incident record", ig.to_final_csv_frame(final_df).to_csv(index=False).encode("utf-8"),
-        file_name=f"{result['filename']}_incidents.csv", mime="text/csv",
-        icon=":material/download:", width="stretch")
-    if d2.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
+    if st.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
         try:
             summary = upload_incidents(final_df)
             st.success(f"Added {summary['inserted_count']} incident record(s).")
-            item = _review_queue().get(result["filename"])
-            if item is not None:
-                item["saved"] = True
-                item["final"] = final_df.copy()
-            st.session_state.pop("ingest", None)
+            _clear_ingest_state()
         except Exception as exc:  # noqa: BLE001
             logger.exception("Incident upload failed")
             st.error(_friendly_error(exc, "add this incident"))
@@ -818,10 +884,10 @@ def view_integrate() -> None:
         col.markdown(
             f'<div class="mcard">{_icon(SOURCE_ICON.get(label, "description"))}'
             f'<div class="mname">{label}</div><div class="mcount">{count} {count_label}</div></div>',
-            unsafe_allow_html=True)
+            unsafe_allow_html=True,
+        )
 
-    st.caption("Counts include all evidence reviewed during this session, including records already added.")
-
+    st.caption("Counts include every evidence file reviewed during this browser session.")
     if sum(status.values()) == 0:
         st.info("No completed evidence reviews are available yet. Start by adding an evidence file.")
         return
@@ -839,27 +905,32 @@ def view_integrate() -> None:
     if master is None or master.empty:
         return
 
-    final_view = ig.to_final_csv_frame(master)
     k = st.columns(3)
     _stat(k[0], "Total incidents", len(master), icon="summarize")
-    _stat(k[1], "Evidence types", master["source"].nunique(), color=ACCENT, icon="hub")
-    _stat(k[2], "High severity", int(master["severity"].value_counts().get("High", 0)),
-          color=SEV_COLORS["High"], icon="priority_high")
+    _stat(k[1], "Evidence types", master["Source"].nunique(), color=ACCENT, icon="hub")
+    _stat(
+        k[2], "High severity", int(master["Severity"].value_counts().get("High", 0)),
+        color=SEV_COLORS["High"], icon="priority_high",
+    )
 
     st.write("")
-    _section(f"Combined incident list · {len(final_view)} incidents")
-    st.dataframe(_style_table(final_view), width="stretch", hide_index=True)
+    _section(f"Combined incident list · {len(master)} incidents")
+    st.dataframe(_style_table(master), width="stretch", hide_index=True)
+
+    chart_data = ig.to_supabase_payload_frame(master)
     cc1, cc2 = st.columns(2)
     with cc1:
         _section("Records per source")
-        st.altair_chart(_hbar(master["source"].value_counts(), "Source"), width="stretch")
+        st.altair_chart(_hbar(chart_data["source"].value_counts(), "Source"), width="stretch")
     with cc2:
         _section("Severity by source")
-        st.altair_chart(_severity_by_source(master), width="stretch")
+        st.altair_chart(_severity_by_source(chart_data), width="stretch")
 
     st.download_button(
-        "Download combined report", final_view.to_csv(index=False).encode("utf-8"),
-        file_name="final_incident_dataset.csv", mime="text/csv", icon=":material/download:", width="stretch")
+        "Download combined report", master.to_csv(index=False).encode("utf-8"),
+        file_name="final_incident_dataset.csv", mime="text/csv",
+        icon=":material/download:", width="stretch",
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -875,25 +946,25 @@ def view_dashboard() -> None:
         st.error(_friendly_error(exc, "load incident records"))
         return
     if df.empty:
-        st.info("No incidents have been added yet. Start with **Add Evidence** or **Combine Reports**.")
+        st.info("No incidents have been added yet. Start with **Add Incident**.")
         return
 
     df = ig.with_display_ids(df)
 
     with st.expander("Filters", expanded=False):
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4, c5 = st.columns(5)
         sources = sorted(df["source"].dropna().unique().tolist())
         severities = [s for s in SEVERITY_ORDER if s in df["severity"].unique()]
         pick_source = c1.multiselect("Source", sources, default=sources)
         pick_severity = c2.multiselect("Severity", severities, default=severities)
-        search = c3.text_input("Search ID / event / location", "")
+        pick_id = c3.text_input("Incident ID", "")
+        pick_event = c4.text_input("Event", "")
+        pick_location = c5.text_input("Location", "")
 
     view = df[df["source"].isin(pick_source) & df["severity"].isin(pick_severity)]
-    if search:
-        mask = pd.Series(False, index=view.index)
-        for column in ("Incident_ID", "event", "location"):
-            mask |= view[column].astype(str).str.contains(search, case=False, na=False)
-        view = view[mask]
+    for column, query in (("Incident_ID", pick_id), ("event", pick_event), ("location", pick_location)):
+        if query:
+            view = view[view[column].astype(str).str.contains(query, case=False, regex=False, na=False)]
 
     counts = view["severity"].value_counts()
     k = st.columns(4)
@@ -955,14 +1026,22 @@ def view_dashboard() -> None:
 
     with tab_records:
         final_view = ig.to_final_csv_frame(view)
-        high = final_view[final_view["Severity"] == "High"]
+        high = final_view[final_view["severity"] == "High"]
         if not high.empty:
             _section(f"High-priority queue · {len(high)}")
             st.dataframe(_style_table(high), width="stretch", hide_index=True)
         _section(f"All incidents · {len(final_view)}")
         st.dataframe(_style_table(final_view), width="stretch", hide_index=True)
+        selected_id = st.selectbox("Selected incident", view["Incident_ID"].tolist())
+        selected = view.loc[view["Incident_ID"] == selected_id].iloc[0]
+        st.text_area(
+            "Incident summary",
+            str(selected.get("incident_summary", "Unknown")),
+            height=110,
+            disabled=True,
+        )
         st.download_button(
-            "Download incident report", final_view.to_csv(index=False).encode("utf-8"),
+            "Download incident report", export_incidents_csv(),
             file_name="final_incident_dataset.csv", mime="text/csv", icon=":material/download:")
 
 
@@ -972,21 +1051,27 @@ def view_dashboard() -> None:
 @st.dialog("Add incident")
 def _add_incident_dialog(existing_ids: list) -> None:
     source_type = st.selectbox("Source", list(ig.MODALITIES.keys()), format_func=ig.source_label)
-    next_number = ig.next_incident_number(existing_ids)
-    next_label = ig.display_id(ig.source_label(source_type), next_number)
+    next_label = ig.generate_next_incident_id(source_type, existing_ids)
     st.caption(f"New incident ID: `{next_label}`")
     event = st.text_input("Event", "Unknown")
     location = st.text_input("Location", "Unknown")
     time_val = st.text_input("Time", "Unknown")
     severity = st.selectbox("Severity", SEVERITY_ORDER, index=1)
+    incident_summary = st.text_area("Incident summary", "Unknown", height=90)
     if st.button("Save", type="primary", icon=":material/save:"):
-        row = pd.DataFrame([{
-            "incident_id": next_number, "source": ig.source_label(source_type),
-            "event": ig.normalize_event(event), "location": location or "Unknown",
-            "time": time_val or "Unknown", "severity": severity}])
+        draft = pd.DataFrame([{
+            "Event": event,
+            "Location": location or "Unknown",
+            "Time": time_val or "Unknown",
+            "Severity": severity,
+            "Summary": incident_summary or "Unknown",
+        }])
+        row = ig.integrate_records(draft, source_type, existing_ids)
+        if incident_summary and incident_summary.strip():
+            row["Incident_Summary"] = incident_summary.strip()
         try:
             upload_incidents(row)
-            st.success(f"Added {next_label}")
+            st.success(f"Added {row.iloc[0]['Incident_ID']}")
             st.rerun()
         except Exception as exc:  # noqa: BLE001
             logger.exception("Manual incident creation failed")
@@ -1058,7 +1143,7 @@ def view_manage() -> None:
 
         field_labels = st.multiselect(
             "Fields to update",
-            ["Event", "Location", "Time", "Severity"],
+            ["Event", "Location", "Time", "Severity", "Incident summary"],
             help="Only selected fields will be overwritten.",
             key="bulk_fields",
         )
@@ -1079,6 +1164,12 @@ def view_manage() -> None:
         if "Severity" in field_labels:
             bulk_values["severity"] = input_columns[1].selectbox(
                 "New severity", SEVERITY_ORDER, index=1, key="bulk_severity"
+            )
+        if "Incident summary" in field_labels:
+            bulk_values["incident_summary"] = st.text_area(
+                "New incident summary",
+                key="bulk_incident_summary",
+                height=90,
             )
 
         target_count = len(target_labels)
@@ -1114,7 +1205,7 @@ def view_manage() -> None:
             label = str(target["Incident_ID"])
             try:
                 if do_bulk_remove:
-                    delete_incident(int(target["incident_id"]))
+                    delete_incident(target["incident_id"])
                 else:
                     payload = {
                         field: (
@@ -1124,7 +1215,9 @@ def view_manage() -> None:
                         )
                         for field, value in bulk_values.items()
                     }
-                    update_incident(int(target["incident_id"]), payload)
+                    if ig.normalize_event(payload.get("event", target["event"])) == "Unknown":
+                        payload["severity"] = "Low"
+                    update_incident(target["incident_id"], payload)
                 succeeded += 1
             except Exception:  # noqa: BLE001
                 logger.exception("Bulk incident action failed for %s", label)
@@ -1145,7 +1238,7 @@ def view_manage() -> None:
     _section("Incident list")
     st.caption("Edit any unlocked cell. Select Remove for records you no longer need, then apply your changes.")
 
-    editable = df.loc[:, ["Incident_ID", "source", "event", "location", "time", "severity"]].copy()
+    editable = df.loc[:, ["Incident_ID", "source", "event", "location", "time", "severity", "incident_summary"]].copy()
     editable["remove"] = False
 
     with st.form("incident_table_form"):
@@ -1154,7 +1247,16 @@ def view_manage() -> None:
             width="stretch",
             hide_index=True,
             disabled=["Incident_ID", "source"],
-            column_order=["Incident_ID", "source", "event", "location", "time", "severity", "remove"],
+            column_order=[
+                "Incident_ID",
+                "source",
+                "event",
+                "location",
+                "time",
+                "severity",
+                "incident_summary",
+                "remove",
+            ],
             column_config={
                 "Incident_ID": st.column_config.TextColumn("Incident ID", width="small"),
                 "source": st.column_config.TextColumn("Source", width="small"),
@@ -1166,6 +1268,11 @@ def view_manage() -> None:
                     options=SEVERITY_ORDER,
                     required=True,
                     width="small",
+                ),
+                "incident_summary": st.column_config.TextColumn(
+                    "Incident summary",
+                    width="large",
+                    required=True,
                 ),
                 "remove": st.column_config.CheckboxColumn(
                     "Remove",
@@ -1198,7 +1305,7 @@ def view_manage() -> None:
     for _, row in edited.iterrows():
         label = str(row["Incident_ID"])
         current = original.loc[label]
-        incident_id = int(current["incident_id"])
+        incident_id = current["incident_id"]
         try:
             if bool(row["remove"]):
                 delete_incident(incident_id)
@@ -1218,6 +1325,11 @@ def view_manage() -> None:
                     else clean(row[field]) != clean(current[field])
                 )
             }
+            summary = clean(row["incident_summary"])
+            if summary != clean(current["incident_summary"]):
+                changes["incident_summary"] = summary
+            if ig.normalize_event(row["event"]) == "Unknown":
+                changes["severity"] = "Low"
             if changes:
                 update_incident(incident_id, changes)
                 updated_count += 1
@@ -1259,8 +1371,22 @@ def _bridge_streamlit_secrets() -> None:
             os.environ[key] = str(secrets[key])
 
 
+@st.cache_resource(show_spinner=False)
+def _start_whisper_preload() -> bool:
+    def load() -> None:
+        try:
+            from audio.transcribe import preload_whisper_model
+
+            preload_whisper_model(quiet=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Whisper preload skipped: %s", type(exc).__name__)
+
+    threading.Thread(target=load, name="whisper-preload", daemon=True).start()
+    return True
+
+
 PAGES = [
-    ("Add Evidence", ":material/upload_file:", view_ingest),
+    ("Add Incident", ":material/upload_file:", view_ingest),
     ("Combine Reports", ":material/hub:", view_integrate),
     ("Incident Overview", ":material/insights:", view_dashboard),
     ("Manage Incidents", ":material/edit_note:", view_manage),
@@ -1270,7 +1396,10 @@ PAGES = [
 def main() -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
     _bridge_streamlit_secrets()
-    st.session_state.setdefault("page", PAGES[0][0])
+    _start_whisper_preload()
+    page_names = {name for name, _, _ in PAGES}
+    if st.session_state.get("page") not in page_names:
+        st.session_state["page"] = PAGES[0][0]
 
     with st.sidebar:
         st.markdown(f'<div class="sb-brand">{_icon("local_police")} Incident Analyzer</div>', unsafe_allow_html=True)

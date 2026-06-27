@@ -65,14 +65,16 @@ gcloud run deploy "$SERVICE" \
   --no-allow-unauthenticated \
   --cpu 2 \
   --memory 4Gi \
-  --concurrency 1 \
+  --concurrency 10 \
   --timeout 3600 \
+  --max-instances 2 \
   --set-secrets="SUPABASE_URL=SUPABASE_URL:latest,SUPABASE_KEY=SUPABASE_KEY:latest"
 ```
 
-The conservative concurrency setting prevents multiple Whisper or YOLO jobs
-from competing for the same instance memory. Adjust CPU, memory, concurrency,
-and timeout after observing real evidence sizes and processing duration.
+The moderate concurrency setting leaves room for Streamlit's browser requests,
+file uploads, and WebSocket session traffic. Avoid `--concurrency 1` with
+`--max-instances 1`; Cloud Run can return HTTP 429 when the open Streamlit
+session consumes the only available request slot.
 
 The command keeps the service private. Grant intended users the Cloud Run
 Invoker role. Use `--allow-unauthenticated` only if public access to uploaded
@@ -82,6 +84,19 @@ incident evidence is an explicit requirement.
 
 - Uploaded files and processor CSVs use the container's writable filesystem.
   Cloud Run storage is ephemeral, so Supabase remains the durable data store.
+- Whisper and YOLO have safe defaults; set these only when you want to override
+  runtime behavior:
+
+  ```sh
+  WHISPER_MODEL=small.en
+  WHISPER_DEVICE=cpu
+  VIDEO_YOLO_SAMPLE_STRIDE=2
+  VIDEO_YOLO_IMAGE_SIZE=640
+  VIDEO_YOLO_MODEL_PATH=video/yolov8s.pt
+  ```
+
+  Use `WHISPER_MODEL=medium.en` for higher accuracy on a faster instance, or
+  `WHISPER_MODEL=small.en` if startup/latency matters more.
 - Whisper and YOLO download model weights on first use. This increases the
   first processing request's latency, and each new instance has its own cache.
 - FFmpeg and Tesseract are installed in the image for audio transcription and

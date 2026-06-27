@@ -12,7 +12,10 @@ import unittest
 from unittest import mock
 
 from llm_summarizer import fallback, schemas
-from llm_summarizer.summarizer import summarize_incident
+from llm_summarizer.summarizer import (
+    summarize_incident,
+    update_image_location,
+)
 
 
 SAMPLE_ROW = {
@@ -33,12 +36,12 @@ ALL_UNKNOWN_ROW = {
     "event": "Unknown",
     "location": "Unknown",
     "time": "Unknown",
-    "severity": "Unknown",
+    "severity": "Low",
     "confidence": 0.0,
     "raw_text": "Unknown",
 }
 
-LLM_ENABLED_ENV = {"ENABLE_LLM_SUMMARY": "True", "OPENROUTER_API_KEY": "test-key-not-real"}
+LLM_CONFIGURED_ENV = {"OPENROUTER_API_KEY": "test-key-not-real"}
 
 
 def _ok_response(content: str) -> dict:
@@ -78,20 +81,8 @@ class FallbackTests(unittest.TestCase):
 
 
 class SummarizeIncidentTests(unittest.TestCase):
-    @mock.patch.dict(os.environ, {"ENABLE_LLM_SUMMARY": "false"}, clear=True)
-    def test_disabled_skips_llm_call_entirely(self) -> None:
-        def boom(_request: dict) -> dict:
-            raise AssertionError("llm_call must not run when LLM is disabled")
-
-        result = summarize_incident(SAMPLE_ROW, llm_call=boom)
-
-        _assert_valid_contract(self, result)
-        self.assertEqual(result["summary_method"], schemas.SUMMARY_METHOD_DISABLED)
-        self.assertEqual(result["summary_model"], schemas.DISABLED_MODEL_LABEL)
-
-    @mock.patch.dict(os.environ, {"ENABLE_LLM_SUMMARY": "True"}, clear=True)
-    def test_enabled_but_missing_key_is_disabled(self) -> None:
-        # Flag on but no OPENROUTER_API_KEY -> treated as disabled, no call.
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_missing_key_skips_llm_call_entirely(self) -> None:
         def boom(_request: dict) -> dict:
             raise AssertionError("llm_call must not run without an API key")
 
@@ -99,13 +90,17 @@ class SummarizeIncidentTests(unittest.TestCase):
 
         _assert_valid_contract(self, result)
         self.assertEqual(result["summary_method"], schemas.SUMMARY_METHOD_DISABLED)
+        self.assertEqual(result["summary_model"], schemas.DISABLED_MODEL_LABEL)
 
-    @mock.patch.dict(os.environ, LLM_ENABLED_ENV, clear=True)
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
     def test_enabled_with_valid_llm_output(self) -> None:
         text = "A High-severity Theft / Robbery incident was reported on Main Street."
 
         def fake_ok(request: dict) -> dict:
             self.assertIn("messages", request)
+            rendered_prompt = "\n".join(message["content"] for message in request["messages"])
+            self.assertNotIn("raw_text", rendered_prompt)
+            self.assertNotIn(SAMPLE_ROW["raw_text"], rendered_prompt)
             return _ok_response(text)
 
         result = summarize_incident(SAMPLE_ROW, llm_call=fake_ok)
@@ -115,7 +110,7 @@ class SummarizeIncidentTests(unittest.TestCase):
         self.assertEqual(result["incident_summary"], text)
         self.assertNotIn(result["summary_model"], ("", schemas.UNKNOWN))
 
-    @mock.patch.dict(os.environ, LLM_ENABLED_ENV, clear=True)
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
     def test_llm_exception_falls_back_to_error(self) -> None:
         def fake_raise(_request: dict) -> dict:
             raise RuntimeError("simulated network/timeout failure")
@@ -128,7 +123,7 @@ class SummarizeIncidentTests(unittest.TestCase):
         # Falls back to the deterministic summary, so real fields still appear.
         self.assertIn("Theft / Robbery", result["incident_summary"])
 
-    @mock.patch.dict(os.environ, LLM_ENABLED_ENV, clear=True)
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
     def test_llm_overlong_output_is_rejected(self) -> None:
         def fake_long(_request: dict) -> dict:
             return _ok_response(" ".join(["word"] * 250))  # ~250 words
@@ -138,7 +133,7 @@ class SummarizeIncidentTests(unittest.TestCase):
         _assert_valid_contract(self, result)
         self.assertEqual(result["summary_method"], schemas.SUMMARY_METHOD_ERROR)
 
-    @mock.patch.dict(os.environ, LLM_ENABLED_ENV, clear=True)
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
     def test_llm_empty_output_is_rejected(self) -> None:
         def fake_empty(_request: dict) -> dict:
             return _ok_response("   ")
@@ -147,6 +142,62 @@ class SummarizeIncidentTests(unittest.TestCase):
 
         _assert_valid_contract(self, result)
         self.assertEqual(result["summary_method"], schemas.SUMMARY_METHOD_ERROR)
+
+
+class ExtractLocationFromTextTests(unittest.TestCase):
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_non_location_returns_unknown_without_key(self) -> None:
+        updated = update_image_location({"Text_Extracted": "random OCR glare and smoke"})
+        self.assertNotIn("Location", updated)
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_rule_based_location_extracts_highway_without_llm_key(self) -> None:
+        updated = update_image_location(
+            {"Text_Extracted": 'ALABAMA BANKHEAD HIGHWAY re P e — No ~ A, we ome + me Beer"" aes Bee no Pad'}
+        )
+        self.assertEqual(updated["Location"], "Alabama Bankhead Highway")
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_update_image_location_fills_missing_location_from_ocr(self) -> None:
+        row = {
+            "Image_ID": "IMG_001",
+            "Scene_Type": "Fire / Arson",
+            "Text_Extracted": 'ALABAMA BANKHEAD HIGHWAY re P e — No ~ A, we ome + me Beer"" aes Bee no Pad',
+        }
+
+        updated = update_image_location(row)
+
+        self.assertEqual(updated["Location"], "Alabama Bankhead Highway")
+        self.assertNotIn("Location", row)
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_injected_llm_extracts_location_from_image_ocr_text(self) -> None:
+        def fake_location(request: dict) -> dict:
+            self.assertIn("messages", request)
+            self.assertIn("OCR text", request["messages"][1]["content"])
+            return _ok_response("San Bernardino County")
+
+        updated = update_image_location(
+            {"Text_Extracted": "SAN BERNARDINO COUNTY CALL BOX 1226"},
+            llm_call=fake_location,
+        )
+        self.assertEqual(updated["Location"], "San Bernardino County")
+
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
+    def test_invalid_location_output_returns_unknown(self) -> None:
+        def fake_bad(_request: dict) -> dict:
+            return _ok_response("word " * 80)
+
+        updated = update_image_location({"Text_Extracted": "news watermark"}, llm_call=fake_bad)
+        self.assertNotIn("Location", updated)
+
+    @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
+    def test_domain_output_is_not_accepted_as_location(self) -> None:
+        def fake_domain(_request: dict) -> dict:
+            return _ok_response("Chinanews.com")
+
+        updated = update_image_location({"Text_Extracted": "Chinanews.com"}, llm_call=fake_domain)
+        self.assertNotIn("Location", updated)
 
 
 if __name__ == "__main__":

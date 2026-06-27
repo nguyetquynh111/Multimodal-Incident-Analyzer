@@ -1,7 +1,8 @@
 """Public PDF processing API.
 
-Produces the exact six-column PDF draft used by Integration:
-``Report_ID, Incident_Type, Date, Location, Officer, Summary``.
+Produces the exact eight-column PDF draft used by Integration:
+``Report_ID, Incident_Type, Date, Location, Officer, Summary,
+Suspect_Description, Outcome``.
 
 Text is extracted directly first (PyMuPDF, then pdfplumber). OCR
 (pytesseract) is applied *page by page* and only to pages that have no
@@ -43,6 +44,8 @@ ARTIFACT_COLUMNS = [
     "Location",
     "Officer",
     "Summary",
+    "Suspect_Description",
+    "Outcome",
 ]
 
 UNKNOWN = "Unknown"
@@ -99,11 +102,7 @@ _INCIDENT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     (
         "Assault / Violence",
-        # "battery" only counts in the violent phrase "assault and battery"; bare
-        # "battery" matched hardware like "Battery Powered ... Unit" (a false hit).
-        # "shooting" excludes the IT/maintenance phrase "trouble shooting", which
-        # is pervasive in equipment training material and is not a crime; a real
-        # "shooting" (e.g. a courthouse shooting) still matches.
+        # Avoid equipment false positives from bare "battery" and "trouble shooting".
         (r"\bassault(?:s|ed)?\b", r"\bassault and battery\b", r"\bstabb(?:ing|ed)\b",
          r"(?<!trouble )\bshooting\b", r"\bshots fired\b", r"\bhomicide\b", r"\bmurder\b"),
     ),
@@ -119,11 +118,7 @@ _INCIDENT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
 )
 
-# Fallback label for official documents that are administrative rather than a
-# reported crime (training plans, policies, 1033-program proposals, lesson
-# plans). Triggered only after every crime category above has failed, so a
-# genuine crime keyword always wins. These are document-type cues present in
-# the text itself, so the label is still source-grounded, never invented.
+# Source-grounded fallback for administrative documents, not reported crimes.
 ADMIN_INCIDENT_LABEL = "Training / Administrative"
 _ADMIN_KEYWORDS: tuple[str, ...] = (
     r"\btraining\b", r"\bMRAP\b", r"\blesson plan\b", r"\boperations?\b",
@@ -132,12 +127,7 @@ _ADMIN_KEYWORDS: tuple[str, ...] = (
     r"\bstandard operating procedure\b", r"\bmemorandum\b",
 )
 
-# Document-type weighting. An official bundle can mention a past incident in
-# passing ("a shooting in our courthouse in 2011") or carry crime-shaped words
-# inside training material ("trouble shooting"). When administrative cues
-# outnumber crime hits by at least this ratio, the document is treated as
-# administrative rather than a crime report. A genuine crime report is crime-
-# keyword dense, so this wide margin does not suppress real crime detection.
+# Treat crime mentions as incidental when administrative cues dominate.
 _ADMIN_DOMINANCE_RATIO = 5
 
 # Severity signals keyed to a detected incident, per rules.md section 7.
@@ -230,18 +220,7 @@ def _count_keyword_hits(text: str, patterns: Iterable[str]) -> int:
 
 
 def classify_incident(text: str) -> str:
-    """Return an incident label for the document text.
-
-    A crime-specific category wins whenever its keywords are genuinely present
-    *and* not swamped by administrative cues. Document-type weighting guards
-    against a stray crime word (e.g. an official bundle mentioning a past
-    "shooting", or "trouble shooting" in training material) flipping an
-    overwhelmingly administrative document: when administrative cues outnumber
-    crime hits by ``_ADMIN_DOMINANCE_RATIO`` or more, the label falls back to
-    ``ADMIN_INCIDENT_LABEL``. The margin is wide, so a genuine crime report
-    (which is crime-keyword dense) is never misclassified. ``Unknown`` remains
-    only for text that matches neither crime nor administrative cues.
-    """
+    """Classify source text, favoring administrative context when it dominates."""
 
     crime_label: str | None = None
     total_crime = 0
@@ -255,28 +234,21 @@ def classify_incident(text: str) -> str:
     admin_hits = _count_keyword_hits(text, _ADMIN_KEYWORDS)
 
     if crime_label is None:
-        # No crime keywords at all: administrative fallback when official cues
-        # are present, else genuinely unknown.
+        # Use the administrative label only when source text supports it.
         return ADMIN_INCIDENT_LABEL if admin_hits else UNKNOWN
 
     if admin_hits >= _ADMIN_DOMINANCE_RATIO * total_crime:
-        # Crime word(s) present but incidental in an overwhelmingly
-        # administrative document (e.g. a training/policy bundle).
+        # Administrative context outweighs incidental crime terms.
         return ADMIN_INCIDENT_LABEL
 
     return crime_label
 
 
 def severity_signal(text: str, incident_type: str) -> str:
-    """Map severity only when a real *crime* incident was detected (rules.md 7).
-
-    Administrative/training documents are not crimes, so crime-severity words
-    they happen to mention (e.g. "gunfire", "weapons") must not be read as a
-    High/Medium severity; they map to ``Unknown`` like the no-incident case.
-    """
+    """Map severity, using Low when the event cannot be identified."""
 
     if incident_type in (UNKNOWN, ADMIN_INCIDENT_LABEL):
-        return UNKNOWN
+        return "Low"
     if _HIGH_SEVERITY.search(text):
         return "High"
     if _MEDIUM_SEVERITY.search(text):
@@ -291,10 +263,7 @@ def _extract_context(text: str, keyword: str) -> str:
     return re.sub(r"\s+", " ", match.group(0)).strip() if match else UNKNOWN
 
 
-# Letterhead/cover-page cues used to summarize the document's substance rather
-# than its header block (names, address, phone numbers). A subject/``RE:`` line
-# is the clearest one-line description when present; otherwise the first
-# substantive body sentence after the letterhead is used.
+# Prefer a subject line or body sentence over letterhead details in summaries.
 _SUBJECT_LINE = re.compile(
     r"^[ \t]*(?:RE|Ref|Reference|Subject)\b[ \t]*[:.\-]?[ \t]*(.+)$",
     re.IGNORECASE | re.MULTILINE,
@@ -383,6 +352,55 @@ def summarize_document(text: str, *, max_chars: int = 240) -> str:
     return _truncate_summary(flat, max_chars)
 
 
+def _extract_keyword_sentence(text: str, keywords: tuple[str, ...], *, max_chars: int = 180) -> str:
+    """Return the first sentence containing one of the requested keywords."""
+
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not normalized:
+        return UNKNOWN
+    sentences = re.split(r"(?<=[.!?])\s+", normalized)
+    pattern = re.compile("|".join(keywords), re.IGNORECASE)
+    for sentence in sentences:
+        clean = sentence.strip(" ;:-")
+        if clean and pattern.search(clean):
+            return _truncate_summary(clean, max_chars)
+    return UNKNOWN
+
+
+def extract_suspect_description(text: str) -> str:
+    """Extract a source-grounded suspect description sentence when present."""
+
+    return _extract_keyword_sentence(
+        text,
+        (
+            r"\bsuspect\b",
+            r"\bsuspects\b",
+            r"\boffender\b",
+            r"\bperpetrator\b",
+            r"\bdescription\b",
+        ),
+    )
+
+
+def extract_outcome(text: str) -> str:
+    """Extract a source-grounded outcome/disposition sentence when present."""
+
+    return _extract_keyword_sentence(
+        text,
+        (
+            r"\boutcome\b",
+            r"\bdisposition\b",
+            r"\barrest(?:ed)?\b",
+            r"\bcharged\b",
+            r"\bcited\b",
+            r"\bcleared\b",
+            r"\brecovered\b",
+            r"\btransported\b",
+            r"\bclosed\b",
+        ),
+    )
+
+
 def analyze_document(report_id: str, text: str) -> dict[str, Any]:
     """Convert one document's text into the exact eight-field PDF artifact row."""
 
@@ -400,6 +418,10 @@ def analyze_document(report_id: str, text: str) -> dict[str, Any]:
         "Location": extract_location(normalized),
         "Officer": extract_officer(normalized),
         "Summary": summarize_document(normalized),
+        "Suspect_Description": (
+            extract_suspect_description(normalized) if is_crime_report else UNKNOWN
+        ),
+        "Outcome": extract_outcome(normalized) if is_crime_report else UNKNOWN,
     }
 
 
@@ -615,11 +637,11 @@ def process_pdf_file(
     write_artifact: bool = True,
     output_csv_path: str | Path | None = None,
 ) -> pd.DataFrame:
-    """Process one PDF and return the six-column PDF draft.
+    """Process one PDF and return the eight-column PDF draft.
 
     Direct text extraction is tried first; OCR runs only when direct
     extraction is empty or near-empty. When ``write_artifact`` is true, the
-    same six-column result is written under ``pdf/output/``.
+    same eight-column result is written under ``pdf/output/``.
     """
 
     path = _validate_pdf_path(pdf_path)
@@ -640,7 +662,7 @@ def process_pdf(
     output_csv_path: str | Path | None = None,
     report_id: str | None = None,
 ) -> pd.DataFrame:
-    """Process one PDF and return the six-column PDF draft contract."""
+    """Process one PDF and return the eight-column PDF draft contract."""
 
     return process_pdf_file(
         str(pdf_path),

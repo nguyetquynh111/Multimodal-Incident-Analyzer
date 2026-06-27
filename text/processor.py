@@ -505,7 +505,25 @@ def _analyze_json_record(
 ) -> dict[str, Any]:
     """Analyze one JSON-lines CrimeReport/Twitter-style record."""
 
-    raw_text = _safe_field(record.get("text"))
+    raw_text = UNKNOWN
+    for column in (
+        "text",
+        "Text",
+        "Raw_Text",
+        "raw_text",
+        "summary",
+        "Summary",
+        "description",
+        "Description",
+        "details",
+        "Details",
+        "event",
+        "Event",
+    ):
+        if column in record:
+            raw_text = _safe_field(record.get(column))
+            if raw_text != UNKNOWN:
+                break
     row_source = source or "CrimeReport"
     row = analyze_text(f"TXT_{index:03d}", raw_text, row_source)
     merged_entities = parse_entities(row["Entities"]) + _metadata_entities(record)
@@ -596,6 +614,24 @@ def _rows_from_csv(
     return rows
 
 
+def _rows_from_json_file(path: Path, source: str | None) -> list[dict[str, Any]]:
+    payload = json.loads(path.read_text(encoding="utf-8-sig", errors="replace"))
+    if isinstance(payload, list):
+        records = payload
+    elif isinstance(payload, dict):
+        records = payload.get("incidents") if isinstance(payload.get("incidents"), list) else [payload]
+    else:
+        records = [{"text": str(payload)}]
+
+    rows: list[dict[str, Any]] = []
+    for index, record in enumerate(records, start=1):
+        if isinstance(record, dict):
+            rows.append(_analyze_json_record(record, index, source))
+        else:
+            rows.append(analyze_text(f"TXT_{index:03d}", str(record), source or path.stem))
+    return rows
+
+
 def save_artifact(
     artifact_rows: list[dict[str, Any]],
     output_csv_path: str | Path = DEFAULT_OUTPUT_PATH,
@@ -618,11 +654,11 @@ def process_text(
     source: str | None = None,
     text_column: str | None = None,
 ) -> pd.DataFrame:
-    """Process one text file or text dataset CSV into the six-column draft.
+    """Process one text or CSV file into the six-column draft.
 
-    ``.txt`` inputs produce one row. ``.csv`` inputs produce one row per record
-    using a recognized text column such as ``Raw_Text``, ``text``, ``details``,
-    or a user-provided ``text_column``.
+    ``.txt`` inputs produce one row unless they contain JSON Lines. ``.csv``
+    inputs produce one row per record using a recognized text column such as
+    ``Raw_Text``, ``text``, ``details``, or a user-provided ``text_column``.
     """
 
     path = _validate_text_path(input_path)

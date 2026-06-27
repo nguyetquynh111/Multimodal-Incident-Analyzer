@@ -30,9 +30,10 @@ cryptography==48.0.1
 # Image and video
 # Headless OpenCV avoids desktop GUI libraries that are unavailable on Cloud Run.
 opencv-python-headless==4.10.0.84
+# Pip package name is inference_sdk; Python imports it as inference_sdk.
+inference_sdk
 ultralytics==8.4.70
 Pillow
-inference-sdk
 
 # LLM summarizer
 # Only the optional OpenRouter (free-tier) HTTP call needs this; the rule-based

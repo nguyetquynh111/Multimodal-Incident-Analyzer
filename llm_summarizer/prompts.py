@@ -11,8 +11,8 @@ from __future__ import annotations
 from . import schemas
 
 
-# Raw text can be long; only a leading window is needed for grounding context
-# and it keeps the request small/fast for a free-tier model.
+# OCR text can be long; only a leading window is needed for focused image
+# location extraction, and it keeps the request small/fast for a free-tier model.
 _RAW_TEXT_LIMIT = 1000
 
 
@@ -20,7 +20,7 @@ SYSTEM_PROMPT = (
     "You are a careful incident-report summarizer for a class prototype "
     "dashboard. Follow these rules strictly:\n"
     "- Summarize ONLY using the provided event, location, time, severity, "
-    "source, and raw_text fields.\n"
+    "and source fields.\n"
     "- Never invent people, places, weapons, dates, or outcomes that are not "
     "present in those fields.\n"
     "- If a detail is missing or 'Unknown', write 'Unknown' or omit it -- "
@@ -31,6 +31,18 @@ SYSTEM_PROMPT = (
     "- Output only the summary text, with no preamble, labels, or quotes."
 )
 
+LOCATION_EXTRACTION_SYSTEM_PROMPT = (
+    "You extract explicit locations from OCR text for an incident-analysis "
+    "prototype. Follow these rules strictly:\n"
+    "- Return a location only if the text clearly contains a place, address, "
+    "facility, city, county, street, intersection, landmark, or venue.\n"
+    "- Do not treat publisher names, website domains, usernames, slogans, "
+    "or decorative captions as locations.\n"
+    "- Use only words present in the OCR text; do not guess or infer.\n"
+    "- If no explicit location is present, return exactly Unknown.\n"
+    "- Output only the location string or Unknown, with no explanation."
+)
+
 
 def _field(incident_row: dict, key: str) -> str:
     value = incident_row.get(key, schemas.UNKNOWN)
@@ -39,11 +51,7 @@ def _field(incident_row: dict, key: str) -> str:
 
 
 def build_user_prompt(incident_row: dict) -> str:
-    """Render the integrated fields as a labelled block for the model."""
-
-    raw_text = _field(incident_row, "raw_text")
-    if len(raw_text) > _RAW_TEXT_LIMIT:
-        raw_text = raw_text[:_RAW_TEXT_LIMIT].rstrip() + "..."
+    """Render only cleaned integrated fields for the summary model."""
 
     lines = [
         "Summarize the following incident using only these fields:",
@@ -52,7 +60,6 @@ def build_user_prompt(incident_row: dict) -> str:
         f"- location: {_field(incident_row, 'location')}",
         f"- time: {_field(incident_row, 'time')}",
         f"- severity: {_field(incident_row, 'severity')}",
-        f"- raw_text: {raw_text}",
     ]
     return "\n".join(lines)
 
@@ -66,4 +73,35 @@ def build_messages(incident_row: dict) -> list[dict]:
     ]
 
 
-__all__ = ["SYSTEM_PROMPT", "build_user_prompt", "build_messages"]
+def build_location_prompt(text: str) -> str:
+    """Render image OCR text for a focused location-extraction request."""
+
+    text = str(text or "").strip()
+    if len(text) > _RAW_TEXT_LIMIT:
+        text = text[:_RAW_TEXT_LIMIT].rstrip() + "..."
+    return "\n".join(
+        [
+            "Extract one explicit location from this image OCR text.",
+            "Return exactly Unknown if it does not contain a location.",
+            f"OCR text: {text or schemas.UNKNOWN}",
+        ]
+    )
+
+
+def build_location_messages(text: str) -> list[dict]:
+    """Build chat-completion messages for image OCR location extraction."""
+
+    return [
+        {"role": "system", "content": LOCATION_EXTRACTION_SYSTEM_PROMPT},
+        {"role": "user", "content": build_location_prompt(text)},
+    ]
+
+
+__all__ = [
+    "SYSTEM_PROMPT",
+    "LOCATION_EXTRACTION_SYSTEM_PROMPT",
+    "build_user_prompt",
+    "build_messages",
+    "build_location_prompt",
+    "build_location_messages",
+]

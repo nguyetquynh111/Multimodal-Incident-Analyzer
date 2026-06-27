@@ -7,6 +7,7 @@ import pandas as pd
 
 from .supabase_client import insert_incidents
 from .validators import validate_incidents_df
+from integration.integration import to_supabase_payload_frame
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,8 @@ def upload_incidents(df: pd.DataFrame) -> dict[str, Any]:
         RuntimeError: If the Supabase upload fails.
     """
     logger.info("Starting incident upload.")
-    validate_incidents_df(df)
-    summary = insert_incidents(df)
+    payload = to_supabase_payload_frame(df)
+    validate_incidents_df(payload)
+    summary = insert_incidents(payload)
     logger.info("Incident upload completed.")
     return summary
