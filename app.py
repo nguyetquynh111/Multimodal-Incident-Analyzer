@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
 import shutil
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -44,6 +46,8 @@ FINAL_COLS = list(ig.FINAL_CSV_COLUMNS)
 
 ACCENT = "#4F46E5"
 logger = logging.getLogger(__name__)
+_TEMP_UPLOAD_DIRS: set[Path] = getattr(sys, "_mia_temp_upload_dirs", set())
+setattr(sys, "_mia_temp_upload_dirs", _TEMP_UPLOAD_DIRS)
 
 
 # --------------------------------------------------------------------------- #
@@ -180,6 +184,7 @@ def _safe_upload_filename(uploaded) -> str:
 
 def _save_upload_to_tempdir(uploaded) -> Path:
     tmpdir = Path(tempfile.mkdtemp(prefix="incident_"))
+    _TEMP_UPLOAD_DIRS.add(tmpdir.resolve())
     path = tmpdir / _safe_upload_filename(uploaded)
     path.write_bytes(uploaded.getbuffer())
     return path
@@ -195,6 +200,7 @@ def _cleanup_temp_path(path_value: str | os.PathLike[str] | None) -> None:
         parent = path.parent
         if parent.name.startswith("incident_") and parent.parent == Path(tempfile.gettempdir()).resolve():
             shutil.rmtree(parent, ignore_errors=True)
+            _TEMP_UPLOAD_DIRS.discard(parent)
     except Exception as exc:  # noqa: BLE001
         logger.debug("Temp upload cleanup skipped for %s: %s", path_value, type(exc).__name__)
 
@@ -203,6 +209,17 @@ def _clear_ingest_state() -> None:
     result = st.session_state.pop("ingest", None)
     if isinstance(result, dict):
         _cleanup_temp_path(result.get("path"))
+
+
+def _cleanup_registered_temp_uploads() -> None:
+    for tmpdir in list(_TEMP_UPLOAD_DIRS):
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        _TEMP_UPLOAD_DIRS.discard(tmpdir)
+
+
+if not getattr(sys, "_mia_temp_cleanup_registered", False):
+    atexit.register(_cleanup_registered_temp_uploads)
+    setattr(sys, "_mia_temp_cleanup_registered", True)
 
 
 # --------------------------------------------------------------------------- #
@@ -388,8 +405,10 @@ def _sentiment_badge(sentiment: str) -> str:
 
 def _show_audio_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> None:
     import re as _re
-    if file_path:
+    if file_path and Path(file_path).exists():
         st.audio(file_path)
+    elif file_path:
+        st.caption("Source audio is no longer available for preview.")
     if draft_df.empty:
         return
     row = draft_df.iloc[0]
@@ -805,6 +824,9 @@ def view_ingest() -> None:
     if source_type is None:
         st.error("We can't review this file type yet. Please choose an audio, document, image, video, text, or CSV file.")
         return
+    current_result = st.session_state.get("ingest")
+    if isinstance(current_result, dict) and current_result.get("filename") != uploaded_filename:
+        _clear_ingest_state()
 
     label = ig.source_label(source_type)
     st.markdown(
@@ -859,11 +881,18 @@ def view_ingest() -> None:
         _section("Incident record")
         st.dataframe(_style_table(final_df), width="stretch", hide_index=True)
 
-    if st.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
+    saved_summary = result.get("saved_summary")
+    if saved_summary:
+        incident_ids = ", ".join(saved_summary.get("incident_ids", []))
+        suffix = f": {incident_ids}" if incident_ids else ""
+        st.success(f"Added {saved_summary['inserted_count']} incident record(s){suffix}.")
+    elif st.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
         try:
-            summary = upload_incidents(final_df)
-            st.success(f"Added {summary['inserted_count']} incident record(s).")
-            _clear_ingest_state()
+            summary = upload_incidents(final_df, refresh_ids=True)
+            incident_ids = ", ".join(summary.get("incident_ids", []))
+            suffix = f": {incident_ids}" if incident_ids else ""
+            st.success(f"Added {summary['inserted_count']} incident record(s){suffix}.")
+            result["saved_summary"] = summary
         except Exception as exc:  # noqa: BLE001
             logger.exception("Incident upload failed")
             st.error(_friendly_error(exc, "add this incident"))
@@ -1086,8 +1115,9 @@ def _add_incident_dialog(existing_ids: list) -> None:
         if summary_override is not None:
             row["Incident_Summary"] = summary_override
         try:
-            upload_incidents(row)
-            st.success(f"Added {row.iloc[0]['Incident_ID']}")
+            summary = upload_incidents(row, refresh_ids=True)
+            incident_ids = ", ".join(summary.get("incident_ids", []))
+            st.success(f"Added {incident_ids or row.iloc[0]['Incident_ID']}")
             st.rerun()
         except Exception as exc:  # noqa: BLE001
             logger.exception("Manual incident creation failed")

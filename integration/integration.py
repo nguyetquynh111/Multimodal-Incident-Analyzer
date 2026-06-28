@@ -253,7 +253,7 @@ def _first_known(row: Mapping[str, Any], *columns: str) -> str:
 def _text_entity_group(entities: Any, *labels: str) -> str:
     """Extract one label group from text ``Entities`` values.
 
-    Student 5 stores entities as semicolon-delimited groups such as
+    Stores entities as semicolon-delimited groups such as
     ``LOCATION: Oak Street; DATE: 9pm tonight``. Older/simple outputs may store
     only a plain location string, so callers can still fall back to the raw
     ``Entities`` field when no labeled group is present.

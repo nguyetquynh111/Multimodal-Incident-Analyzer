@@ -1,4 +1,4 @@
-"""Text draft-contract tests for Student 5."""
+"""Text draft-contract tests"""
 
 from __future__ import annotations
 

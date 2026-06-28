@@ -172,6 +172,37 @@ def test_upload_incidents_accepts_integration_output_columns(
     assert payload.loc[0, "incident_summary"].startswith("A Low-severity")
 
 
+def test_upload_incidents_can_refresh_ids_before_insert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    insert = MagicMock(return_value={"success": True, "inserted_count": 1, "data": []})
+    monkeypatch.setattr(upload_service, "insert_incidents", insert)
+    monkeypatch.setattr(
+        upload_service,
+        "query_incidents",
+        lambda **_: [{"incident_id": "INC_AUD_001"}],
+    )
+    frame = pd.DataFrame(
+        [
+            {
+                "Incident_ID": "INC_AUD_001",
+                "Source": "Audio",
+                "Event": "Shooting",
+                "Location": "Unknown",
+                "Time": "Unknown",
+                "Severity": "High",
+                "Incident_Summary": "A High-severity Shooting incident was reported via Audio.",
+            }
+        ]
+    )
+
+    summary = upload_service.upload_incidents(frame, refresh_ids=True)
+
+    payload = insert.call_args.args[0]
+    assert payload.loc[0, "incident_id"] == "INC_AUD_002"
+    assert summary["incident_ids"] == ["INC_AUD_002"]
+
+
 def test_query_incidents_applies_filters_and_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

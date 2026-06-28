@@ -4,7 +4,36 @@
 | --- | --- | --- | --- |
 | Group 2 | Class prototype only | June 19, 2026 | June 28, 2026 |
 
-## 1. Core Project Rules
+## 1. Project Scope
+
+Build only the minimal class-prototype MVP for multimodal incident analysis.
+
+Use:
+- Python 3.10
+- Streamlit app UI
+- pandas DataFrames
+- python-dotenv configuration
+- pytest tests
+- Supabase `incidents` table for saved records
+- OpenRouter API only as an optional summary enhancement with deterministic fallback
+- Local or optional configured tools for supported modalities, such as Whisper, FFmpeg, Tesseract, Roboflow, and video/object-detection dependencies
+
+Do not add:
+- production emergency-response claims
+- extra databases or extra Supabase tables
+- login/auth
+- roles or permissions systems
+- raw evidence storage as a required MVP feature
+- calendar sync
+- complex scheduling
+- background job queues
+- unnecessary architecture
+- unsupported upload types such as JSON
+- paid-only API requirements
+
+Keep the project small and simple.
+
+## 2. Core Project Rules
 
 | **Rule** | **Requirement** |
 | --- | --- |
@@ -19,7 +48,7 @@
 | LLM summary is separate | LLM summary code must live in `llm_summarizer/`, not inside extractors or hidden inside Integration |
 | No raw Supabase Storage in MVP | Do not upload raw evidence files to Supabase Storage as a required MVP feature |
 
-## 2. Incident ID Rules
+## 3. Incident ID Rules
 
 Synthetic incident IDs must use this format:
 
@@ -29,7 +58,7 @@ INC_TYPE_NUMBER
 
 `TYPE` must be an approved abbreviation. `NUMBER` must be zero-padded to three digits within each type. Integration generates IDs after row standardization and after `Incident_Summary` is produced, but before Supabase insertion.
 
-### 2.1 Approved Type Abbreviations
+### 3.1 Approved Type Abbreviations
 
 | **Source** | **Abbreviation** | **Example IDs** |
 | --- | --- | --- |
@@ -39,7 +68,7 @@ INC_TYPE_NUMBER
 | Video | VID | INC_VID_001, INC_VID_002 |
 | Text | TXT | INC_TXT_001, INC_TXT_002 |
 
-### 2.2 ID Generation Behavior
+### 3.2 ID Generation Behavior
 
 | **Rule** | **Requirement** |
 | --- | --- |
@@ -49,7 +78,7 @@ INC_TYPE_NUMBER
 | Supabase-aware generation | Before insert, query existing Supabase rows to avoid reusing IDs |
 | Single-user assumption | Simple max-number lookup is acceptable for the class demo |
 
-## 3. Schema Rules
+## 4. Schema Rules
 
 The main Supabase table is named `incidents`. The stored Supabase row and final CSV export must contain these fields:
 
@@ -71,7 +100,7 @@ id, created_at, incident_id, source, event, location, time, severity, incident_s
 
 Dashboard labels may be user-friendly and title-cased for readability, such as Incident_ID, Source, Event, Location, and Severity. These labels map to the lower-case Supabase columns in code.
 
-## 4. Modality DataFrame Rules
+## 5. Modality DataFrame Rules
 
 Each modality returns its exact documented draft columns. A DataFrame can
 contain zero, one, or many rows. Missing values must use `Unknown` or a safe
@@ -81,7 +110,7 @@ default before Integration.
 | --- | --- | --- |
 | Audio | `Call_ID, Transcript, Extracted_Event, Location, Sentiment, Urgency_Score` | Sentiment is `Calm`, `Concerned`, or `Distressed`; urgency is independently scored from 0.0 to 1.0 |
 | PDF | `Report_ID, Incident_Type, Date, Location, Officer, Summary, Suspect_Description, Outcome` | Extract embedded text per page; OCR scanned pages when possible; emit one artifact row per uploaded PDF |
-| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use the fire Roboflow model plus the person model, average valid detection confidences from the model response, bound the result from 0.0 to 1.0, and use labels such as `Fire Scene`, `Smoke Scene`, and `Fire and Smoke Scene`. Confidence is the rounded model-derived average; neutral confidence `0.5` is used only when no detection confidence is available. For an empty detection response, use `General Scene`, the string `None`, and neutral confidence `0.5`; empty OCR text uses `N/A`. OCR runs on the full grayscale image, keeps cleaned lines with at least three alphanumeric characters, and may still populate `Text_Extracted` when Roboflow is unavailable. During Integration, `llm_summarizer.update_image_location(...)` may populate final `Location` only when OCR text contains an explicit place. |
+| Image | `Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score` | Use the fire Roboflow model plus the person model, average valid detection confidences from the model response, bound the result from 0.0 to 1.0, and use labels such as `Fire Scene`, `Smoke Scene`, `Fire and Smoke Scene`, and `Fire and Person Scene`. Confidence is the rounded model-derived average; neutral confidence `0.5` is used only when no detection confidence is available. For an empty detection response, use `General Scene`, the string `None`, and neutral confidence `0.5`; empty OCR text uses `N/A`. OCR runs on the full grayscale image, keeps cleaned lines with at least three alphanumeric characters, and may still populate `Text_Extracted` when Roboflow is unavailable. During Integration, `llm_summarizer.update_image_location(...)` may populate final `Location` only when OCR text contains an explicit place. |
 | Video | `Timestamp, Frame_ID, Event_Detected, Objects, Confidence` | Use `HH:MM:SS`, source-frame-index `FRM_NNN` IDs, motion gating, and documented event logic |
 | Text | `Text_ID, Source, Raw_Text, Sentiment, Entities, Topic` | Preserve `Raw_Text`; unsupported topics use `Other` |
 
@@ -94,7 +123,7 @@ recognized text field are processed by `text/processor.py`. They may produce
 many rows and use `Unknown` for missing values.
 JSON file uploads are not supported in the MVP and must be rejected with a clear message.
 
-## 5. Integration Rules
+## 6. Integration Rules
 
 Integration must accept a pandas DataFrame and `source_type`, not a CSV path. The public function is `integrate_records(draft_df, source_type)`. The public Integration workflow output contract is:
 
@@ -112,7 +141,7 @@ It must not include extra fields at insert time. After insertion, Supabase store
 
 The app may also provide Supabase-backed management actions for already-saved rows. Updates may change `event`, `location`, `time`, `severity`, and `incident_summary`; `incident_id`, `source`, `id`, and `created_at` remain immutable through the UI.
 
-## 6. LLM Summarizer Rules
+## 7. LLM Summarizer Rules
 
 The LLM summarizer is required as a separate folder:
 
@@ -149,7 +178,7 @@ LLM summary rules:
 | Safe output | The summary is for dashboard review, not official investigation or legal conclusions |
 | Validation | Validate required keys, types, and length before accepting model output |
 
-## 7. Severity Rules
+## 8. Severity Rules
 
 | **Signal** | **Severity** |
 | --- | --- |
@@ -162,7 +191,7 @@ LLM summary rules:
 
 Integration first applies event safety/category rules: `Unknown`, `Other`, and `No Activity` are `Low`; configured high-risk event terms are `High`; configured medium-risk event terms are at least `Medium`. It then preserves a valid explicit severity when no event category rule applies, and otherwise maps a confidence or urgency score on a 0–1 scale as `< 0.30 = Low`, `< 0.70 = Medium`, and `>= 0.70 = High`. Severity must always be normalized to exactly `Low`, `Medium`, `High`, or `Unknown` before Supabase insertion. When Event is `Unknown`, Severity must be `Low`, even if an upstream value says otherwise.
 
-## 8. Per-Modality Mapping Rules
+## 9. Per-Modality Mapping Rules
 
 Integration standardizes each input row independently; it does not merge facts
 from different modalities. The current mappings are:
@@ -172,10 +201,10 @@ from different modalities. The current mappings are:
 | Time | PDF uses `Date`; video uses `Timestamp`; structured text uses its explicit time/date fields; unstructured text uses DATE/TIME entities; audio and image use optional draft `Time`/`Timestamp` fields when present, otherwise `Unknown` |
 | Location | Audio and PDF use their `Location`; text uses `Location` or location entities; image uses an optional draft `Location` first and may then use `llm_summarizer.update_image_location(...)`; video uses an optional draft `Location` only |
 | Event | Audio uses `Extracted_Event`; PDF uses `Incident_Type`; image uses `Scene_Type` then objects; video uses `Event_Detected`; text uses `Topic` or structured incident fields |
-| Severity | Apply the normalized event/explicit-severity/confidence rules in section 7 to each mapped row |
+| Severity | Apply the normalized event/explicit-severity/confidence rules in section 8 to each mapped row |
 | Summary | Use integrated final fields only; image OCR text may fill a missing `Location` before summary, but summaries must not quote or narrate raw OCR/source text |
 
-## 9. Fallback Rules
+## 10. Fallback Rules
 
 | **Failure** | **Required Fallback** |
 | --- | --- |
@@ -193,7 +222,7 @@ from different modalities. The current mappings are:
 | OpenRouter fails | Use rule-based summary from `llm_summarizer/fallback.py` |
 | Supabase credentials missing | Show setup guidance and do not crash |
 
-## 10. Logging Rules
+## 11. Logging Rules
 
 Each processing run should log or display the applicable available details:
 - Uploaded filename.
@@ -205,7 +234,7 @@ Each processing run should log or display the applicable available details:
 - Number of Supabase rows inserted after confirmation.
 - Error messages and fallback behavior.
 
-## 11. Testing Rules
+## 12. Testing Rules
 
 Minimum required tests:
 
