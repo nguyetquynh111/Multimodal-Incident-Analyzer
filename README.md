@@ -23,7 +23,8 @@ Video: .mp4, .mov, .mpg, .mpeg (max 5 minutes)
 Text:  .txt, .csv
 ```
 
-JSON uploads are intentionally unsupported.
+## Quick reference output
+[Final merged CSV](integration/output/final_incident_dataset.csv)
 
 ## Quick Start
 
@@ -122,8 +123,6 @@ Set `RUN_SUPABASE_LIVE_TESTS=1` only when valid Supabase credentials are
 configured and a live CRUD round trip is intended.
 
 ## More Docs
-
-- [Deployment](DEPLOYMENT.md)
 - [Product Requirements](docs/PRD.md)
 - [Specifications](docs/specs.md)
 - [Rules](docs/rules.md)
