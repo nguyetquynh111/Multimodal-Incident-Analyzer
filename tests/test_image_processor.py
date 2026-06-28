@@ -52,7 +52,7 @@ def test_sample_image_returns_exact_draft_schema_without_network_calls(
     assert list(frame.columns) == processor.ARTIFACT_COLUMNS
     assert frame.iloc[0].to_dict() == {
         "Image_ID": "IMG_001",
-        "Scene_Type": "Fire and Smoke Scene",
+        "Scene_Type": "Fire and Person Scene",
         "Objects_Detected": "fire, person",
         "Text_Extracted": "Main Street",
         "Confidence_Score": 0.81,
@@ -224,7 +224,7 @@ def test_roboflow_client_setup_failure_uses_fallback(monkeypatch: pytest.MonkeyP
 @pytest.mark.parametrize(
     ("labels", "expected"),
     [
-        (["fire", "person"], "Fire and Smoke Scene"),
+        (["fire", "person"], "Fire and Person Scene"),
         (["fire", "smoke"], "Fire and Smoke Scene"),
         (["fire"], "Fire Scene"),
         (["smoke"], "Smoke Scene"),

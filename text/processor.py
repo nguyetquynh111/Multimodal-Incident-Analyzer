@@ -1,8 +1,5 @@
 """Text processor for social posts, news blurbs, and crime-report rows.
 
-Produces the exact Student 5 draft schema used by Integration:
-``Text_ID, Source, Raw_Text, Sentiment, Entities, Topic``.
-
 The processor preserves ``Raw_Text`` and analyzes a cleaned copy. It uses spaCy
 NER when an English model is installed, then applies deterministic regex/rule
 fallbacks so the class demo works without downloading extra models. ``Entities``
