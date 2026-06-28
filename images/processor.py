@@ -54,7 +54,7 @@ def _load_image_environment() -> None:
 def classify_scene(labels: list[str]) -> str:
     labels_lower = {label.casefold() for label in labels}
     if "fire" in labels_lower and "person" in labels_lower:
-        return "Fire and Smoke Scene"
+        return "Fire and Person Scene"
     if "fire" in labels_lower and "smoke" in labels_lower:
         return "Fire and Smoke Scene"
     if "fire" in labels_lower:
