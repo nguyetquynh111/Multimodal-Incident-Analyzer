@@ -1,9 +1,4 @@
-"""Tests for the LLM summarizer (rules.md section 11: test_llm_summarizer.py).
-
-Covers tickets T-022/T-023/T-024. Every test injects a fake ``llm_call`` (or
-disables the LLM), so NO test ever makes a real network call or needs an API
-key.
-"""
+"""Tests for the LLM summarizer."""
 
 from __future__ import annotations
 
@@ -29,7 +24,6 @@ SAMPLE_ROW = {
     "raw_text": "A robbery occurred near Main Street on June 20, 2026.",
 }
 
-# Exactly the shape the PDF processor emits when nothing is extractable.
 ALL_UNKNOWN_ROW = {
     "source": "Unknown",
     "source_type": "PDF",
@@ -68,7 +62,6 @@ class FallbackTests(unittest.TestCase):
         _assert_valid_contract(self, result)
         self.assertEqual(result["summary_method"], schemas.SUMMARY_METHOD_RULE_BASED)
         self.assertEqual(result["summary_model"], schemas.RULE_BASED_MODEL_LABEL)
-        # No invented detail leaks in from an all-Unknown row.
         self.assertNotIn("None", result["incident_summary"])
 
     def test_fallback_uses_known_fields(self) -> None:
@@ -98,7 +91,9 @@ class SummarizeIncidentTests(unittest.TestCase):
 
         def fake_ok(request: dict) -> dict:
             self.assertIn("messages", request)
-            rendered_prompt = "\n".join(message["content"] for message in request["messages"])
+            rendered_prompt = "\n".join(
+                message["content"] for message in request["messages"]
+            )
             self.assertNotIn("raw_text", rendered_prompt)
             self.assertNotIn(SAMPLE_ROW["raw_text"], rendered_prompt)
             return _ok_response(text)
@@ -120,7 +115,6 @@ class SummarizeIncidentTests(unittest.TestCase):
         _assert_valid_contract(self, result)
         self.assertEqual(result["summary_method"], schemas.SUMMARY_METHOD_ERROR)
         self.assertEqual(result["summary_model"], schemas.ERROR_MODEL_LABEL)
-        # Falls back to the deterministic summary, so real fields still appear.
         self.assertIn("Theft / Robbery", result["incident_summary"])
 
     @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
@@ -147,13 +141,17 @@ class SummarizeIncidentTests(unittest.TestCase):
 class ExtractLocationFromTextTests(unittest.TestCase):
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_non_location_returns_unknown_without_key(self) -> None:
-        updated = update_image_location({"Text_Extracted": "random OCR glare and smoke"})
+        updated = update_image_location(
+            {"Text_Extracted": "random OCR glare and smoke"}
+        )
         self.assertNotIn("Location", updated)
 
     @mock.patch.dict(os.environ, {}, clear=True)
     def test_rule_based_location_extracts_highway_without_llm_key(self) -> None:
         updated = update_image_location(
-            {"Text_Extracted": 'ALABAMA BANKHEAD HIGHWAY re P e — No ~ A, we ome + me Beer"" aes Bee no Pad'}
+            {
+                "Text_Extracted": 'ALABAMA BANKHEAD HIGHWAY re P e — No ~ A, we ome + me Beer"" aes Bee no Pad'
+            }
         )
         self.assertEqual(updated["Location"], "Alabama Bankhead Highway")
 
@@ -188,7 +186,9 @@ class ExtractLocationFromTextTests(unittest.TestCase):
         def fake_bad(_request: dict) -> dict:
             return _ok_response("word " * 80)
 
-        updated = update_image_location({"Text_Extracted": "news watermark"}, llm_call=fake_bad)
+        updated = update_image_location(
+            {"Text_Extracted": "news watermark"}, llm_call=fake_bad
+        )
         self.assertNotIn("Location", updated)
 
     @mock.patch.dict(os.environ, LLM_CONFIGURED_ENV, clear=True)
@@ -196,7 +196,9 @@ class ExtractLocationFromTextTests(unittest.TestCase):
         def fake_domain(_request: dict) -> dict:
             return _ok_response("Chinanews.com")
 
-        updated = update_image_location({"Text_Extracted": "Chinanews.com"}, llm_call=fake_domain)
+        updated = update_image_location(
+            {"Text_Extracted": "Chinanews.com"}, llm_call=fake_domain
+        )
         self.assertNotIn("Location", updated)
 
 

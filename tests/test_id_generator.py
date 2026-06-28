@@ -16,9 +16,12 @@ from integration.integration import (
 @pytest.mark.parametrize(
     ("source_type", "expected"),
     [
-        ("audio", "INC_AUD_001"), ("pdf", "INC_PDF_001"),
-        ("image", "INC_IMG_001"), ("video", "INC_VID_001"),
-        ("text", "INC_TXT_001"), ("csv", "INC_TXT_001"),
+        ("audio", "INC_AUD_001"),
+        ("pdf", "INC_PDF_001"),
+        ("image", "INC_IMG_001"),
+        ("video", "INC_VID_001"),
+        ("text", "INC_TXT_001"),
+        ("csv", "INC_TXT_001"),
     ],
 )
 def test_ids_use_the_documented_source_prefix(source_type: str, expected: str) -> None:
@@ -34,10 +37,18 @@ def test_next_id_increments_only_within_its_source_type() -> None:
 
 
 def test_assignment_increments_each_source_independently() -> None:
-    rows = pd.DataFrame([
-        {"source": "Audio"}, {"source": "Text"}, {"source": "Audio"},
-    ])
+    rows = pd.DataFrame(
+        [
+            {"source": "Audio"},
+            {"source": "Text"},
+            {"source": "Audio"},
+        ]
+    )
 
     result = assign_incident_ids(rows, existing_ids=["INC_AUD_007", "INC_TXT_003"])
 
-    assert result["incident_id"].tolist() == ["INC_AUD_008", "INC_TXT_004", "INC_AUD_009"]
+    assert result["incident_id"].tolist() == [
+        "INC_AUD_008",
+        "INC_TXT_004",
+        "INC_AUD_009",
+    ]

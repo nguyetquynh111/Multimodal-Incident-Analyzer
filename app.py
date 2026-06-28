@@ -1,387 +1,63 @@
-"""Streamlit UI for the documented single-file incident workflow."""
+"""Streamlit UI for the incident workflow."""
 
 from __future__ import annotations
 
-import atexit
 import logging
-import os
-import shutil
-import sys
-import tempfile
-import threading
 from pathlib import Path
 
-import altair as alt
 import pandas as pd
 import streamlit as st
+
+st.set_page_config(
+    page_title="Incident Analyzer",
+    page_icon=":material/emergency:",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 from integration import integration as ig
 from cloud_deployment.supabase_client import (
     delete_incident,
-    query_incidents,
     update_incident,
     validate_incident_key,
 )
 from cloud_deployment.exporter import export_incidents_csv
 from cloud_deployment.upload_service import upload_incidents
-from integration.dashboard_time import incident_dates
-
-st.set_page_config(
-    page_title="Incident Analyzer", page_icon=":material/emergency:",
-    layout="wide", initial_sidebar_state="expanded",
+from integration.app_support import (
+    ACCENT,
+    CSS as _CSS,
+    SEVERITY_ORDER,
+    SEV_COLORS,
+    SOURCE_ICON,
+    bridge_streamlit_secrets as _bridge_streamlit_secrets,
+    build_queued_incidents as _build_queued_incidents,
+    clear_ingest_state as _clear_ingest_state,
+    cleanup_temp_path as _cleanup_temp_path,
+    existing_incident_ids,
+    friendly_error as _friendly_error,
+    hbar as _hbar,
+    heatmap_source_severity as _heatmap_source_severity,
+    icon as _icon,
+    known_locations as _known_locations,
+    load_incidents,
+    manual_summary_override as _manual_summary_override,
+    page_head as _page_head,
+    queue_review as _queue_review,
+    queued_review_status as _queued_review_status,
+    safe_upload_filename as _safe_upload_filename,
+    save_upload_to_tempdir as _save_upload_to_tempdir,
+    section as _section,
+    severity_by_source as _severity_by_source,
+    severity_donut as _severity_donut,
+    start_whisper_preload as _start_whisper_preload,
+    stat as _stat,
+    style_table as _style_table,
+    sync_current_review as _sync_current_review,
+    timeline as _timeline,
+    top_locations as _top_locations,
 )
 
-SEVERITY_ORDER = list(ig.SEVERITY_LEVELS)  # Low, Medium, High
-SEV_COLORS = {"Low": "#16A34A", "Medium": "#D97706", "High": "#DC2626", "Unknown": "#64748B"}
-# Material Symbol names per modality.
-SOURCE_ICON = {
-    "Audio": "mic",
-    "PDF": "description",
-    "Image": "image",
-    "Video": "movie",
-    "Text": "forum",
-    "CSV": "table",
-}
-FINAL_COLS = list(ig.FINAL_CSV_COLUMNS)
-
-ACCENT = "#4F46E5"
 logger = logging.getLogger(__name__)
-_TEMP_UPLOAD_DIRS: set[Path] = getattr(sys, "_mia_temp_upload_dirs", set())
-setattr(sys, "_mia_temp_upload_dirs", _TEMP_UPLOAD_DIRS)
-
-
-# --------------------------------------------------------------------------- #
-# Styling
-# --------------------------------------------------------------------------- #
-_CSS = """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=block');
-
-html, body, [class*="css"], [data-testid="stMarkdownContainer"] { font-family:'Inter',sans-serif; }
-.ms { font-family:'Material Symbols Rounded'; font-size:20px; line-height:1; vertical-align:middle; }
-
-/* Hide only the menu, footer, and Deploy button — never the header or the
-   sidebar collapse/expand controls (those live in the header region). */
-#MainMenu, footer, [data-testid="stAppDeployButton"] { display:none !important; }
-.stApp { background:#F6F7FB; }
-.block-container { padding-top:4.5rem; padding-bottom:3rem; max-width:1180px; }
-
-/* page header */
-.page-head { display:flex; align-items:center; gap:.9rem; margin-bottom:1.4rem; }
-.chip { width:46px; height:46px; border-radius:13px; display:flex; align-items:center; justify-content:center;
-        background:linear-gradient(135deg,#4F46E5,#7C3AED); color:#fff; box-shadow:0 8px 18px -8px rgba(79,70,229,.6); }
-.chip .ms { font-size:26px; color:#fff; }
-.ph-title { font-size:1.4rem; font-weight:800; letter-spacing:-.02em; color:#0F172A; line-height:1.15; }
-.ph-sub { font-size:.9rem; color:#64748B; margin-top:1px; }
-
-/* cards */
-.statcard, .mcard { background:#fff; border:1px solid #ECEEF5; border-radius:16px;
-    box-shadow:0 1px 3px rgba(16,24,40,.05); }
-.statcard { padding:.85rem 1.1rem; }
-.statrow { display:flex; align-items:center; gap:.4rem; }
-.statlabel { font-size:.8rem; color:#64748B; font-weight:600; }
-.statval { font-size:1.7rem; font-weight:800; margin-top:.15rem; line-height:1.1; }
-.mcard { padding:1rem .6rem; text-align:center; }
-.mcard .ms { font-size:26px; color:#6366F1; }
-.mname { font-weight:700; font-size:.9rem; color:#0F172A; margin-top:.3rem; }
-.mcount { color:#64748B; font-size:.8rem; }
-
-[data-testid="stMetric"] { background:#fff; border:1px solid #ECEEF5; border-radius:16px;
-    padding:1rem 1.15rem; box-shadow:0 1px 3px rgba(16,24,40,.05); }
-
-/* sidebar */
-[data-testid="stSidebar"] { background:#0F172A; }
-[data-testid="stSidebar"] * { color:#E2E8F0; }
-.sb-brand { display:flex; align-items:center; gap:.5rem; font-size:1.12rem; font-weight:800; color:#fff; }
-.sb-brand .ms { font-size:22px; color:#A5B4FC; }
-.sb-sub { font-size:.78rem; color:#94A3B8; margin:.1rem 0 .6rem; }
-[data-testid="stSidebar"] .stButton>button { justify-content:flex-start; background:transparent;
-    border:none; color:#CBD5E1; font-weight:600; padding:.45rem .7rem; }
-[data-testid="stSidebar"] .stButton>button:hover { background:#1E293B; color:#fff; }
-[data-testid="stSidebar"] .stButton>button[kind="primary"] { background:#4F46E5; color:#fff; }
-
-/* badges */
-.badge { display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .7rem; border-radius:999px;
-    font-size:.76rem; font-weight:700; }
-.badge .ms { font-size:15px; }
-.b-ok { background:#DCFCE7; color:#166534; } .b-bad { background:#FEE2E2; color:#991B1B; }
-.b-info { background:#EEF2FF; color:#4338CA; }
-
-.stButton>button, .stDownloadButton>button { border-radius:10px; font-weight:600; }
-.section { font-size:.74rem; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
-    color:#64748B; margin:.4rem 0 .4rem; }
-</style>
-"""
-
-
-def _icon(name: str, **style) -> str:
-    css = ";".join(f"{k.replace('_','-')}:{v}" for k, v in style.items())
-    return f'<span class="ms" style="{css}">{name}</span>'
-
-
-def _page_head(icon: str, title: str, subtitle: str) -> None:
-    st.markdown(
-        f'<div class="page-head"><div class="chip">{_icon(icon)}</div>'
-        f'<div><div class="ph-title">{title}</div><div class="ph-sub">{subtitle}</div></div></div>',
-        unsafe_allow_html=True,
-    )
-
-
-def _section(label: str) -> None:
-    st.markdown(f'<div class="section">{label}</div>', unsafe_allow_html=True)
-
-
-def _stat(col, label: str, value, color: str = "#0F172A", icon: str | None = None) -> None:
-    head = _icon(icon, color=color, font_size="18px") if icon else ""
-    col.markdown(
-        f'<div class="statcard"><div class="statrow">{head}<span class="statlabel">{label}</span></div>'
-        f'<div class="statval" style="color:{color}">{value}</div></div>',
-        unsafe_allow_html=True,
-    )
-
-
-# --------------------------------------------------------------------------- #
-# Supabase helpers
-# --------------------------------------------------------------------------- #
-def _friendly_error(error: Exception, action: str) -> str:
-    """Return useful guidance without exposing implementation details."""
-
-    message = str(error).lower()
-    if any(term in message for term in ("ffmpeg", "whisper", "transcrib", "audio")):
-        return "We couldn't transcribe this audio. Please confirm the file plays correctly and try again."
-    if any(term in message for term in ("unsupported", "file type", "extension")):
-        return "This file type isn't supported yet. Please choose one of the listed evidence formats."
-    if any(term in message for term in ("five-minute", "duration", "longer than 5")):
-        return "This video is longer than five minutes, so it can't be processed in this prototype."
-    if any(term in message for term in ("supabase", "postgrest", "connection", "network", "timeout")):
-        return "Incident records are temporarily unavailable. Please try again in a moment."
-    return f"We couldn't {action}. Please check your file or entries and try again."
-
-
-def load_incidents() -> pd.DataFrame:
-    rows = query_incidents(limit=1000)
-    df = pd.DataFrame(rows)
-    if not df.empty and "id" in df.columns:
-        df = df.sort_values("id", ascending=False, ignore_index=True)
-    return df
-
-
-def existing_incident_ids() -> list:
-    try:
-        return [r.get("incident_id") for r in query_incidents(limit=1000) if r.get("incident_id") is not None]
-    except Exception as exc:
-        logger.warning("Could not load existing incident IDs; using local counters. %s", type(exc).__name__)
-        return []
-
-
-def _safe_upload_filename(uploaded) -> str:
-    """Return a basename-only filename safe to place inside a temp directory."""
-
-    filename = Path(str(getattr(uploaded, "name", ""))).name.strip()
-    return filename or "uploaded_evidence"
-
-
-def _save_upload_to_tempdir(uploaded) -> Path:
-    tmpdir = Path(tempfile.mkdtemp(prefix="incident_"))
-    _TEMP_UPLOAD_DIRS.add(tmpdir.resolve())
-    path = tmpdir / _safe_upload_filename(uploaded)
-    path.write_bytes(uploaded.getbuffer())
-    return path
-
-
-def _cleanup_temp_path(path_value: str | os.PathLike[str] | None) -> None:
-    """Remove app-created temp upload directories without touching user files."""
-
-    if not path_value:
-        return
-    try:
-        path = Path(path_value).resolve()
-        parent = path.parent
-        if parent.name.startswith("incident_") and parent.parent == Path(tempfile.gettempdir()).resolve():
-            shutil.rmtree(parent, ignore_errors=True)
-            _TEMP_UPLOAD_DIRS.discard(parent)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("Temp upload cleanup skipped for %s: %s", path_value, type(exc).__name__)
-
-
-def _clear_ingest_state() -> None:
-    result = st.session_state.pop("ingest", None)
-    if isinstance(result, dict):
-        _cleanup_temp_path(result.get("path"))
-
-
-def _cleanup_registered_temp_uploads() -> None:
-    for tmpdir in list(_TEMP_UPLOAD_DIRS):
-        shutil.rmtree(tmpdir, ignore_errors=True)
-        _TEMP_UPLOAD_DIRS.discard(tmpdir)
-
-
-if not getattr(sys, "_mia_temp_cleanup_registered", False):
-    atexit.register(_cleanup_registered_temp_uploads)
-    setattr(sys, "_mia_temp_cleanup_registered", True)
-
-
-# --------------------------------------------------------------------------- #
-# Presentation helpers
-# --------------------------------------------------------------------------- #
-def _style_table(display_df: pd.DataFrame):
-    def sev(value):
-        color = SEV_COLORS.get(value)
-        return f"background-color: {color}1A; color: {color}; font-weight: 700;" if color else ""
-
-    styler = display_df.style
-    if "Severity" in display_df.columns:
-        styler = styler.map(sev, subset=["Severity"])
-    if "severity" in display_df.columns:
-        styler = styler.map(sev, subset=["severity"])
-    return styler
-
-
-def _review_queue() -> dict[str, dict]:
-    """Return reviews collected in this browser session, keyed by filename."""
-
-    return st.session_state.setdefault("review_queue", {})
-
-
-def _queue_review(filename: str, source_type: str, draft: pd.DataFrame) -> None:
-    """Save a completed review so it can be included in the master UNION."""
-
-    queue = _review_queue()
-    previous = queue.get(filename)
-    has_changed = (
-        previous is None
-        or previous["source_type"] != source_type
-        or not previous["draft"].equals(draft)
-    )
-    queue[filename] = {"source_type": source_type, "draft": draft.copy()}
-    if has_changed:
-        # A previously combined result is stale after a new or updated review.
-        st.session_state.pop("master", None)
-
-
-def _sync_current_review() -> None:
-    """Include the currently displayed review in the session's master queue."""
-
-    result = st.session_state.get("ingest")
-    if not result or "draft" not in result or "filename" not in result:
-        return
-    source_type = result.get("source_type") or ig.detect_source_type(result["filename"])
-    if source_type:
-        _queue_review(result["filename"], source_type, result["draft"])
-
-
-def _queued_review_status() -> dict[str, int]:
-    status = {source_type: 0 for source_type in ig.MODALITIES}
-    for item in _review_queue().values():
-        status[item["source_type"]] += 1
-    return status
-
-
-def _build_queued_incidents(existing_ids: list) -> pd.DataFrame:
-    """Integrate and UNION each queued modality review into one master frame."""
-
-    frames: list[pd.DataFrame] = []
-    used_ids = list(existing_ids)
-    for filename, item in _review_queue().items():
-        frame = ig.integrate_records(
-            item["draft"], item["source_type"], used_ids, source_filename=filename
-        )
-        frames.append(frame)
-        used_ids.extend(frame["Incident_ID"].tolist())
-
-    if not frames:
-        return pd.DataFrame(columns=list(ig.INTEGRATION_OUTPUT_COLUMNS))
-    return pd.concat(frames, ignore_index=True)
-
-
-def _severity_donut(view: pd.DataFrame) -> alt.Chart:
-    counts = (
-        view["severity"].value_counts().reindex(SEVERITY_ORDER).fillna(0)
-        .rename_axis("Severity").reset_index(name="Count")
-    )
-    return (
-        alt.Chart(counts).mark_arc(innerRadius=58, cornerRadius=4).encode(
-            theta="Count:Q",
-            color=alt.Color(
-                "Severity:N",
-                scale=alt.Scale(domain=SEVERITY_ORDER, range=[SEV_COLORS[s] for s in SEVERITY_ORDER]),
-                legend=alt.Legend(orient="bottom", title=None),
-            ),
-            tooltip=["Severity", "Count"],
-        ).properties(height=250)
-    )
-
-
-def _hbar(series: pd.Series, label: str, color: str = "#6366F1") -> alt.Chart:
-    df = series.rename_axis(label).reset_index(name="Count")
-    return (
-        alt.Chart(df).mark_bar(cornerRadiusEnd=5, color=color).encode(
-            x=alt.X("Count:Q", title=None),
-            y=alt.Y(f"{label}:N", sort="-x", title=None),
-            tooltip=[label, "Count"],
-        ).properties(height=250)
-    )
-
-
-def _severity_scale() -> alt.Scale:
-    return alt.Scale(domain=SEVERITY_ORDER, range=[SEV_COLORS[s] for s in SEVERITY_ORDER])
-
-
-def _severity_by_source(view: pd.DataFrame) -> alt.Chart:
-    """Stacked bar: severity composition within each modality."""
-    g = view.groupby(["source", "severity"], as_index=False).size().rename(columns={"size": "Count"})
-    return (
-        alt.Chart(g).mark_bar(cornerRadiusEnd=3).encode(
-            x=alt.X("source:N", title=None, sort="-y"),
-            y=alt.Y("Count:Q", title=None),
-            color=alt.Color("severity:N", scale=_severity_scale(), legend=alt.Legend(orient="bottom", title=None)),
-            tooltip=["source", "severity", "Count"],
-        ).properties(height=290)
-    )
-
-
-def _heatmap_source_severity(view: pd.DataFrame) -> alt.Chart:
-    """Source × severity matrix with counts."""
-    g = view.groupby(["source", "severity"], as_index=False).size().rename(columns={"size": "Count"})
-    base = alt.Chart(g).encode(
-        x=alt.X("severity:N", sort=SEVERITY_ORDER, title=None),
-        y=alt.Y("source:N", title=None),
-    )
-    heat = base.mark_rect().encode(
-        color=alt.Color("Count:Q", scale=alt.Scale(scheme="purpleblue"), legend=None),
-        tooltip=["source", "severity", "Count"],
-    )
-    text = base.mark_text(fontWeight="bold").encode(
-        text="Count:Q",
-        color=alt.condition("datum.Count > 1", alt.value("white"), alt.value("#334155")),
-    )
-    return (heat + text).properties(height=250)
-
-
-def _known_locations(view: pd.DataFrame) -> pd.DataFrame:
-    return view[~view["location"].astype(str).str.lower().isin(["unknown", "n/a", "nan", ""])]
-
-
-def _top_locations(view: pd.DataFrame):
-    counts = _known_locations(view)["location"].value_counts().head(8)
-    return _hbar(counts, "Location", color="#0EA5E9") if not counts.empty else None
-
-
-def _timeline(view: pd.DataFrame):
-    t = view.copy()
-    t["Date"] = incident_dates(t)
-    t = t.dropna(subset=["Date"])
-    if t.empty:
-        return None
-    g = t.groupby("Date", as_index=False).size().rename(columns={"size": "Count"})
-    return (
-        alt.Chart(g).mark_area(line={"color": "#6366F1"}, opacity=0.25, color="#A5B4FC").encode(
-            x=alt.X("Date:T", title="Incident date"),
-            y=alt.Y("Count:Q", title=None),
-            tooltip=["Date", "Count"],
-        ).properties(height=240)
-    )
 
 
 # --------------------------------------------------------------------------- #
@@ -405,6 +81,7 @@ def _sentiment_badge(sentiment: str) -> str:
 
 def _show_audio_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> None:
     import re as _re
+
     if file_path and Path(file_path).exists():
         st.audio(file_path)
     elif file_path:
@@ -415,12 +92,21 @@ def _show_audio_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -
 
     score = float(row.get("Urgency_Score", 0) or 0)
     label = "Distressed" if score >= 0.65 else "Concerned" if score >= 0.40 else "Calm"
-    color = SEV_COLORS["High"] if score >= 0.65 else SEV_COLORS["Medium"] if score >= 0.40 else SEV_COLORS["Low"]
+    color = (
+        SEV_COLORS["High"]
+        if score >= 0.65
+        else SEV_COLORS["Medium"]
+        if score >= 0.40
+        else SEV_COLORS["Low"]
+    )
     sentiment = str(row.get("Sentiment", ""))
 
     col_u, col_s = st.columns(2)
     with col_u:
-        st.markdown(f'**Urgency — <span style="color:{color}">{label}</span>** `{score:.2f}`', unsafe_allow_html=True)
+        st.markdown(
+            f'**Urgency — <span style="color:{color}">{label}</span>** `{score:.2f}`',
+            unsafe_allow_html=True,
+        )
         st.progress(min(1.0, score))
     with col_s:
         st.markdown("**Sentiment**")
@@ -429,9 +115,26 @@ def _show_audio_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -
     transcript = str(row.get("Transcript", ""))
     if transcript and transcript.lower() not in ("unknown", "nan", ""):
         incident_words = [
-            "fire", "shot", "shots", "fight", "accident", "robbery", "assault",
-            "emergency", "help", "police", "ambulance", "knife", "gun", "dead",
-            "injured", "hurt", "bleeding", "attack", "stolen", "crash",
+            "fire",
+            "shot",
+            "shots",
+            "fight",
+            "accident",
+            "robbery",
+            "assault",
+            "emergency",
+            "help",
+            "police",
+            "ambulance",
+            "knife",
+            "gun",
+            "dead",
+            "injured",
+            "hurt",
+            "bleeding",
+            "attack",
+            "stolen",
+            "crash",
         ]
         highlighted = transcript
         for word in incident_words:
@@ -455,15 +158,23 @@ def _show_image_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -
     import html as _html
 
     if file_path and Path(file_path).exists():
-        detections = draft_df.attrs.get("image_detections", []) if isinstance(draft_df, pd.DataFrame) else []
+        detections = (
+            draft_df.attrs.get("image_detections", [])
+            if isinstance(draft_df, pd.DataFrame)
+            else []
+        )
         try:
             from images.processor import annotate_image_with_detections
 
-            annotated_image = annotate_image_with_detections(file_path, detections=detections)
+            annotated_image = annotate_image_with_detections(
+                file_path, detections=detections
+            )
             has_boxes = bool(detections)
             st.image(
                 annotated_image,
-                caption="Uploaded image with detection boxes" if has_boxes else "Uploaded image",
+                caption="Uploaded image with detection boxes"
+                if has_boxes
+                else "Uploaded image",
                 width="stretch",
             )
         except Exception as exc:  # noqa: BLE001
@@ -497,7 +208,7 @@ def _show_image_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -
     if objects.lower() not in ("unknown", "nan", ""):
         chips = "".join(
             f'<span style="display:inline-block;background:#EDE9FE;color:#5B21B6;'
-            f'padding:3px 9px;margin:2px 3px;border-radius:999px;'
+            f"padding:3px 9px;margin:2px 3px;border-radius:999px;"
             f'font-size:.8rem;font-weight:700">{_html.escape(item.strip())}</span>'
             for item in objects.split(",")
             if item.strip()
@@ -510,9 +221,9 @@ def _show_image_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -
         st.markdown("**Text found in image**")
         st.markdown(
             f'<div style="background:#F8FAFC;border-left:4px solid {ACCENT};'
-            f'border-radius:0 8px 8px 0;padding:12px 16px;font-size:.9rem;'
+            f"border-radius:0 8px 8px 0;padding:12px 16px;font-size:.9rem;"
             f'line-height:1.7;color:#334155;white-space:pre-wrap">'
-            f'{_html.escape(extracted_text)}</div>',
+            f"{_html.escape(extracted_text)}</div>",
             unsafe_allow_html=True,
         )
 
@@ -533,7 +244,7 @@ def _show_pdf_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> 
         val = str(row.get(field, "Unknown"))
         col.metric(label, val if val not in ("Unknown", "nan", "") else "—")
 
-    # Show full extracted text from the file, falling back to the 240-char Summary
+    # Prefer full extracted text when the source file is still available.
     full_text = ""
     if file_path:
         try:
@@ -546,13 +257,14 @@ def _show_pdf_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> 
         full_text = str(row.get("Summary", ""))
 
     if full_text and full_text.lower() not in ("unknown", "nan", ""):
-        import html as _html, re as _re
+        import html as _html
+        import re as _re
 
         pdf_entities = []
         for etype, val in [
             ("LOCATION", row.get("Location", "")),
-            ("DATE",     row.get("Date", "")),
-            ("PERSON",   row.get("Officer", "")),
+            ("DATE", row.get("Date", "")),
+            ("PERSON", row.get("Officer", "")),
         ]:
             val = str(val).strip()
             if val and val.lower() not in ("unknown", "nan", ""):
@@ -563,13 +275,12 @@ def _show_pdf_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> 
             else _html.escape(full_text)
         )
 
-        # Highlight the exact trigger keywords the processor matched — same patterns
-        # as pdf/processor.py's _INCIDENT_KEYWORDS so the highlight proves the label
+        # Keep UI highlighting aligned with PDF incident keywords.
         _PDF_TRIGGER_PATTERNS = {
-            "Theft / Robbery":    r"\b(?:robber(?:y|ies)|robbed|burglar(?:y|ies|s)?|theft|stolen|shoplift(?:ing|ed)?|larceny)\b",
+            "Theft / Robbery": r"\b(?:robber(?:y|ies)|robbed|burglar(?:y|ies|s)?|theft|stolen|shoplift(?:ing|ed)?|larceny)\b",
             "Assault / Violence": r"\b(?:assault(?:s|ed)?|battery|stabb(?:ing|ed)|shooting|shots fired|homicide|murder)\b",
-            "Fire / Arson":       r"\barson(?:ist)?\b",
-            "Traffic Accident":   r"\b(?:collision|traffic accident|car crash|vehicle crash|hit[- ]and[- ]run)\b",
+            "Fire / Arson": r"\barson(?:ist)?\b",
+            "Traffic Accident": r"\b(?:collision|traffic accident|car crash|vehicle crash|hit[- ]and[- ]run)\b",
             "Public Disturbance": r"\b(?:riot(?:ing|s)?|vandalism|disturbance|trespass(?:ing)?)\b",
         }
         pattern = _PDF_TRIGGER_PATTERNS.get(str(row.get("Incident_Type", "")))
@@ -579,7 +290,7 @@ def _show_pdf_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> 
                 lambda m: (
                     f'<span style="background:#FED7AA;color:#9A3412;'
                     f'border-radius:4px;padding:1px 4px;font-weight:600">'
-                    f'{m.group(0)}</span>'
+                    f"{m.group(0)}</span>"
                 ),
                 highlighted,
                 flags=_re.IGNORECASE,
@@ -588,17 +299,17 @@ def _show_pdf_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> 
         st.markdown("**Extracted text**")
         st.markdown(
             f'<div style="background:#F8FAFC;border-left:4px solid {ACCENT};'
-            f'border-radius:0 8px 8px 0;padding:12px 16px;font-size:.9rem;'
+            f"border-radius:0 8px 8px 0;padding:12px 16px;font-size:.9rem;"
             f'line-height:1.7;color:#334155;white-space:pre-wrap">{highlighted}</div>',
             unsafe_allow_html=True,
         )
 
 
 _ENTITY_COLORS: dict[str, tuple[str, str]] = {
-    "LOCATION":     ("#DBEAFE", "#1D4ED8"),
-    "PERSON":       ("#FCE7F3", "#9D174D"),
+    "LOCATION": ("#DBEAFE", "#1D4ED8"),
+    "PERSON": ("#FCE7F3", "#9D174D"),
     "ORGANIZATION": ("#D1FAE5", "#065F46"),
-    "DATE":         ("#FEF3C7", "#92400E"),
+    "DATE": ("#FEF3C7", "#92400E"),
 }
 
 
@@ -606,7 +317,7 @@ def _entity_chip(etype: str, value: str) -> str:
     bg, fg = _ENTITY_COLORS.get(etype.upper(), ("#F1F5F9", "#334155"))
     return (
         f'<span style="display:inline-block;background:{bg};color:{fg};'
-        f'padding:2px 8px;margin:2px 3px;border-radius:6px;'
+        f"padding:2px 8px;margin:2px 3px;border-radius:6px;"
         f'font-size:.8rem;font-weight:600">{etype}: {value}</span>'
     )
 
@@ -616,7 +327,6 @@ def _highlight_entities_in_text(text: str, entities_raw: str) -> str:
     import re as _re
     import html as _html
 
-    # Parse into [(type, value), ...]
     pairs: list[tuple[str, str]] = []
     for group in entities_raw.split(";"):
         group = group.strip()
@@ -628,13 +338,11 @@ def _highlight_entities_in_text(text: str, entities_raw: str) -> str:
                 if v and len(v) > 2:
                     pairs.append((etype, v))
 
-    # Sort longest value first to avoid partial-match clobbering
+    # Match longer values first to avoid partial replacements.
     pairs.sort(key=lambda p: len(p[1]), reverse=True)
 
-    # Escape HTML in source text first
     escaped = _html.escape(text)
 
-    # Replace each entity value with a highlighted span (case-insensitive, whole-word preferred)
     used: set[str] = set()
     for etype, value in pairs:
         key = value.lower()
@@ -678,10 +386,11 @@ def _show_text_evidence(draft_df: pd.DataFrame) -> None:
                 highlighted = _highlight_entities_in_text(raw_text, entities_raw)
             else:
                 import html as _html
+
                 highlighted = _html.escape(raw_text)
             st.markdown(
                 f'<div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;'
-                f'padding:12px 14px;font-size:.88rem;line-height:1.8;color:#334155;'
+                f"padding:12px 14px;font-size:.88rem;line-height:1.8;color:#334155;"
                 f'white-space:pre-wrap;margin-top:6px">{highlighted}</div>',
                 unsafe_allow_html=True,
             )
@@ -696,19 +405,29 @@ def _show_video_evidence(file_path: str | None, filename: str) -> None:
         st.caption("Source file is no longer available for frame extraction.")
         return
 
-    # Transcode to H.264 MP4 so any input format plays in the browser
+    # Normalize preview format for browser playback.
     cache_key = f"video_bytes_{filename}"
     video_bytes = st.session_state.get(cache_key)
     if video_bytes is None:
-        import subprocess as _sp, tempfile as _tf
+        import subprocess as _sp
+        import tempfile as _tf
+
         with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
             tmp_path = tmp.name
         try:
             result = _sp.run(
                 [
-                    "ffmpeg", "-y", "-i", file_path,
-                    "-vcodec", "libx264", "-acodec", "aac",
-                    "-movflags", "+faststart", tmp_path,
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    file_path,
+                    "-vcodec",
+                    "libx264",
+                    "-acodec",
+                    "aac",
+                    "-movflags",
+                    "+faststart",
+                    tmp_path,
                 ],
                 capture_output=True,
                 timeout=180,
@@ -719,7 +438,11 @@ def _show_video_evidence(file_path: str | None, filename: str) -> None:
                 logger.warning("ffmpeg preview transcode failed for %s.", filename)
                 video_bytes = _Path(file_path).read_bytes()
         except Exception as exc:  # noqa: BLE001
-            logger.warning("ffmpeg preview transcode skipped for %s: %s", filename, type(exc).__name__)
+            logger.warning(
+                "ffmpeg preview transcode skipped for %s: %s",
+                filename,
+                type(exc).__name__,
+            )
             video_bytes = _Path(file_path).read_bytes()
         finally:
             _Path(tmp_path).unlink(missing_ok=True)
@@ -739,32 +462,41 @@ def _show_video_evidence(file_path: str | None, filename: str) -> None:
                 f'<div style="flex:0 0 30%;min-width:200px">'
                 f'<img src="data:image/jpeg;base64,{img_b64}" style="width:100%;border-radius:6px">'
                 f'<div style="font-size:.75rem;color:#64748B;text-align:center;margin-top:3px">{fp.stem}</div>'
-                f'</div>'
+                f"</div>"
             )
         return (
             f'<div style="display:flex;flex-wrap:wrap;gap:10px;max-height:480px;'
             f'overflow-y:auto;padding:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px">'
-            f'{tiles}</div>'
+            f"{tiles}</div>"
         )
 
     if frames_dir is None:
         try:
             from video.processor import process_video_stream
+
             frames_dir = _Path(_tempfile.mkdtemp(prefix="frames_"))
             frame_paths: list[_Path] = []
             status = st.empty()
             gallery = st.empty()
 
-            for _row, frame_path in process_video_stream(file_path, annotated_frames_dir=frames_dir):
+            for _row, frame_path in process_video_stream(
+                file_path, annotated_frames_dir=frames_dir
+            ):
                 if frame_path:
                     frame_paths.append(_Path(frame_path))
                     status.caption(f"Processing… {len(frame_paths)} frames done")
-                    gallery.markdown(_render_gallery(frame_paths), unsafe_allow_html=True)
-                    import time as _time; _time.sleep(0)
+                    gallery.markdown(
+                        _render_gallery(frame_paths), unsafe_allow_html=True
+                    )
+                    import time as _time
+
+                    _time.sleep(0)
 
             status.caption(f"{len(frame_paths)} annotated frames")
             if not frame_paths:
-                gallery.caption("No annotated frames were produced (video may have no motion).")
+                gallery.caption(
+                    "No annotated frames were produced (video may have no motion)."
+                )
             st.session_state[cache_key] = frames_dir
         except Exception as exc:
             st.caption(f"Could not extract frames: {exc}")
@@ -799,39 +531,45 @@ def _show_visual_evidence(
             st.caption("Visual evidence is not available for this modality yet.")
 
 
-def _manual_summary_override(value: object) -> str | None:
-    """Return a real manual summary, ignoring blank/default placeholder values."""
-
-    text = str(value or "").strip()
-    if not text or text.casefold() == "unknown":
-        return None
-    return text
-
-
 # --------------------------------------------------------------------------- #
 # View 1: Ingest & Convert
 # --------------------------------------------------------------------------- #
 def view_ingest() -> None:
-    _page_head("upload_file", "Add Incident", "Choose a file and we'll turn it into a clear incident record.")
+    _page_head(
+        "upload_file",
+        "Add Incident",
+        "Choose a file and we'll turn it into a clear incident record.",
+    )
 
-    uploaded = st.file_uploader("Choose an evidence file", type=ig.supported_extensions())
+    uploaded = st.file_uploader(
+        "Choose an evidence file", type=ig.supported_extensions()
+    )
     if uploaded is None:
-        st.info("You can add an audio recording, document, image, text file, or CSV file.")
+        st.info(
+            "You can add an audio recording, document, image, text file, or CSV file."
+        )
         return
 
     uploaded_filename = _safe_upload_filename(uploaded)
     source_type = ig.detect_source_type(uploaded_filename)
     if source_type is None:
-        st.error("We can't review this file type yet. Please choose an audio, document, image, video, text, or CSV file.")
+        st.error(
+            "We can't review this file type yet. Please choose an audio, document, image, video, text, or CSV file."
+        )
         return
     current_result = st.session_state.get("ingest")
-    if isinstance(current_result, dict) and current_result.get("filename") != uploaded_filename:
+    if (
+        isinstance(current_result, dict)
+        and current_result.get("filename") != uploaded_filename
+    ):
         _clear_ingest_state()
 
     label = ig.source_label(source_type)
     st.markdown(
         f'<span class="badge b-info">{_icon(SOURCE_ICON.get(label, "description"))} '
-        f'Ready to review · {label}</span>', unsafe_allow_html=True)
+        f"Ready to review · {label}</span>",
+        unsafe_allow_html=True,
+    )
     st.write("")
 
     if source_type == "audio":
@@ -869,7 +607,9 @@ def view_ingest() -> None:
         return
 
     final_df = result["final"]
-    st.caption(f"Extractor rows: {len(result['draft'])} · Integrated incident rows: {len(final_df)}")
+    st.caption(
+        f"Extractor rows: {len(result['draft'])} · Integrated incident rows: {len(final_df)}"
+    )
     if final_df.empty:
         st.info("No incidents were found in this evidence. Nothing will be inserted.")
         return
@@ -885,8 +625,15 @@ def view_ingest() -> None:
     if saved_summary:
         incident_ids = ", ".join(saved_summary.get("incident_ids", []))
         suffix = f": {incident_ids}" if incident_ids else ""
-        st.success(f"Added {saved_summary['inserted_count']} incident record(s){suffix}.")
-    elif st.button("Add to incident records", type="primary", icon=":material/cloud_upload:", width="stretch"):
+        st.success(
+            f"Added {saved_summary['inserted_count']} incident record(s){suffix}."
+        )
+    elif st.button(
+        "Add to incident records",
+        type="primary",
+        icon=":material/cloud_upload:",
+        width="stretch",
+    ):
         try:
             summary = upload_incidents(final_df, refresh_ids=True)
             incident_ids = ", ".join(summary.get("incident_ids", []))
@@ -910,7 +657,11 @@ def view_ingest() -> None:
 # View 2: Integrate (Final Integration Task)
 # --------------------------------------------------------------------------- #
 def view_integrate() -> None:
-    _page_head("hub", "Combine Reports", "Bring completed evidence reviews into one organized incident list.")
+    _page_head(
+        "hub",
+        "Combine Reports",
+        "Bring completed evidence reviews into one organized incident list.",
+    )
 
     _sync_current_review()
     status = _queued_review_status()
@@ -926,16 +677,22 @@ def view_integrate() -> None:
             unsafe_allow_html=True,
         )
 
-    st.caption("Counts include every evidence file reviewed during this browser session.")
+    st.caption(
+        "Counts include every evidence file reviewed during this browser session."
+    )
     if sum(status.values()) == 0:
-        st.info("No completed evidence reviews are available yet. Start by adding an evidence file.")
+        st.info(
+            "No completed evidence reviews are available yet. Start by adding an evidence file."
+        )
         return
 
     st.write("")
     if st.button("Combine reports", type="primary", icon=":material/merge:"):
         with st.spinner("Bringing the reports together…"):
             try:
-                st.session_state["master"] = _build_queued_incidents(existing_incident_ids())
+                st.session_state["master"] = _build_queued_incidents(
+                    existing_incident_ids()
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Report combination failed")
                 st.error(_friendly_error(exc, "combine these reports"))
@@ -948,8 +705,11 @@ def view_integrate() -> None:
     _stat(k[0], "Total incidents", len(master), icon="summarize")
     _stat(k[1], "Evidence types", master["Source"].nunique(), color=ACCENT, icon="hub")
     _stat(
-        k[2], "High severity", int(master["Severity"].value_counts().get("High", 0)),
-        color=SEV_COLORS["High"], icon="priority_high",
+        k[2],
+        "High severity",
+        int(master["Severity"].value_counts().get("High", 0)),
+        color=SEV_COLORS["High"],
+        icon="priority_high",
     )
 
     st.write("")
@@ -960,15 +720,20 @@ def view_integrate() -> None:
     cc1, cc2 = st.columns(2)
     with cc1:
         _section("Records per source")
-        st.altair_chart(_hbar(chart_data["source"].value_counts(), "Source"), width="stretch")
+        st.altair_chart(
+            _hbar(chart_data["source"].value_counts(), "Source"), width="stretch"
+        )
     with cc2:
         _section("Severity by source")
         st.altair_chart(_severity_by_source(chart_data), width="stretch")
 
     st.download_button(
-        "Download combined report", master.to_csv(index=False).encode("utf-8"),
-        file_name="final_incident_dataset.csv", mime="text/csv",
-        icon=":material/download:", width="stretch",
+        "Download combined report",
+        master.to_csv(index=False).encode("utf-8"),
+        file_name="final_incident_dataset.csv",
+        mime="text/csv",
+        icon=":material/download:",
+        width="stretch",
     )
 
 
@@ -976,7 +741,11 @@ def view_integrate() -> None:
 # View 3: Dashboard
 # --------------------------------------------------------------------------- #
 def view_dashboard() -> None:
-    _page_head("insights", "Incident Overview", "See priorities, patterns, and recent activity at a glance.")
+    _page_head(
+        "insights",
+        "Incident Overview",
+        "See priorities, patterns, and recent activity at a glance.",
+    )
 
     try:
         df = load_incidents()
@@ -1001,23 +770,51 @@ def view_dashboard() -> None:
         pick_location = c5.text_input("Location", "")
 
     view = df[df["source"].isin(pick_source) & df["severity"].isin(pick_severity)]
-    for column, query in (("Incident_ID", pick_id), ("event", pick_event), ("location", pick_location)):
+    for column, query in (
+        ("Incident_ID", pick_id),
+        ("event", pick_event),
+        ("location", pick_location),
+    ):
         if query:
-            view = view[view[column].astype(str).str.contains(query, case=False, regex=False, na=False)]
+            view = view[
+                view[column]
+                .astype(str)
+                .str.contains(query, case=False, regex=False, na=False)
+            ]
 
     counts = view["severity"].value_counts()
     k = st.columns(4)
     _stat(k[0], "Total incidents", len(view), icon="summarize")
-    _stat(k[1], "High", int(counts.get("High", 0)), color=SEV_COLORS["High"], icon="local_fire_department")
-    _stat(k[2], "Medium", int(counts.get("Medium", 0)), color=SEV_COLORS["Medium"], icon="warning")
-    _stat(k[3], "Low", int(counts.get("Low", 0)), color=SEV_COLORS["Low"], icon="check_circle")
+    _stat(
+        k[1],
+        "High",
+        int(counts.get("High", 0)),
+        color=SEV_COLORS["High"],
+        icon="local_fire_department",
+    )
+    _stat(
+        k[2],
+        "Medium",
+        int(counts.get("Medium", 0)),
+        color=SEV_COLORS["Medium"],
+        icon="warning",
+    )
+    _stat(
+        k[3],
+        "Low",
+        int(counts.get("Low", 0)),
+        color=SEV_COLORS["Low"],
+        icon="check_circle",
+    )
     st.write("")
 
     if view.empty:
         st.info("No incidents match the current filters.")
         return
 
-    tab_overview, tab_breakdown, tab_records = st.tabs(["Overview", "Breakdown", "Records"])
+    tab_overview, tab_breakdown, tab_records = st.tabs(
+        ["Overview", "Breakdown", "Records"]
+    )
 
     with tab_overview:
         c1, c2 = st.columns([1, 1.3])
@@ -1026,7 +823,9 @@ def view_dashboard() -> None:
             st.altair_chart(_severity_donut(view), width="stretch")
         with c2:
             _section("By source")
-            st.altair_chart(_hbar(view["source"].value_counts(), "Source"), width="stretch")
+            st.altair_chart(
+                _hbar(view["source"].value_counts(), "Source"), width="stretch"
+            )
         timeline = _timeline(view)
         if timeline is not None:
             _section("Incidents over time")
@@ -1050,16 +849,24 @@ def view_dashboard() -> None:
                 st.caption("No known locations yet.")
         with c4:
             _section("Top events")
-            st.altair_chart(_hbar(view["event"].value_counts().head(8), "Event", color="#7C3AED"), width="stretch")
+            st.altair_chart(
+                _hbar(view["event"].value_counts().head(8), "Event", color="#7C3AED"),
+                width="stretch",
+            )
 
         known = _known_locations(view)
         if not known.empty:
             _section("Location hotspot table")
             hotspots = (
                 known.groupby("location")
-                .agg(Incidents=("incident_id", "count"), High=("severity", lambda s: int((s == "High").sum())))
-                .reset_index().rename(columns={"location": "Location"})
-                .sort_values(["Incidents", "High"], ascending=False).head(10)
+                .agg(
+                    Incidents=("incident_id", "count"),
+                    High=("severity", lambda s: int((s == "High").sum())),
+                )
+                .reset_index()
+                .rename(columns={"location": "Location"})
+                .sort_values(["Incidents", "High"], ascending=False)
+                .head(10)
             )
             st.dataframe(hotspots, width="stretch", hide_index=True)
 
@@ -1080,8 +887,12 @@ def view_dashboard() -> None:
             disabled=True,
         )
         st.download_button(
-            "Download incident report", export_incidents_csv(),
-            file_name="final_incident_dataset.csv", mime="text/csv", icon=":material/download:")
+            "Download incident report",
+            export_incidents_csv(),
+            file_name="final_incident_dataset.csv",
+            mime="text/csv",
+            icon=":material/download:",
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -1089,7 +900,9 @@ def view_dashboard() -> None:
 # --------------------------------------------------------------------------- #
 @st.dialog("Add incident")
 def _add_incident_dialog(existing_ids: list) -> None:
-    source_type = st.selectbox("Source", list(ig.MODALITIES.keys()), format_func=ig.source_label)
+    source_type = st.selectbox(
+        "Source", list(ig.MODALITIES.keys()), format_func=ig.source_label
+    )
     next_label = ig.generate_next_incident_id(source_type, existing_ids)
     st.caption(f"New incident ID: `{next_label}`")
     event = st.text_input("Event", "Unknown")
@@ -1103,13 +916,17 @@ def _add_incident_dialog(existing_ids: list) -> None:
         placeholder="Leave blank to auto-generate a summary.",
     )
     if st.button("Save", type="primary", icon=":material/save:"):
-        draft = pd.DataFrame([{
-            "Event": event,
-            "Location": location or "Unknown",
-            "Time": time_val or "Unknown",
-            "Severity": severity,
-            "Summary": incident_summary or "Unknown",
-        }])
+        draft = pd.DataFrame(
+            [
+                {
+                    "Event": event,
+                    "Location": location or "Unknown",
+                    "Time": time_val or "Unknown",
+                    "Severity": severity,
+                    "Summary": incident_summary or "Unknown",
+                }
+            ]
+        )
         row = ig.integrate_records(draft, source_type, existing_ids)
         summary_override = _manual_summary_override(incident_summary)
         if summary_override is not None:
@@ -1125,7 +942,11 @@ def _add_incident_dialog(existing_ids: list) -> None:
 
 
 def view_manage() -> None:
-    _page_head("edit_note", "Manage Incidents", "Add new incidents or keep existing details up to date.")
+    _page_head(
+        "edit_note",
+        "Manage Incidents",
+        "Add new incidents or keep existing details up to date.",
+    )
 
     notice = st.session_state.pop("manage_notice", None)
     if notice:
@@ -1147,11 +968,15 @@ def view_manage() -> None:
     df = ig.with_display_ids(df)
 
     with st.expander("Bulk actions", expanded=False):
-        st.caption("Update several incidents at once or remove a group. Incident IDs and sources never change.")
+        st.caption(
+            "Update several incidents at once or remove a group. Incident IDs and sources never change."
+        )
         filter_source_col, filter_severity_col, filter_search_col = st.columns(3)
         available_sources = sorted(df["source"].dropna().unique().tolist())
         available_severities = [
-            severity for severity in SEVERITY_ORDER if severity in df["severity"].unique()
+            severity
+            for severity in SEVERITY_ORDER
+            if severity in df["severity"].unique()
         ]
         bulk_sources = filter_source_col.multiselect(
             "Filter by source",
@@ -1171,21 +996,24 @@ def view_manage() -> None:
         )
 
         filtered = df[
-            df["source"].isin(bulk_sources)
-            & df["severity"].isin(bulk_severities)
+            df["source"].isin(bulk_sources) & df["severity"].isin(bulk_severities)
         ]
         if bulk_search:
             search_mask = pd.Series(False, index=filtered.index)
             for column in ("Incident_ID", "event", "location"):
-                search_mask |= filtered[column].astype(str).str.contains(
-                    bulk_search,
-                    case=False,
-                    regex=False,
-                    na=False,
+                search_mask |= (
+                    filtered[column]
+                    .astype(str)
+                    .str.contains(
+                        bulk_search,
+                        case=False,
+                        regex=False,
+                        na=False,
+                    )
                 )
             filtered = filtered[search_mask]
         target_labels = filtered["Incident_ID"].tolist()
-        st.info(f"{len(target_labels)} of {len(df)} incidents selected by these filters.")
+        st.info(f"{len(target_labels)} of {len(df)} incidents match these filters.")
 
         field_labels = st.multiselect(
             "Fields to update",
@@ -1263,7 +1091,10 @@ def view_manage() -> None:
                         )
                         for field, value in bulk_values.items()
                     }
-                    if ig.normalize_event(payload.get("event", target["event"])) == "Unknown":
+                    if (
+                        ig.normalize_event(payload.get("event", target["event"]))
+                        == "Unknown"
+                    ):
                         payload["severity"] = "Low"
                     update_incident(incident_key, payload)
                 succeeded += 1
@@ -1280,13 +1111,38 @@ def view_manage() -> None:
             return
 
         action = "removed" if do_bulk_remove else "updated"
-        st.session_state["manage_notice"] = f"Successfully {action} {succeeded} incident(s)."
+        st.session_state["manage_notice"] = (
+            f"Successfully {action} {succeeded} incident(s)."
+        )
         st.rerun()
 
     _section("Incident list")
-    st.caption("Edit any unlocked cell. Select Remove for records you no longer need, then apply your changes.")
+    if len(filtered) == len(df):
+        st.caption(
+            "Edit any unlocked cell. Select Remove for records you no longer need, then apply your changes."
+        )
+    else:
+        st.caption(
+            f"Showing {len(filtered)} of {len(df)} incidents matching the filters above. "
+            "Edit any unlocked cell or select Remove, then apply your changes."
+        )
 
-    editable = df.loc[:, ["Incident_ID", "source", "event", "location", "time", "severity", "incident_summary"]].copy()
+    if filtered.empty:
+        st.info("No incidents match the current filters.")
+        return
+
+    editable = filtered.loc[
+        :,
+        [
+            "Incident_ID",
+            "source",
+            "event",
+            "location",
+            "time",
+            "severity",
+            "incident_summary",
+        ],
+    ].copy()
     editable["remove"] = False
 
     with st.form("incident_table_form"):
@@ -1306,11 +1162,19 @@ def view_manage() -> None:
                 "remove",
             ],
             column_config={
-                "Incident_ID": st.column_config.TextColumn("Incident ID", width="small"),
+                "Incident_ID": st.column_config.TextColumn(
+                    "Incident ID", width="small"
+                ),
                 "source": st.column_config.TextColumn("Source", width="small"),
-                "event": st.column_config.TextColumn("Event", width="large", required=True),
-                "location": st.column_config.TextColumn("Location", width="medium", required=True),
-                "time": st.column_config.TextColumn("Time", width="medium", required=True),
+                "event": st.column_config.TextColumn(
+                    "Event", width="large", required=True
+                ),
+                "location": st.column_config.TextColumn(
+                    "Location", width="medium", required=True
+                ),
+                "time": st.column_config.TextColumn(
+                    "Time", width="medium", required=True
+                ),
                 "severity": st.column_config.SelectboxColumn(
                     "Severity",
                     options=SEVERITY_ORDER,
@@ -1348,7 +1212,11 @@ def view_manage() -> None:
     failures: list[str] = []
 
     def clean(value) -> str:
-        return "Unknown" if pd.isna(value) or not str(value).strip() else str(value).strip()
+        return (
+            "Unknown"
+            if pd.isna(value) or not str(value).strip()
+            else str(value).strip()
+        )
 
     for _, row in edited.iterrows():
         label = str(row["Incident_ID"])
@@ -1406,33 +1274,6 @@ def view_manage() -> None:
     st.rerun()
 
 
-# --------------------------------------------------------------------------- #
-# Main
-# --------------------------------------------------------------------------- #
-def _bridge_streamlit_secrets() -> None:
-    try:
-        secrets = dict(st.secrets)
-    except Exception:
-        return
-    for key in ("SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"):
-        if key in secrets and not os.environ.get(key):
-            os.environ[key] = str(secrets[key])
-
-
-@st.cache_resource(show_spinner=False)
-def _start_whisper_preload() -> bool:
-    def load() -> None:
-        try:
-            from audio.transcribe import preload_whisper_model
-
-            preload_whisper_model(quiet=True)
-        except Exception as exc:  # noqa: BLE001
-            logger.info("Whisper preload skipped: %s", type(exc).__name__)
-
-    threading.Thread(target=load, name="whisper-preload", daemon=True).start()
-    return True
-
-
 PAGES = [
     ("Add Incident", ":material/upload_file:", view_ingest),
     ("Combine Reports", ":material/hub:", view_integrate),
@@ -1450,11 +1291,19 @@ def main() -> None:
         st.session_state["page"] = PAGES[0][0]
 
     with st.sidebar:
-        st.markdown(f'<div class="sb-brand">{_icon("local_police")} Incident Analyzer</div>', unsafe_allow_html=True)
-        st.markdown('<div class="sb-sub">Evidence review and incident insights</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="sb-brand">{_icon("local_police")} Incident Analyzer</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="sb-sub">Evidence review and incident insights</div>',
+            unsafe_allow_html=True,
+        )
         for name, icon, _ in PAGES:
             kind = "primary" if st.session_state["page"] == name else "secondary"
-            if st.button(name, icon=icon, width="stretch", type=kind, key=f"nav_{name}"):
+            if st.button(
+                name, icon=icon, width="stretch", type=kind, key=f"nav_{name}"
+            ):
                 st.session_state["page"] = name
                 st.rerun()
 

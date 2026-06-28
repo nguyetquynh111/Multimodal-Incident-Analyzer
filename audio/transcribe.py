@@ -57,7 +57,9 @@ def _resolve_device(configured_device: str | None) -> str:
     return requested
 
 
-def _selected_whisper_settings(model_name: str | None = None) -> tuple[str, str, str | None, str | None]:
+def _selected_whisper_settings(
+    model_name: str | None = None,
+) -> tuple[str, str, str | None, str | None]:
     selected_model = model_name or os.getenv("WHISPER_MODEL", WHISPER_MODEL)
     device = _resolve_device(os.getenv("WHISPER_DEVICE", "auto"))
     language = os.getenv("WHISPER_LANGUAGE", "en").strip() or None
@@ -84,7 +86,9 @@ def _load_whisper(model_name: str, device: str, download_root: str | None) -> An
 def preload_whisper_model(model_name: str | None = None, *, quiet: bool = True) -> None:
     """Download/load the configured Whisper model ahead of the first audio file."""
 
-    selected_model, device, _language, download_root = _selected_whisper_settings(model_name)
+    selected_model, device, _language, download_root = _selected_whisper_settings(
+        model_name
+    )
     if quiet:
         with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
             _load_whisper(selected_model, device, download_root)
@@ -103,10 +107,14 @@ def transcribe_audio(audio_path: str, model_name: str | None = None) -> str:
             "Whisper requires FFmpeg. Install it first (for example: brew install ffmpeg)."
         )
 
-    selected_model, device, language, download_root = _selected_whisper_settings(model_name)
+    selected_model, device, language, download_root = _selected_whisper_settings(
+        model_name
+    )
     model = _load_whisper(selected_model, device, download_root)
     result = model.transcribe(str(path), **_transcribe_options(device, language))
-    transcript = _clean_transcript(result.get("text") if isinstance(result, dict) else result)
+    transcript = _clean_transcript(
+        result.get("text") if isinstance(result, dict) else result
+    )
     if not transcript:
         raise RuntimeError(f"Whisper returned an empty transcript for: {path}")
     return transcript

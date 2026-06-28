@@ -1,8 +1,4 @@
-"""Image processor for the documented five-column image artifact.
-
-Output columns:
-Image_ID, Scene_Type, Objects_Detected, Text_Extracted, Confidence_Score
-"""
+"""Image processor for the five-column image draft."""
 
 from __future__ import annotations
 
@@ -55,12 +51,8 @@ def classify_scene(labels: list[str]) -> str:
     labels_lower = {label.casefold() for label in labels}
     if "fire" in labels_lower and "person" in labels_lower:
         return "Fire and Person Scene"
-    if "fire" in labels_lower and "smoke" in labels_lower:
-        return "Fire and Smoke Scene"
     if "fire" in labels_lower:
         return "Fire Scene"
-    if "smoke" in labels_lower:
-        return "Smoke Scene"
     if "person" in labels_lower:
         return "General Scene"
     return "General Scene"
@@ -91,7 +83,7 @@ def _env_text(name: str, default: str) -> str:
 
 
 def _roboflow_model_specs() -> tuple[RoboflowModelSpec, ...]:
-    """Return the configured fire/smoke and person-detection model calls."""
+    """Return the configured fire and person-detection model calls."""
 
     return (
         RoboflowModelSpec(_env_text("ROBOFLOW_MODEL_ID", DEFAULT_MODEL_ID)),
@@ -125,7 +117,9 @@ def _infer_detection_result(img_path: str) -> tuple[list[dict[str, Any]], bool]:
     _load_image_environment()
     api_key = os.getenv("ROBOFLOW_API_KEY", "").strip()
     if not api_key:
-        logger.warning("ROBOFLOW_API_KEY is not configured; using image detection fallback.")
+        logger.warning(
+            "ROBOFLOW_API_KEY is not configured; using image detection fallback."
+        )
         return [], False
 
     client = _build_roboflow_client(api_key, Path(img_path).name)
@@ -180,7 +174,9 @@ def _bounded_confidence(value: Any) -> float | None:
     return max(0.0, min(1.0, score))
 
 
-def _confidence_score(detections: list[dict[str, Any]], *, fallback_confidence: float) -> float:
+def _confidence_score(
+    detections: list[dict[str, Any]], *, fallback_confidence: float
+) -> float:
     confidences = [
         score
         for det in detections
@@ -198,7 +194,9 @@ def _labels_and_confidence(
     fallback_confidence: float,
 ) -> tuple[list[str], float]:
     labels = [str(det.get("class")) for det in detections if det.get("class")]
-    return labels, _confidence_score(detections, fallback_confidence=fallback_confidence)
+    return labels, _confidence_score(
+        detections, fallback_confidence=fallback_confidence
+    )
 
 
 def _infer_labels(img_path: str) -> tuple[list[str], float]:
@@ -235,7 +233,9 @@ def _ocr_text(img_path: str) -> str:
 
         img = cv2.imread(img_path)
         if img is None:
-            logger.warning("Could not read image %s for OCR; using N/A.", Path(img_path).name)
+            logger.warning(
+                "Could not read image %s for OCR; using N/A.", Path(img_path).name
+            )
             return NO_TEXT
 
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -243,7 +243,9 @@ def _ocr_text(img_path: str) -> str:
         return cleaned_text if cleaned_text else NO_TEXT
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "OCR failed for %s (%s); using N/A.", Path(img_path).name, type(exc).__name__
+            "OCR failed for %s (%s); using N/A.",
+            Path(img_path).name,
+            type(exc).__name__,
         )
         return NO_TEXT
 
@@ -308,7 +310,8 @@ def process_folder(
 ) -> pd.DataFrame:
     path = Path(input_path)
     image_files = sorted(
-        file for file in path.iterdir()
+        file
+        for file in path.iterdir()
         if file.is_file() and file.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
     )
     rows: list[dict[str, Any]] = []
@@ -365,7 +368,9 @@ def annotate_image_with_detections(
 
     image = Image.open(img_path).convert("RGB")
     width, height = image.size
-    detections = list(detections) if detections is not None else _infer_detections(str(img_path))
+    detections = (
+        list(detections) if detections is not None else _infer_detections(str(img_path))
+    )
     if not detections:
         return image
 
@@ -415,9 +420,13 @@ def annotate_image_with_detections(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Analyze image evidence.")
-    parser.add_argument("--input", required=True, help="An image file or a folder of images")
+    parser.add_argument(
+        "--input", required=True, help="An image file or a folder of images"
+    )
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH))
-    parser.add_argument("--image-id", default="IMG_001", help="Image ID when --input is one file")
+    parser.add_argument(
+        "--image-id", default="IMG_001", help="Image ID when --input is one file"
+    )
     args = parser.parse_args(argv)
 
     input_path = Path(args.input).expanduser()

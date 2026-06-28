@@ -1,8 +1,4 @@
-"""Modality artifact tests for the PDF processor (rules.md section 4.1).
-
-Verifies the demonstration CSV uses its exact eight columns in order and never
-contains NaN/None (missing values are the literal string ``Unknown``).
-"""
+"""Modality artifact tests for the PDF processor."""
 
 from __future__ import annotations
 
@@ -17,12 +13,15 @@ from pdf.processor import (
     UNKNOWN,
     process_pdf,
     process_pdf_file,
+    process_pdf_folder,
     save_artifact,
     summarize_document,
 )
 
 
-FIXTURE_PDF = Path(__file__).resolve().parent / "fixtures" / "LESO2.pdf"
+FIXTURE_PDF = (
+    Path(__file__).resolve().parents[1] / "pdf" / "sample_data" / "LESO2.pdf"
+)
 
 
 class PdfArtifactSchemaTests(unittest.TestCase):
@@ -33,6 +32,32 @@ class PdfArtifactSchemaTests(unittest.TestCase):
 
         self.assertEqual(list(frame.columns), ARTIFACT_COLUMNS)
         self.assertEqual(len(frame.columns), 8)
+
+    def test_folder_input_combines_supported_pdfs_in_sorted_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "b_report.pdf").touch()
+            (root / "a_report.PDF").touch()
+            (root / "ignored.txt").touch()
+            nested = root / "nested"
+            nested.mkdir()
+            (nested / "c_report.pdf").touch()
+            output = root / "results" / "pdf_output.csv"
+
+            frame = process_pdf_folder(
+                root,
+                output,
+                text_extractor=lambda path: (
+                    "Officer Rivera documented a burglary near Main Street "
+                    f"in {Path(path).stem}."
+                ),
+            )
+            saved = pd.read_csv(output, keep_default_na=False)
+
+        self.assertEqual(frame["Report_ID"].tolist(), ["RPT_001", "RPT_002"])
+        self.assertEqual(list(frame.columns), ARTIFACT_COLUMNS)
+        self.assertEqual(list(saved.columns), ARTIFACT_COLUMNS)
+        self.assertEqual(len(frame), 2)
 
     def test_artifact_csv_has_exact_columns_in_order_and_no_nulls(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -50,9 +75,6 @@ class PdfArtifactSchemaTests(unittest.TestCase):
             self.assertNotIn(value, ("", None))
 
     def test_summary_uses_subject_and_skips_letterhead(self) -> None:
-        # Deterministic (no OCR): the Summary should describe the document's
-        # substance (its RE:/subject line), never the letterhead block of
-        # names, address, and phone numbers.
         text = (
             "Benton County Sheriff's Office\n"
             "Sheriff Kelley Cradduck\n"
@@ -72,8 +94,6 @@ class PdfArtifactSchemaTests(unittest.TestCase):
         self.assertNotIn("Kelley Cradduck", summary)
 
     def test_summary_falls_back_to_first_body_sentence(self) -> None:
-        # No descriptive subject line -> first substantive body sentence, not
-        # the "To/From/Date" header block.
         text = (
             "To: Whom it may Concern\n"
             "From: Fort Smith Police Department\n"
@@ -89,8 +109,6 @@ class PdfArtifactSchemaTests(unittest.TestCase):
         self.assertNotIn("Whom it may Concern", summary)
 
     def test_missing_fields_become_the_unknown_string(self) -> None:
-        # An administrative document has no suspect/outcome; those must be Unknown,
-        # never blank or fabricated.
         frame = save_artifact(
             [
                 {
@@ -104,7 +122,8 @@ class PdfArtifactSchemaTests(unittest.TestCase):
                     "Outcome": UNKNOWN,
                 }
             ],
-            output_csv_path=Path(tempfile.gettempdir()) / "pdf_artifact_schema_test.csv",
+            output_csv_path=Path(tempfile.gettempdir())
+            / "pdf_artifact_schema_test.csv",
         )
 
         self.assertEqual(list(frame.columns), ARTIFACT_COLUMNS)

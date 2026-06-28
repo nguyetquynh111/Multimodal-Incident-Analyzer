@@ -38,5 +38,17 @@ def test_unsupported_extensions_are_rejected(filename: str) -> None:
 
 def test_supported_extensions_match_the_uploader_contract() -> None:
     assert supported_extensions() == [
-        "csv", "jpeg", "jpg", "m4a", "mov", "mp3", "mp4", "mpeg", "mpg", "pdf", "png", "txt", "wav"
+        "csv",
+        "jpeg",
+        "jpg",
+        "m4a",
+        "mov",
+        "mp3",
+        "mp4",
+        "mpeg",
+        "mpg",
+        "pdf",
+        "png",
+        "txt",
+        "wav",
     ]

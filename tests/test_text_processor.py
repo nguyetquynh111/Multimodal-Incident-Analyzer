@@ -9,7 +9,13 @@ import tempfile
 import pandas as pd
 import pytest
 
-from text.processor import ARTIFACT_COLUMNS, analyze_text, process_text
+from text.processor import (
+    ARTIFACT_COLUMNS,
+    _resolve_cli_input,
+    analyze_text,
+    build_parser,
+    process_text,
+)
 
 
 SAMPLE_POST = (
@@ -54,8 +60,14 @@ def test_process_text_dataset_csv_creates_one_row_per_record() -> None:
         input_path = Path(directory) / "crimereport.csv"
         input_frame = pd.DataFrame(
             [
-                {"details": "Fire reported at Central Station today.", "source": "CrimeReport"},
-                {"details": "Noise complaint near Lake Park last night.", "source": "CrimeReport"},
+                {
+                    "details": "Fire reported at Central Station today.",
+                    "source": "CrimeReport",
+                },
+                {
+                    "details": "Noise complaint near Lake Park last night.",
+                    "source": "CrimeReport",
+                },
             ]
         )
         input_frame.to_csv(input_path, index=False)
@@ -65,6 +77,49 @@ def test_process_text_dataset_csv_creates_one_row_per_record() -> None:
     assert list(frame.columns) == ARTIFACT_COLUMNS
     assert frame["Text_ID"].tolist() == ["TXT_001", "TXT_002"]
     assert frame["Topic"].tolist() == ["Fire / Arson", "Public Disturbance"]
+
+
+def test_process_text_folder_combines_supported_files_in_sorted_order() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        folder = Path(directory)
+        (folder / "a_post.txt").write_text(
+            "Robbery reported near Union Station tonight.",
+            encoding="utf-8",
+        )
+        pd.DataFrame(
+            [
+                {
+                    "details": "Fire reported at Central Station today.",
+                    "source": "CrimeReport",
+                },
+                {
+                    "details": "Crash blocking Lake Shore Drive this morning.",
+                    "source": "CrimeReport",
+                },
+            ]
+        ).to_csv(folder / "b_reports.csv", index=False)
+
+        frame = process_text(folder, output_csv_path=None)
+
+    assert list(frame.columns) == ARTIFACT_COLUMNS
+    assert frame["Text_ID"].tolist() == ["TXT_001", "TXT_002", "TXT_003"]
+    assert frame["Topic"].tolist() == [
+        "Theft / Robbery",
+        "Fire / Arson",
+        "Traffic Accident",
+    ]
+
+
+def test_process_text_accepts_checked_in_samples_folder() -> None:
+    samples = Path(__file__).resolve().parents[1] / "text" / "sample_data"
+
+    frame = process_text(samples, output_csv_path=None)
+
+    assert list(frame.columns) == ARTIFACT_COLUMNS
+    assert len(frame) >= 1
+    assert frame["Text_ID"].tolist() == [
+        f"TXT_{index:03d}" for index in range(1, len(frame) + 1)
+    ]
 
 
 def test_process_text_json_lines_txt_creates_one_row_per_record() -> None:
@@ -123,3 +178,27 @@ def test_process_text_rejects_json_file() -> None:
 
         with pytest.raises(ValueError, match="Unsupported text input type"):
             process_text(input_path, output_csv_path=None, source="JSON")
+
+
+def test_text_cli_accepts_input_flag() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["--input", "text/sample_data/social_post.txt"])
+
+    assert _resolve_cli_input(args, parser) == "text/sample_data/social_post.txt"
+
+
+def test_text_cli_still_accepts_positional_input() -> None:
+    parser = build_parser()
+    args = parser.parse_args(["text/sample_data/social_post.txt"])
+
+    assert _resolve_cli_input(args, parser) == "text/sample_data/social_post.txt"
+
+
+def test_text_cli_rejects_duplicate_input_styles() -> None:
+    parser = build_parser()
+    args = parser.parse_args(
+        ["text/sample_data/social_post.txt", "--input", "other.txt"]
+    )
+
+    with pytest.raises(SystemExit):
+        _resolve_cli_input(args, parser)

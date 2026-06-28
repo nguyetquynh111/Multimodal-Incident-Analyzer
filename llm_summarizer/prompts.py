@@ -1,18 +1,11 @@
-"""Prompt template for the LLM summary (rules.md section 6, specs.md section 7).
-
-The prompt is deliberately strict: the model may only narrate the fields it is
-given, must never invent details, and must keep the summary short. It returns
-plain chat-completion messages so ``summarizer.py`` can post them to any
-OpenAI-compatible endpoint (OpenRouter here).
-"""
+"""Prompt templates for summary and OCR-location extraction."""
 
 from __future__ import annotations
 
 from . import schemas
 
 
-# OCR text can be long; only a leading window is needed for focused image
-# location extraction, and it keeps the request small/fast for a free-tier model.
+# Limit OCR context for focused location extraction.
 _RAW_TEXT_LIMIT = 1000
 
 

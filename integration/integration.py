@@ -1,15 +1,11 @@
-"""Integration utilities for the documented multimodal incident pipeline.
-
-``integrate_records`` is the public in-memory workflow: it standardizes one
-extractor DataFrame, calls the separate summary module, assigns IDs, and returns
-the seven documented display fields. Supabase conversion remains at the cloud
-boundary and the final CSV is derived from Supabase rows.
-"""
+"""Integration utilities for the multimodal incident pipeline."""
 
 from __future__ import annotations
 
+import argparse
 import logging
 import re
+import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -18,6 +14,12 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 UNKNOWN = "Unknown"
+DEFAULT_INTEGRATION_OUTPUT_PATH = (
+    Path(__file__).resolve().parent / "output" / "final_incident_dataset.csv"
+)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 # Public integration output column order.
 INCIDENT_COLUMNS: tuple[str, ...] = (
@@ -31,7 +33,7 @@ INCIDENT_COLUMNS: tuple[str, ...] = (
 )
 INTEGRATION_OUTPUT_COLUMNS = INCIDENT_COLUMNS
 
-# App-owned Supabase payload column order (lower-case). Mirrors validators.INCIDENT_COLUMNS.
+# Supabase payload column order. Mirrors validators.INCIDENT_COLUMNS.
 SUPABASE_PAYLOAD_COLUMNS: tuple[str, ...] = (
     "incident_id",
     "source",
@@ -77,16 +79,40 @@ _SUPABASE_ALIASES: dict[str, tuple[str, ...]] = {
     "incident_summary": ("incident_summary", "Incident_Summary"),
 }
 
-# One canonical record per modality: human-readable source label + ID type.
+# Canonical source labels, ID prefixes, and supported extensions.
 MODALITIES: dict[str, dict[str, Any]] = {
-    "audio": {"label": "Audio", "prefix": "AUD", "extensions": {".wav", ".mp3", ".m4a"}},
+    "audio": {
+        "label": "Audio",
+        "prefix": "AUD",
+        "extensions": {".wav", ".mp3", ".m4a"},
+    },
     "pdf": {"label": "PDF", "prefix": "PDF", "extensions": {".pdf"}},
-    "image": {"label": "Image", "prefix": "IMG", "extensions": {".jpg", ".jpeg", ".png"}},
-    "video": {"label": "Video", "prefix": "VID", "extensions": {".mp4", ".mov", ".mpg", ".mpeg"}},
+    "image": {
+        "label": "Image",
+        "prefix": "IMG",
+        "extensions": {".jpg", ".jpeg", ".png"},
+    },
+    "video": {
+        "label": "Video",
+        "prefix": "VID",
+        "extensions": {".mp4", ".mov", ".mpg", ".mpeg"},
+    },
     "text": {"label": "Text", "prefix": "TXT", "extensions": {".txt", ".csv"}},
 }
 
+DEFAULT_DRAFT_INPUT_PATHS: dict[str, tuple[Path, ...]] = {
+    "audio": (
+        Path("audio") / "output" / "audio.csv",
+        Path("audio") / "output" / "audio_output.csv",
+    ),
+    "pdf": (Path("pdf") / "output" / "pdf_output.csv",),
+    "image": (Path("images") / "output" / "image_output.csv",),
+    "video": (Path("video") / "output" / "video_output.csv",),
+    "text": (Path("text") / "output" / "text_output.csv",),
+}
+
 ID_PATTERN = re.compile(r"^INC_([A-Z]+)_(\d{3,})$")
+
 
 def _to_float(value: Any) -> float | None:
     """Best-effort float conversion; returns ``None`` for blanks/non-numbers."""
@@ -104,7 +130,7 @@ def _to_float(value: Any) -> float | None:
 
 
 SEVERITY_LEVELS: tuple[str, ...] = ("Low", "Medium", "High", "Unknown")
-# score < LOW_MAX -> Low, score < MEDIUM_MAX -> Medium, else High (score on 0-10).
+# Thresholds use a 0-10 score.
 SEVERITY_LOW_MAX = 3.0
 SEVERITY_MEDIUM_MAX = 7.0
 DEFAULT_SEVERITY = "Unknown"
@@ -124,7 +150,9 @@ def detect_source_type(filename: str | Path) -> str | None:
 
 def supported_extensions() -> list[str]:
     """Return every supported file extension, for the Streamlit uploader."""
-    return sorted(ext.lstrip(".") for meta in MODALITIES.values() for ext in meta["extensions"])
+    return sorted(
+        ext.lstrip(".") for meta in MODALITIES.values() for ext in meta["extensions"]
+    )
 
 
 def source_label(source_type: str) -> str:
@@ -156,11 +184,7 @@ def normalize_source_type(source_type: str) -> str:
 # Severity
 # --------------------------------------------------------------------------- #
 def severity_from_confidence(confidence: Any) -> str:
-    """Map a 0-1 confidence/urgency value to Low / Medium / High.
-
-    Uses ``score = confidence * 10`` with the documented thresholds. Invalid or
-    missing values fall back to ``Unknown``.
-    """
+    """Map confidence/urgency to Low, Medium, High, or Unknown."""
     score = _to_float(confidence)
     if score is None:
         return DEFAULT_SEVERITY
@@ -201,24 +225,47 @@ def _severity_from_event(event: str, current: str) -> str:
 
     normalized = normalize_severity(current)
     if event == UNKNOWN:
-        # An unknown event is explicitly treated as the lowest-risk fallback.
-        # Do this before preserving an upstream severity so a stale or inferred
-        # High/Medium value cannot contradict the normalized event.
+        # Unknown events use the lowest-risk fallback.
         return "Low"
     text = event.casefold()
-    if text in {"other", "no activity", "multiple persons present", 
-                "multiple persons detected", 
-                "person standing", "person running"}:
+    if text in {
+        "other",
+        "no activity",
+        "multiple persons present",
+        "multiple persons detected",
+        "person standing",
+        "person running",
+    }:
         return "Low"
-    if any(token in text for token in (
-        "fire", "arson", "assault", "violence", "weapon", "gun", "knife",
-        "trapped", "collapse", "collapsing", "fight", "altercation",
-        "severe crash",
-    )):
+    if any(
+        token in text
+        for token in (
+            "fire",
+            "arson",
+            "assault",
+            "violence",
+            "weapon",
+            "gun",
+            "knife",
+            "trapped",
+            "collapse",
+            "collapsing",
+            "fight",
+            "altercation",
+            "severe crash",
+        )
+    ):
         return "High"
-    if any(token in text for token in (
-        "theft", "robbery", "burglary", "disturbance", "property damage",
-    )):
+    if any(
+        token in text
+        for token in (
+            "theft",
+            "robbery",
+            "burglary",
+            "disturbance",
+            "property damage",
+        )
+    ):
         return "High" if normalized == "High" else "Medium"
     if normalized != UNKNOWN:
         return normalized
@@ -439,13 +486,39 @@ def _map_structured(row: Mapping[str, Any]) -> dict[str, Any]:
         raw_text = str(dict(row))
     return {
         "event": normalize_event(
-            _first_known(row, "event", "Event", "incident_type", "Incident_Type", "type", "Type", "category", "Category")
+            _first_known(
+                row,
+                "event",
+                "Event",
+                "incident_type",
+                "Incident_Type",
+                "type",
+                "Type",
+                "category",
+                "Category",
+            )
         ),
-        "location": _first_known(row, "location", "Location", "place", "Place", "address", "Address"),
-        "time": _first_known(row, "time", "Time", "date", "Date", "timestamp", "Timestamp", "created_at", "Created_At"),
+        "location": _first_known(
+            row, "location", "Location", "place", "Place", "address", "Address"
+        ),
+        "time": _first_known(
+            row,
+            "time",
+            "Time",
+            "date",
+            "Date",
+            "timestamp",
+            "Timestamp",
+            "created_at",
+            "Created_At",
+        ),
         "confidence": _confidence(row, "confidence", "Confidence", "score", "Score"),
         "raw_text": raw_text,
-        "severity": _mapped_severity(row, explicit=("severity", "Severity"), confidence=("confidence", "Confidence")),
+        "severity": _mapped_severity(
+            row,
+            explicit=("severity", "Severity"),
+            confidence=("confidence", "Confidence"),
+        ),
     }
 
 
@@ -511,7 +584,11 @@ def _standardize_records(
                 "location": mapped["location"],
                 "time": mapped["time"],
                 "severity": _severity_from_event(event, mapped["severity"]),
-                "source_filename": _first_known(record, "source_filename", "Source_Filename") if source_filename is None else filename,
+                "source_filename": _first_known(
+                    record, "source_filename", "Source_Filename"
+                )
+                if source_filename is None
+                else filename,
                 "source_type": source_code,
                 "confidence": mapped.get("confidence", 0.0),
                 "raw_text": mapped.get("raw_text", UNKNOWN),
@@ -527,18 +604,7 @@ def integrate_records(
     *,
     source_filename: str | None = None,
 ) -> pd.DataFrame:
-    """Run the documented Integration workflow and return final incident rows.
-
-    Args:
-        draft_df: The DataFrame returned by a modality processor.
-        source_type: One of ``audio, pdf, image, video, text``. CSV files are
-            structured text inputs and normalize to ``text``.
-        existing_ids: Current Supabase incident IDs used to avoid collisions.
-
-    Returns:
-        ``Incident_ID, Source, Event, Location, Time, Severity,
-        Incident_Summary`` in documented order.
-    """
+    """Run Integration and return final incident rows."""
     standardized = _standardize_records(
         draft_df, source_type, source_filename=source_filename
     )
@@ -546,7 +612,7 @@ def integrate_records(
 
 
 # --------------------------------------------------------------------------- #
-# Incident-ID assignment. Rows store the documented INC_TYPE_NUMBER string.
+# Incident-ID assignment.
 # --------------------------------------------------------------------------- #
 _PREFIX_BY_LABEL = {meta["label"]: meta["prefix"] for meta in MODALITIES.values()}
 
@@ -558,7 +624,9 @@ def _source_type_from_row(row: Mapping[str, Any]) -> str:
     return normalize_source_type(str(row.get("source", "")))
 
 
-def next_incident_number(existing_ids: Iterable[Any], source_type: str | None = None) -> int:
+def next_incident_number(
+    existing_ids: Iterable[Any], source_type: str | None = None
+) -> int:
     """Return the next number, optionally scoped to one source type."""
 
     source_key = normalize_source_type(source_type) if source_type is not None else None
@@ -579,13 +647,19 @@ def generate_incident_id(source_type: str, number: int) -> str:
     return f"INC_{source_prefix(normalize_source_type(source_type))}_{number:03d}"
 
 
-def generate_next_incident_id(source_type: str, existing_ids: Iterable[Any] = ()) -> str:
+def generate_next_incident_id(
+    source_type: str, existing_ids: Iterable[Any] = ()
+) -> str:
     """Return the next ``INC_TYPE_NUMBER`` ID for one source type."""
 
-    return generate_incident_id(source_type, next_incident_number(existing_ids, source_type))
+    return generate_incident_id(
+        source_type, next_incident_number(existing_ids, source_type)
+    )
 
 
-def assign_incident_ids(df: pd.DataFrame, existing_ids: Iterable[Any] = ()) -> pd.DataFrame:
+def assign_incident_ids(
+    df: pd.DataFrame, existing_ids: Iterable[Any] = ()
+) -> pd.DataFrame:
     """Prepend documented incident IDs, incrementing independently by source type."""
 
     out = df.copy()
@@ -619,20 +693,25 @@ def add_incident_summaries(df: pd.DataFrame) -> pd.DataFrame:
         enriched["incident_summary"] = result["incident_summary"]
         logger.info(
             "Generated incident summary with method=%s model=%s.",
-            result["summary_method"], result["summary_model"],
+            result["summary_method"],
+            result["summary_model"],
         )
         rows.append(enriched)
     return pd.DataFrame(rows)
 
 
-def _first_present_column(frame: pd.DataFrame, candidates: tuple[str, ...]) -> str | None:
+def _first_present_column(
+    frame: pd.DataFrame, candidates: tuple[str, ...]
+) -> str | None:
     for column in candidates:
         if column in frame.columns:
             return column
     return None
 
 
-def to_supabase_payload_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.DataFrame:
+def to_supabase_payload_frame(
+    rows: Iterable[Mapping[str, Any]] | pd.DataFrame,
+) -> pd.DataFrame:
     """Return the seven lower-case app-owned fields accepted by Supabase upload."""
 
     frame = pd.DataFrame(rows) if not isinstance(rows, pd.DataFrame) else rows.copy()
@@ -648,7 +727,9 @@ def to_supabase_payload_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) 
     return out.loc[:, list(SUPABASE_PAYLOAD_COLUMNS)].copy()
 
 
-def to_integration_output_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.DataFrame:
+def to_integration_output_frame(
+    rows: Iterable[Mapping[str, Any]] | pd.DataFrame,
+) -> pd.DataFrame:
     """Return the seven public Integration output columns."""
 
     payload = to_supabase_payload_frame(rows)
@@ -729,8 +810,7 @@ def with_display_ids(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.Dat
             frame["severity"] = frame["severity"].map(normalize_severity)
             frame.loc[frame["event"] == UNKNOWN, "severity"] = "Low"
     labels = [
-        display_id(s, i)
-        for s, i in zip(frame.get("source"), frame.get("incident_id"))
+        display_id(s, i) for s, i in zip(frame.get("source"), frame.get("incident_id"))
     ]
     if "Incident_ID" in frame.columns:
         frame["Incident_ID"] = labels
@@ -739,13 +819,17 @@ def with_display_ids(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.Dat
     return frame
 
 
-def to_final_csv_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.DataFrame:
+def to_final_csv_frame(
+    rows: Iterable[Mapping[str, Any]] | pd.DataFrame,
+) -> pd.DataFrame:
     """Return the nine dashboard/export columns."""
     frame = pd.DataFrame(rows) if not isinstance(rows, pd.DataFrame) else rows.copy()
     payload = to_supabase_payload_frame(frame)
     out = pd.DataFrame(index=frame.index)
     out["id"] = frame["id"] if "id" in frame.columns else UNKNOWN
-    out["created_at"] = frame["created_at"] if "created_at" in frame.columns else UNKNOWN
+    out["created_at"] = (
+        frame["created_at"] if "created_at" in frame.columns else UNKNOWN
+    )
     for column in SUPABASE_PAYLOAD_COLUMNS:
         out[column] = payload[column]
     out = out.loc[:, list(FINAL_CSV_COLUMNS)].copy()
@@ -756,7 +840,7 @@ def to_final_csv_frame(rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> pd.D
 
 
 # --------------------------------------------------------------------------- #
-# Modality dispatch (Stage 1-3): run the correct processor for a raw file
+# Modality dispatch
 # --------------------------------------------------------------------------- #
 def run_modality(
     source_type: str,
@@ -764,14 +848,7 @@ def run_modality(
     *,
     output_csv: str | Path | None = None,
 ) -> pd.DataFrame:
-    """Run the processor for ``source_type`` and return its draft DataFrame.
-
-    Processors are imported lazily so heavy optional dependencies (Whisper,
-    OpenCV, ...) are only loaded for the modality actually used.
-
-    Audio files are always transcribed before analysis; uploaded audio never
-    falls back to user-supplied transcript text.
-    """
+    """Run one modality processor and return its draft DataFrame."""
     if input_path is None:
         raise ValueError(f"{source_type} processing requires a file path.")
     source_type = normalize_source_type(source_type)
@@ -795,11 +872,19 @@ def run_modality(
     if source_type == "image":
         from images.processor import process_image
 
-        return process_image(input_path, output_csv) if output_csv else process_image(input_path)
+        return (
+            process_image(input_path, output_csv)
+            if output_csv
+            else process_image(input_path)
+        )
     if source_type == "video":
         from video.processor import process_video
 
-        return process_video(str(input_path), output_csv) if output_csv else process_video(str(input_path))
+        return (
+            process_video(str(input_path), output_csv)
+            if output_csv
+            else process_video(str(input_path))
+        )
     if source_type == "text":
         from text.processor import process_text
 
@@ -808,16 +893,125 @@ def run_modality(
             frame = pd.read_csv(input_path, keep_default_na=False)
             if _looks_like_structured_text_frame(frame):
                 return frame
-        return process_text(input_path, output_csv) if output_csv else process_text(input_path)
+        return (
+            process_text(input_path, output_csv)
+            if output_csv
+            else process_text(input_path)
+        )
 
     raise ValueError(f"Unsupported source_type {source_type!r}.")
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Explain that the MVP integration workflow runs through Streamlit."""
+def _present_input(value: str | Path | None) -> Path | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return Path(text).expanduser() if text else None
 
-    del argv
-    print("Use the Streamlit single-file upload workflow; local batch merging is not part of this MVP.")
+
+def _looks_like_documented_input_path(path: Path, source_type: str) -> bool:
+    """Return true for README-style ``output/{modality}.csv`` draft paths."""
+
+    parts = path.parts
+    return len(parts) >= 2 and parts[-2:] == ("output", f"{source_type}.csv")
+
+
+def _resolve_input_path(source_type: str, input_path: Path) -> Path:
+    """Resolve a draft CSV path, including default processor output fallbacks."""
+
+    if input_path.is_file():
+        return input_path
+    if not _looks_like_documented_input_path(input_path, source_type):
+        return input_path
+
+    for default_path in DEFAULT_DRAFT_INPUT_PATHS[source_type]:
+        for candidate in (Path.cwd() / default_path, REPO_ROOT / default_path):
+            if candidate.is_file():
+                logger.info(
+                    "%s draft CSV %s not found; using %s instead.",
+                    source_label(source_type),
+                    input_path,
+                    candidate,
+                )
+                return candidate
+    return input_path
+
+
+def integrate_input_paths(
+    input_paths: Mapping[str, str | Path | None],
+    output_csv_path: str | Path = DEFAULT_INTEGRATION_OUTPUT_PATH,
+    existing_ids: Iterable[Any] = (),
+) -> pd.DataFrame:
+    """Read non-empty modality draft CSVs and write one integrated incident CSV."""
+
+    frames: list[pd.DataFrame] = []
+    known_ids = list(existing_ids)
+    for source_type in MODALITIES:
+        input_path = _present_input(input_paths.get(source_type))
+        if input_path is None:
+            continue
+        input_path = _resolve_input_path(source_type, input_path)
+        if not input_path.is_file():
+            raise FileNotFoundError(
+                f"{source_label(source_type)} draft CSV not found: {input_path}"
+            )
+        draft = pd.read_csv(input_path, keep_default_na=False)
+        incidents = integrate_records(
+            draft,
+            source_type,
+            known_ids,
+            source_filename=input_path.name,
+        )
+        frames.append(incidents)
+        if "Incident_ID" in incidents.columns:
+            known_ids.extend(incidents["Incident_ID"].tolist())
+
+    if frames:
+        combined = pd.concat(frames, ignore_index=True)
+    else:
+        combined = pd.DataFrame(columns=list(INTEGRATION_OUTPUT_COLUMNS))
+
+    output = Path(output_csv_path).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    combined.to_csv(output, index=False)
+    return combined
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Combine non-empty modality draft CSVs into one incident CSV."
+    )
+    for source_type in MODALITIES:
+        parser.add_argument(
+            f"--input_{source_type}",
+            default=None,
+            help=f"Optional {source_label(source_type)} processor output CSV. Empty strings are skipped.",
+        )
+    parser.add_argument(
+        "--output",
+        default=str(DEFAULT_INTEGRATION_OUTPUT_PATH),
+        help=f"Destination integrated CSV path; defaults to {DEFAULT_INTEGRATION_OUTPUT_PATH}",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Integrate optional modality processor output CSVs."""
+
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    input_paths = {
+        source_type: getattr(args, f"input_{source_type}") for source_type in MODALITIES
+    }
+    if not any(_present_input(value) is not None for value in input_paths.values()):
+        parser.error("Provide at least one non-empty --input_* path.")
+
+    try:
+        frame = integrate_input_paths(input_paths, args.output)
+    except FileNotFoundError as exc:
+        parser.error(str(exc))
+    print(frame.to_string(index=False))
+    print(f"Saved {len(frame)} row(s) to {Path(args.output).expanduser()}")
     return 0
 
 
@@ -854,5 +1048,7 @@ __all__ = [
     "with_display_ids",
     "to_final_csv_frame",
     "run_modality",
+    "integrate_input_paths",
+    "build_parser",
     "main",
 ]

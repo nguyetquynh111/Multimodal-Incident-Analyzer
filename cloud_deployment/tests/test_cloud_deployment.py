@@ -1,9 +1,4 @@
-"""Tests for validation, payload creation, and optional Supabase round trips.
-
-``incident_id`` is the documented ``INC_TYPE_NUMBER`` text key. The live
-round-trip test runs by default when Supabase credentials are configured. Set
-``RUN_SUPABASE_LIVE_TESTS=0`` to keep a ``pytest`` run offline.
-"""
+"""Tests for validation, payload creation, and Supabase round trips."""
 
 from __future__ import annotations
 
@@ -19,8 +14,7 @@ from dotenv import load_dotenv
 from cloud_deployment import supabase_client, upload_service
 from cloud_deployment.validators import INCIDENT_COLUMNS, validate_incidents_df
 
-# Load the project-root file before pytest evaluates the skip marker below.
-# Keeping override=False means an explicit shell environment still wins.
+# Load project-root env before pytest evaluates skip markers.
 load_dotenv(supabase_client.PROJECT_ROOT / ".env", override=False)
 
 
@@ -55,7 +49,10 @@ def test_validate_incidents_df_rejects_non_low_unknown_event() -> None:
 
 
 def _duplicate_id_frame() -> pd.DataFrame:
-    return pd.concat([_incident_frame("INC_TXT_101"), _incident_frame("INC_TXT_101")], ignore_index=True)
+    return pd.concat(
+        [_incident_frame("INC_TXT_101"), _incident_frame("INC_TXT_101")],
+        ignore_index=True,
+    )
 
 
 @pytest.mark.parametrize(
@@ -77,7 +74,9 @@ def test_validate_incidents_df_rejects_invalid_input(
         validate_incidents_df(frame)
 
 
-def test_insert_incidents_sends_only_allowed_columns(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_insert_incidents_sends_only_allowed_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = MagicMock()
     response = SimpleNamespace(data=[{"id": 1}])
     client.table.return_value.insert.return_value.execute.return_value = response
@@ -135,7 +134,9 @@ def test_get_supabase_client_uses_shared_http_client(
     )
 
 
-def test_upload_incidents_validates_before_insert(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_upload_incidents_validates_before_insert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     insert = MagicMock(return_value={"success": True, "inserted_count": 1, "data": []})
     monkeypatch.setattr(upload_service, "insert_incidents", insert)
 
@@ -235,7 +236,10 @@ def test_get_incident_returns_row_or_none(monkeypatch: pytest.MonkeyPatch) -> No
     query = MagicMock(return_value=[{"id": 12, "incident_id": "INC_TXT_007"}])
     monkeypatch.setattr(supabase_client, "query_incidents", query)
 
-    assert supabase_client.get_incident("INC_TXT_007") == {"id": 12, "incident_id": "INC_TXT_007"}
+    assert supabase_client.get_incident("INC_TXT_007") == {
+        "id": 12,
+        "incident_id": "INC_TXT_007",
+    }
     query.assert_called_once_with({"incident_id": "INC_TXT_007"}, limit=1)
 
     query.return_value = []
@@ -301,7 +305,9 @@ def test_validate_incident_key_accepts_documented_ids() -> None:
     assert supabase_client.validate_incident_key(" INC_TXT_007 ") == "INC_TXT_007"
 
 
-@pytest.mark.parametrize("column", ["id", "created_at", "incident_id", "source", "unknown"])
+@pytest.mark.parametrize(
+    "column", ["id", "created_at", "incident_id", "source", "unknown"]
+)
 def test_update_incident_rejects_protected_columns(column: str) -> None:
     with pytest.raises(ValueError, match="Unsupported update columns"):
         supabase_client.update_incident("INC_TXT_007", {column: "value"})

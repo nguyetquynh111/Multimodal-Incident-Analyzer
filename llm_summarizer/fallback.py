@@ -1,11 +1,4 @@
-"""Deterministic, dependency-free rule-based summary (rules.md section 6).
-
-This is the always-available fallback used whenever the LLM is disabled,
-unavailable, slow, or produces invalid output. It performs no network calls,
-imports nothing heavy, and never raises -- even when every field is
-``Unknown`` (which is exactly the shape the PDF processor emits for a
-document with no extractable signals).
-"""
+"""Deterministic, dependency-free summary fallback."""
 
 from __future__ import annotations
 
@@ -37,12 +30,7 @@ def _article(word: str) -> str:
 
 
 def build_summary_text(incident_row: dict) -> str:
-    """Build a grounded 1-2 sentence summary from the integrated fields.
-
-    Only ``event``, ``location``, ``time``, ``severity``, and ``source`` are
-    used; nothing is invented and missing fields are simply omitted rather
-    than guessed. Always returns a non-empty string.
-    """
+    """Build a grounded 1-2 sentence summary from integrated fields."""
 
     severity = _clean(incident_row.get("severity"))
     event = _clean(incident_row.get("event"))
@@ -50,8 +38,6 @@ def build_summary_text(incident_row: dict) -> str:
     time = _clean(incident_row.get("time"))
     source = _clean(incident_row.get("source"))
 
-    # Core noun phrase: "<severity>-severity <event>" with each part dropped
-    # when it is Unknown, e.g. "High-severity Theft / Robbery" or just "event".
     descriptor_parts = []
     if _is_known(severity):
         descriptor_parts.append(f"{severity}-severity")
@@ -60,7 +46,9 @@ def build_summary_text(incident_row: dict) -> str:
 
     if descriptor_parts:
         descriptor = " ".join(descriptor_parts)
-        sentence = f"{_article(descriptor).capitalize()} {descriptor} incident was reported"
+        sentence = (
+            f"{_article(descriptor).capitalize()} {descriptor} incident was reported"
+        )
     else:
         sentence = "An incident was reported"
 

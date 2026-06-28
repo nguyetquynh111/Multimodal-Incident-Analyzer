@@ -1,13 +1,4 @@
-"""Tests for the video processor (T-013 / T-014).
-
-Covers:
-- process_video_file() returns the exact five-column draft schema
-- confidence is always 0.0 – 1.0
-- Videos longer than 5 minutes are rejected
-- Unreadable paths return an empty DataFrame
-- Event classification logic
-- Severity mapping logic
-"""
+"""Tests for the video processor."""
 
 from __future__ import annotations
 
@@ -22,14 +13,15 @@ import pytest
 cv2 = pytest.importorskip("cv2", reason="OpenCV is required for video processor tests.")
 np = pytest.importorskip("numpy", reason="NumPy is required for video processor tests.")
 
-from video import processor
-from video.processor import (
+from video import processor  # noqa: E402
+from video.processor import (  # noqa: E402
     DRAFT_COLUMNS,
     classify_event,
     event_to_severity,
     format_objects,
     process_video,
     process_video_file,
+    process_video_folder,
 )
 
 
@@ -91,6 +83,19 @@ class VideoDraftSchemaTests(unittest.TestCase):
         self.assertEqual(list(saved.columns), DRAFT_COLUMNS)
         self.assertGreaterEqual(len(frame), 1)
         self.assertRegex(str(frame.iloc[0]["Frame_ID"]), r"^FRM_\d{3}$")
+
+    def test_folder_input_combines_supported_videos(self) -> None:
+        second_video = Path(self._tmpdir.name) / "second_clip.mp4"
+        _make_synthetic_video(second_video)
+        output = Path(self._tmpdir.name) / "folder_output.csv"
+
+        frame = process_video_folder(self._tmpdir.name, output)
+        saved = pd.read_csv(output)
+
+        self.assertEqual(list(frame.columns), DRAFT_COLUMNS)
+        self.assertEqual(list(saved.columns), DRAFT_COLUMNS)
+        self.assertEqual(len(saved), len(frame))
+        self.assertGreaterEqual(len(frame), 2)
 
     def test_unreadable_path_returns_empty_dataframe(self) -> None:
         df = process_video_file("nonexistent_video.mp4")
@@ -170,6 +175,20 @@ class YoloPerformanceConfigTests(unittest.TestCase):
                 os.environ.pop("VIDEO_YOLO_DEVICE", None)
             else:
                 os.environ["VIDEO_YOLO_DEVICE"] = env_value
+
+    def test_default_yolo_model_uses_onnx_asset(self) -> None:
+        self.assertTrue(processor._DEFAULT_YOLO_MODEL_PATH.endswith(".onnx"))
+
+    def test_onnx_model_uses_static_640_image_size(self) -> None:
+        env_value = os.environ.get("VIDEO_YOLO_IMAGE_SIZE")
+        os.environ["VIDEO_YOLO_IMAGE_SIZE"] = "320"
+        try:
+            self.assertEqual(processor._yolo_image_size("video/yolov8s.onnx"), 640)
+        finally:
+            if env_value is None:
+                os.environ.pop("VIDEO_YOLO_IMAGE_SIZE", None)
+            else:
+                os.environ["VIDEO_YOLO_IMAGE_SIZE"] = env_value
 
 
 class ClassifyEventTests(unittest.TestCase):
