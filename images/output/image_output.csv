@@ -1,0 +1,5 @@
+Image_ID,Scene_Type,Objects_Detected,Text_Extracted,Confidence_Score
+IMG_001,Fire and Person Scene,"fire, person",N/A,0.86
+IMG_002,Fire and Person Scene,"fire, person",N/A,0.94
+IMG_003,Fire Scene,fire,N/A,1.0
+IMG_004,Fire Scene,fire,ALABAMA BANKHEAD HIGHWAY,1.0

@@ -1,0 +1,245 @@
+Incident_ID,Source,Event,Location,Time,Severity,Incident_Summary
+INC_AUD_001,Audio,Shooting,Unknown,Unknown,High,A High-severity Shooting incident was reported via Audio.
+INC_AUD_002,Audio,Unknown,other side of the facility,Unknown,Low,A Low-severity incident was reported via Audio at other side of the facility.
+INC_AUD_003,Audio,Unknown,Unknown,Unknown,Low,A Low-severity incident was reported via Audio.
+INC_PDF_001,PDF,Training / Administrative,Benton County,"May 26, 2015",Low,"A Low-severity Training / Administrative incident was reported via PDF at Benton County. The reported time was May 26, 2015."
+INC_IMG_001,Image,Fire And Person Scene,Unknown,Unknown,High,A High-severity Fire And Person Scene incident was reported via Image.
+INC_IMG_002,Image,Fire And Person Scene,Unknown,Unknown,High,A High-severity Fire And Person Scene incident was reported via Image.
+INC_IMG_003,Image,Fire Scene,Unknown,Unknown,High,A High-severity Fire Scene incident was reported via Image.
+INC_IMG_004,Image,Fire Scene,Alabama Bankhead Highway,Unknown,High,A High-severity Fire Scene incident was reported via Image at Alabama Bankhead Highway.
+INC_VID_001,Video,Possible Altercation,Unknown,00:00:00,High,A High-severity Possible Altercation incident was reported via Video. The reported time was 00:00:00.
+INC_VID_002,Video,Person Standing,Unknown,00:00:01,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:01.
+INC_VID_003,Video,Multiple Persons Detected,Unknown,00:00:02,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:02.
+INC_VID_004,Video,Person Standing,Unknown,00:00:02,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:02.
+INC_VID_005,Video,Person Collapsing,Unknown,00:00:03,High,A High-severity Person Collapsing incident was reported via Video. The reported time was 00:00:03.
+INC_VID_006,Video,Person Collapsing,Unknown,00:00:03,High,A High-severity Person Collapsing incident was reported via Video. The reported time was 00:00:03.
+INC_VID_007,Video,Person Standing,Unknown,00:00:05,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:05.
+INC_VID_008,Video,Person Standing,Unknown,00:00:07,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:07.
+INC_VID_009,Video,Multiple Persons Detected,Unknown,00:00:08,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:08.
+INC_VID_010,Video,Person Walking,Unknown,00:00:08,Medium,A Medium-severity Person Walking incident was reported via Video. The reported time was 00:00:08.
+INC_VID_011,Video,Person Standing,Unknown,00:00:09,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:09.
+INC_VID_012,Video,Multiple Persons Detected,Unknown,00:00:09,Low,A video captured multiple persons detected at an unspecified location at 00:00:09. The incident was classified as low severity. The source of the footage is a video recording.
+INC_VID_013,Video,Multiple Persons Present,Unknown,00:00:15,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:15.
+INC_VID_014,Video,Multiple Persons Present,Unknown,00:00:16,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:16.
+INC_VID_015,Video,Person Standing,Unknown,00:00:16,Low,"A video captured a person standing at unknown location, occurring 00:00:16 into the recording. The incident was rated as low severity."
+INC_VID_016,Video,Multiple Persons Present,Unknown,00:00:17,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:17.
+INC_VID_017,Video,Multiple Persons Present,Unknown,00:00:17,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:17.
+INC_VID_018,Video,Multiple Persons Present,Unknown,00:00:18,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:18.
+INC_VID_019,Video,Person Standing,Unknown,00:00:18,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:18.
+INC_VID_020,Video,Person Running,Unknown,00:00:00,Low,A Low-severity Person Running incident was reported via Video. The reported time was 00:00:00.
+INC_VID_021,Video,Person Standing,Unknown,00:00:04,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:04.
+INC_VID_022,Video,Multiple Persons Detected,Unknown,00:00:05,Low,Video footage captured at 00:00:05 shows multiple persons detected in an unknown location. The incident is classified as low severity.
+INC_VID_023,Video,Person Standing,Unknown,00:00:05,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:05.
+INC_VID_024,Video,Multiple Persons Detected,Unknown,00:00:06,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:06.
+INC_VID_025,Video,Multiple Persons Detected,Unknown,00:00:06,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:06.
+INC_VID_026,Video,Multiple Persons Present,Unknown,00:00:07,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:07.
+INC_VID_027,Video,Multiple Persons Present,Unknown,00:00:07,Low,A video captured multiple persons present at an unknown location at 00:00:07. The incident was assessed as low severity.
+INC_VID_028,Video,Multiple Persons Present,Unknown,00:00:09,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:09.
+INC_VID_029,Video,Multiple Persons Present,Unknown,00:00:09,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:09.
+INC_VID_030,Video,Multiple Persons Present,Unknown,00:00:10,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:10.
+INC_VID_031,Video,Possible Altercation,Unknown,00:00:00,High,A High-severity Possible Altercation incident was reported via Video. The reported time was 00:00:00.
+INC_VID_032,Video,Multiple Persons Detected,Unknown,00:00:08,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:08.
+INC_VID_033,Video,Person Standing,Unknown,00:00:08,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:08.
+INC_VID_034,Video,Person Standing,Unknown,00:00:09,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:09.
+INC_VID_035,Video,Multiple Persons Present,Unknown,00:00:09,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:09.
+INC_VID_036,Video,Person Standing,Unknown,00:00:35,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:35.
+INC_VID_037,Video,Person Standing,Unknown,00:00:52,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:00:52.
+INC_VID_038,Video,Multiple Persons Detected,Unknown,00:00:53,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:53.
+INC_VID_039,Video,Multiple Persons Detected,Unknown,00:00:53,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:53.
+INC_VID_040,Video,Person Collapsing,Unknown,00:00:54,High,A High-severity Person Collapsing incident was reported via Video. The reported time was 00:00:54.
+INC_VID_041,Video,Person Collapsing,Unknown,00:00:54,High,A High-severity Person Collapsing incident was reported via Video. The reported time was 00:00:54.
+INC_VID_042,Video,Multiple Persons Detected,Unknown,00:00:55,Low,"A video recorded at 00:00:55 indicates multiple persons detected. The incident occurred in an unknown location, and it is classified as low severity."
+INC_VID_043,Video,Multiple Persons Detected,Unknown,00:00:55,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:55.
+INC_VID_044,Video,Multiple Persons Detected,Unknown,00:00:56,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:56.
+INC_VID_045,Video,Multiple Persons Present,Unknown,00:00:56,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:56.
+INC_VID_046,Video,Multiple Persons Present,Unknown,00:00:58,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:58.
+INC_VID_047,Video,Multiple Persons Present,Unknown,00:01:00,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:00.
+INC_VID_048,Video,Person Standing,Unknown,00:01:01,Low,"At 00:01:01, a video captured a person standing. The event occurred at an unknown location. The severity was low."
+INC_VID_049,Video,Person Standing,Unknown,00:01:01,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:01.
+INC_VID_050,Video,Person Standing,Unknown,00:01:02,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:02.
+INC_VID_051,Video,Multiple Persons Present,Unknown,00:01:02,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:02.
+INC_VID_052,Video,Multiple Persons Detected,Unknown,00:01:12,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:12.
+INC_VID_053,Video,Multiple Persons Detected,Unknown,00:01:12,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:12.
+INC_VID_054,Video,Person Standing,Unknown,00:01:12,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:12.
+INC_VID_055,Video,Multiple Persons Detected,Unknown,00:01:13,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:13.
+INC_VID_056,Video,Person Standing,Unknown,00:01:13,Low,"At 00:01:13, a video shows a person standing at an unknown location, with low severity."
+INC_VID_057,Video,Multiple Persons Detected,Unknown,00:01:14,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:14.
+INC_VID_058,Video,Multiple Persons Detected,Unknown,00:01:14,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:14.
+INC_VID_059,Video,Multiple Persons Detected,Unknown,00:01:15,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:15.
+INC_VID_060,Video,Multiple Persons Detected,Unknown,00:01:15,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:15.
+INC_VID_061,Video,Multiple Persons Present,Unknown,00:01:16,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:16.
+INC_VID_062,Video,Person Standing,Unknown,00:01:16,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:16.
+INC_VID_063,Video,Multiple Persons Present,Unknown,00:01:17,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:17.
+INC_VID_064,Video,Person Standing,Unknown,00:01:17,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:17.
+INC_VID_065,Video,Multiple Persons Detected,Unknown,00:01:18,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:18.
+INC_VID_066,Video,Multiple Persons Detected,Unknown,00:01:18,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:18.
+INC_VID_067,Video,Multiple Persons Detected,Unknown,00:01:19,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:19.
+INC_VID_068,Video,Multiple Persons Present,Unknown,00:01:19,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:19.
+INC_VID_069,Video,Multiple Persons Present,Unknown,00:01:20,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:20.
+INC_VID_070,Video,Multiple Persons Present,Unknown,00:01:20,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:20.
+INC_VID_071,Video,Multiple Persons Present,Unknown,00:01:22,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:22.
+INC_VID_072,Video,Person Standing,Unknown,00:01:22,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:22.
+INC_VID_073,Video,Multiple Persons Detected,Unknown,00:01:23,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:23.
+INC_VID_074,Video,Person Standing,Unknown,00:01:24,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:24.
+INC_VID_075,Video,Multiple Persons Present,Unknown,00:01:25,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:25.
+INC_VID_076,Video,Multiple Persons Present,Unknown,00:01:25,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:25.
+INC_VID_077,Video,Multiple Persons Detected,Unknown,00:01:26,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:26.
+INC_VID_078,Video,Multiple Persons Detected,Unknown,00:01:26,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:26.
+INC_VID_079,Video,Multiple Persons Detected,Unknown,00:01:27,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:27.
+INC_VID_080,Video,Multiple Persons Present,Unknown,00:01:27,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:27.
+INC_VID_081,Video,Multiple Persons Detected,Unknown,00:01:28,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:28.
+INC_VID_082,Video,Person Standing,Unknown,00:01:29,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:29.
+INC_VID_083,Video,Person Collapsing,Unknown,00:01:32,High,A video captured a person collapsing at an unknown location at 00:01:32. The incident is classified as high severity.
+INC_VID_084,Video,Person Standing,Unknown,00:01:33,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:33.
+INC_VID_085,Video,Person Standing,Unknown,00:01:33,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:33.
+INC_VID_086,Video,Multiple Persons Detected,Unknown,00:01:34,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:34.
+INC_VID_087,Video,Multiple Persons Present,Unknown,00:01:34,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:34.
+INC_VID_088,Video,Person Running,Unknown,00:00:00,Low,A Low-severity Person Running incident was reported via Video. The reported time was 00:00:00.
+INC_VID_089,Video,Multiple Persons Present,Unknown,00:00:33,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:33.
+INC_VID_090,Video,Multiple Persons Present,Unknown,00:00:33,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:33.
+INC_VID_091,Video,Multiple Persons Detected,Unknown,00:00:34,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:34.
+INC_VID_092,Video,Multiple Persons Present,Unknown,00:00:34,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:34.
+INC_VID_093,Video,Person Collapsing,Unknown,00:00:35,High,"At 00:00:35 a video captured a person collapsing, described as a high‑severity incident. The location of the collapse remains unknown."
+INC_VID_094,Video,Multiple Persons Present,Unknown,00:00:35,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:00:35.
+INC_VID_095,Video,Multiple Persons Detected,Unknown,00:00:36,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:00:36.
+INC_VID_096,Video,Multiple Persons Detected,Unknown,00:01:04,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:04.
+INC_VID_097,Video,Multiple Persons Detected,Unknown,00:01:04,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:04.
+INC_VID_098,Video,Multiple Persons Detected,Unknown,00:01:05,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:05.
+INC_VID_099,Video,Multiple Persons Detected,Unknown,00:01:05,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:05.
+INC_VID_100,Video,Multiple Persons Detected,Unknown,00:01:06,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:06.
+INC_VID_101,Video,Multiple Persons Detected,Unknown,00:01:06,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:06.
+INC_VID_102,Video,Multiple Persons Present,Unknown,00:01:13,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:13.
+INC_VID_103,Video,Multiple Persons Detected,Unknown,00:01:14,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:14.
+INC_VID_104,Video,Multiple Persons Detected,Unknown,00:01:14,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:14.
+INC_VID_105,Video,Multiple Persons Present,Unknown,00:01:15,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:15.
+INC_VID_106,Video,Person Standing,Unknown,00:01:15,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:15.
+INC_VID_107,Video,Person Collapsing,Unknown,00:01:16,High,A High-severity Person Collapsing incident was reported via Video. The reported time was 00:01:16.
+INC_VID_108,Video,Multiple Persons Detected,Unknown,00:01:16,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:16.
+INC_VID_109,Video,Person Standing,Unknown,00:01:17,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:17.
+INC_VID_110,Video,Person Collapsing,Unknown,00:01:17,High,A High-severity Person Collapsing incident was reported via Video. The reported time was 00:01:17.
+INC_VID_111,Video,Person Collapsing,Unknown,00:01:18,High,"A person collapsed, as shown in a video, at an unknown location. The incident was captured at 00:01:18. The severity is high."
+INC_VID_112,Video,Multiple Persons Detected,Unknown,00:01:18,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:18.
+INC_VID_113,Video,Person Collapsing,Unknown,00:01:19,High,A High-severity Person Collapsing incident was reported via Video. The reported time was 00:01:19.
+INC_VID_114,Video,Multiple Persons Detected,Unknown,00:01:19,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:19.
+INC_VID_115,Video,Multiple Persons Detected,Unknown,00:01:24,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:24.
+INC_VID_116,Video,Multiple Persons Detected,Unknown,00:01:24,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:24.
+INC_VID_117,Video,Multiple Persons Detected,Unknown,00:01:25,Low,A Low-severity Multiple Persons Detected incident was reported via Video. The reported time was 00:01:25.
+INC_VID_118,Video,Person Standing,Unknown,00:01:25,Low,A Low-severity Person Standing incident was reported via Video. The reported time was 00:01:25.
+INC_VID_119,Video,Multiple Persons Present,Unknown,00:01:26,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:26.
+INC_VID_120,Video,Multiple Persons Present,Unknown,00:01:26,Low,A Low-severity Multiple Persons Present incident was reported via Video. The reported time was 00:01:26.
+INC_VID_121,Video,Multiple Persons Present,Unknown,00:01:30,Low,"At 00:01:30 a video captured a low-severity incident involving multiple persons present, with the location unknown."
+INC_TXT_001,Text,Assault / Violence,Jeff,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Jeff.
+INC_TXT_002,Text,Assault / Violence,Monday shooting,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Monday shooting.
+INC_TXT_003,Text,Other,public via,Unknown,Low,A Low-severity Other incident was reported via Text at public via.
+INC_TXT_004,Text,Assault / Violence,A Crime Scene,Unknown,High,A High-severity Assault / Violence incident was reported via Text at A Crime Scene.
+INC_TXT_005,Text,Assault / Violence,"stamp out, domestic violence",Unknown,High,"A High-severity Assault / Violence incident was reported via Text at stamp out, domestic violence."
+INC_TXT_006,Text,Other,stamp out,Today,Low,A Low-severity Other incident was reported via Text at stamp out. The reported time was Today.
+INC_TXT_007,Text,Theft / Robbery,ORGANIZATION: Police,Unknown,Medium,A Medium-severity Theft / Robbery incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_008,Text,Other,"lack of, Pakistan become easy targets for crime",Unknown,Low,"A Low-severity Other incident was reported via Text at lack of, Pakistan become easy targets for crime."
+INC_TXT_009,Text,Assault / Violence,A Crime Scene,Unknown,High,A High-severity Assault / Violence incident was reported via Text at A Crime Scene.
+INC_TXT_010,Text,Other,end the violent MJ trade,Unknown,Low,A Low-severity Other incident was reported via Text at end the violent MJ trade.
+INC_TXT_011,Text,Other,co-ordinated raids,Unknown,Low,"A low severity incident of other types occurred during co-ordinated raids, as reported by Text."
+INC_TXT_012,Text,Assault / Violence,a crime scene,Unknown,High,A High-severity Assault / Violence incident was reported via Text at a crime scene.
+INC_TXT_013,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_014,Text,Assault / Violence,Badger Guns suit,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Badger Guns suit.
+INC_TXT_015,Text,Other,river,Unknown,Low,A Low-severity Other incident was reported via Text at river.
+INC_TXT_016,Text,Other,cry foul,Unknown,Low,An other event involving a cry foul occurred at an unknown time and was considered low severity. Source of information was text.
+INC_TXT_017,Text,Other,Delhi. Home minister,Unknown,Low,A Low-severity Other incident was reported via Text at Delhi. Home minister.
+INC_TXT_018,Text,Other,Delhi. Home minister,Unknown,Low,A Low-severity Other incident was reported via Text at Delhi. Home minister.
+INC_TXT_019,Text,Other,Delhi. Home minister,Unknown,Low,A Low-severity Other incident was reported via Text at Delhi. Home minister.
+INC_TXT_020,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_021,Text,Other,Delhi. Home minister,Unknown,Low,An Other incident was reported in text at the Delhi Home Minister's location. The event’s severity is low. The time of the incident is unknown.
+INC_TXT_022,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_023,Text,Assault / Violence,a crime scene,Unknown,High,A High-severity Assault / Violence incident was reported via Text at a crime scene.
+INC_TXT_024,Text,Other,Delhi. Home minister,Unknown,Low,A Low-severity Other incident was reported via Text at Delhi. Home minister.
+INC_TXT_025,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_026,Text,Other,Rs 8 cr heist,Unknown,Low,A Low-severity Other incident was reported via Text at Rs 8 cr heist.
+INC_TXT_027,Text,Other,"High Court, Mumbai jail for 10 years",Unknown,Low,"An other incident was reported in Mumbai jail, located at the High Court, with a 10‑year sentence applied. The event was described by a text source, the time was unknown, and it was classified as low severity."
+INC_TXT_028,Text,Other,Delhi. Home minister,Unknown,Low,A Low-severity Other incident was reported via Text at Delhi. Home minister.
+INC_TXT_029,Text,Other,a playlist World's Scariest,Unknown,Low,A Low-severity Other incident was reported via Text at a playlist World's Scariest.
+INC_TXT_030,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_031,Text,Fire / Arson,grass fires,Unknown,High,A High-severity Fire / Arson incident was reported via Text at grass fires.
+INC_TXT_032,Text,Other,"capital by govnment, b present ther b4 crime take place",Unknown,Low,"A Low-severity Other incident was reported via Text at capital by govnment, b present ther b4 crime take place."
+INC_TXT_033,Text,Other,Onitsha,Unknown,Low,A Low-severity Other incident was reported via Text at Onitsha.
+INC_TXT_034,Text,Other,prevent a crime or arrest the suspect,Unknown,Low,A Low-severity Other incident was reported via Text at prevent a crime or arrest the suspect.
+INC_TXT_035,Text,Other,showdown,Unknown,Low,A Low-severity Other incident was reported via Text at showdown.
+INC_TXT_036,Text,Other,ORGANIZATION: Police,Unknown,Low,Text reports an unspecified incident involving other activities at an organization identified as Police. The event occurred at an unknown time and was classified as low severity. No additional details are provided.
+INC_TXT_037,Text,Other,Petaluma,Unknown,Low,A Low-severity Other incident was reported via Text at Petaluma.
+INC_TXT_038,Text,Other,sunny spot med. MJ shop on 17th,Unknown,Low,A Low-severity Other incident was reported via Text at sunny spot med. MJ shop on 17th.
+INC_TXT_039,Text,Assault / Violence,"be fighting crime on the streets, a hiding spot waiting",Unknown,High,"A High-severity Assault / Violence incident was reported via Text at be fighting crime on the streets, a hiding spot waiting."
+INC_TXT_040,Text,Assault / Violence,ORGANIZATION: Police,Unknown,High,A High-severity Assault / Violence incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_041,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_042,Text,Other,blame Delhi,Unknown,Low,A Low-severity Other incident was reported via Text at blame Delhi.
+INC_TXT_043,Text,Other,w,Unknown,Low,A Low-severity Other incident was reported via Text at w.
+INC_TXT_044,Text,Other,pay for their crime of beating him.Delhi,Unknown,Low,A Low-severity Other incident was reported via Text at pay for their crime of beating him.Delhi.
+INC_TXT_045,Text,Assault / Violence,Pontchartrain Park,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park.
+INC_TXT_046,Text,Other,pay for their crime of beating him.Delhi,Unknown,Low,A Low-severity Other incident was reported via Text at pay for their crime of beating him.Delhi.
+INC_TXT_047,Text,Other,cry foul,Unknown,Low,A Low-severity Other incident was reported via Text at cry foul.
+INC_TXT_048,Text,Assault / Violence,Murder Case,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Murder Case.
+INC_TXT_049,Text,Other,Petaluma,Unknown,Low,A Low-severity Other incident was reported via Text at Petaluma.
+INC_TXT_050,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_051,Text,Other,Petaluma,Unknown,Low,A Low-severity Other incident was reported via Text at Petaluma.
+INC_TXT_052,Text,Assault / Violence,Pontchartrain Park,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park.
+INC_TXT_053,Text,Assault / Violence,Detroit,Unknown,High,"An assault or violence incident occurred in Detroit, reported via text. The severity of the event is high. The time of the incident is unknown."
+INC_TXT_054,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_055,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_056,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_057,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_058,Text,Other,Petaluma,Unknown,Low,A Low-severity Other incident was reported via Text at Petaluma.
+INC_TXT_059,Text,Other,deserve such loyal companion. This is a,Unknown,Low,A Low-severity Other incident was reported via Text at deserve such loyal companion. This is a.
+INC_TXT_060,Text,Other,deserve such loyal companion. This is a,Unknown,Low,A Low-severity Other incident was reported via Text at deserve such loyal companion. This is a.
+INC_TXT_061,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_062,Text,Other,Unknown,Unknown,Low,The incident involved an unspecified event categorized as “Other.” It was reported to have occurred at an unknown location and time. The severity was assessed as low.
+INC_TXT_063,Text,Assault / Violence,British army's crime-fighting software,Unknown,High,A High-severity Assault / Violence incident was reported via Text at British army's crime-fighting software.
+INC_TXT_064,Text,Assault / Violence,a crime scene,Unknown,High,A High-severity Assault / Violence incident was reported via Text at a crime scene.
+INC_TXT_065,Text,Assault / Violence,ORGANIZATION: Police,Unknown,High,A High-severity Assault / Violence incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_066,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_067,Text,Assault / Violence,Pontchartrain Park,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park.
+INC_TXT_068,Text,Assault / Violence,Pontchartrain Park,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park.
+INC_TXT_069,Text,Assault / Violence,Pontchartrain Park,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park.
+INC_TXT_070,Text,Assault / Violence,Unknown,Unknown,High,A High-severity Assault / Violence incident was reported via Text.
+INC_TXT_071,Text,Other,14.8,Unknown,Low,A Low-severity Other incident was reported via Text at 14.8.
+INC_TXT_072,Text,Assault / Violence,"Pontchartrain Park, Gentilly neighborhood Saturday",Jan. 31,High,"A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park, Gentilly neighborhood Saturday. The reported time was Jan. 31."
+INC_TXT_073,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_074,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_075,Text,Other,alleged child porn bust,Unknown,Low,A Low-severity Other incident was reported via Text at alleged child porn bust.
+INC_TXT_076,Text,Assault / Violence,Pontchartrain Park,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Pontchartrain Park.
+INC_TXT_077,Text,Other,Springfield,Unknown,Low,A Low-severity Other incident was reported via Text at Springfield.
+INC_TXT_078,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_079,Text,Other,Delhi,Unknown,Low,A Low-severity Other incident was reported via Text at Delhi.
+INC_TXT_080,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_081,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_082,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_083,Text,Other,local,Unknown,Low,A Low-severity Other incident was reported via Text at local.
+INC_TXT_084,Text,Other,ORGANIZATION: McLean High School,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: McLean High School.
+INC_TXT_085,Text,Other,ORGANIZATION: McLean High School,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: McLean High School.
+INC_TXT_086,Text,Other,ORGANIZATION: McLean High School,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: McLean High School.
+INC_TXT_087,Text,Other,ORGANIZATION: McLean High School,Unknown,Low,"Other incident occurred at McLean High School. The event was reported with low severity, and the time is unknown."
+INC_TXT_088,Text,Other,ORGANIZATION: McLean High School,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: McLean High School.
+INC_TXT_089,Text,Other,ORGANIZATION: McLean High School,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: McLean High School.
+INC_TXT_090,Text,Other,ORGANIZATION: McLean High School,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: McLean High School.
+INC_TXT_091,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_092,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_093,Text,Other,be traipsed over multiple times,Unknown,Low,A Low-severity Other incident was reported via Text at be traipsed over multiple times.
+INC_TXT_094,Text,Other,Ramsay Street,Unknown,Low,A Low-severity Other incident was reported via Text at Ramsay Street.
+INC_TXT_095,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_096,Text,Other,it,Unknown,Low,A Low-severity Other incident was reported via Text at it.
+INC_TXT_097,Text,Other,Delhi,Unknown,Low,A Low-severity Other incident was reported via Text at Delhi.
+INC_TXT_098,Text,Other,McDonald's Happy Meals,Unknown,Low,A Low-severity Other incident was reported via Text at McDonald's Happy Meals.
+INC_TXT_099,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_100,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_101,Text,Other,Delhi,Unknown,Low,A Low-severity Other incident was reported via Text at Delhi.
+INC_TXT_102,Text,Assault / Violence,a crime scene,Unknown,High,A High-severity Assault / Violence incident was reported via Text at a crime scene.
+INC_TXT_103,Text,Other,Delhi,Unknown,Low,A Low-severity Other incident was reported via Text at Delhi.
+INC_TXT_104,Text,Assault / Violence,ORGANIZATION: Police,Unknown,High,A High-severity Assault / Violence incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_105,Text,Fire / Arson,Richland,Unknown,High,"A high-severity fire, suspected to be arson, occurred in Richland. The time of the incident is unknown. The incident was reported by a text source."
+INC_TXT_106,Text,Other,Unknown,Unknown,Low,A Low-severity Other incident was reported via Text.
+INC_TXT_107,Text,Fire / Arson,Richland,Unknown,High,A High-severity Fire / Arson incident was reported via Text at Richland.
+INC_TXT_108,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_109,Text,Other,cry foul,Unknown,Low,A Low-severity Other incident was reported via Text at cry foul.
+INC_TXT_110,Text,Assault / Violence,Badger Guns suit,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Badger Guns suit.
+INC_TXT_111,Text,Other,ORGANIZATION: Police,Unknown,Low,A Low-severity Other incident was reported via Text at ORGANIZATION: Police.
+INC_TXT_112,Text,Assault / Violence,Badger Guns suit,Unknown,High,A High-severity Assault / Violence incident was reported via Text at Badger Guns suit.
+INC_TXT_113,Text,Other,Anywhere USA,Sat Feb 01 05:13:33 +0000 2014,Low,A Low-severity Other incident was reported via Text at Anywhere USA. The reported time was Sat Feb 01 05:13:33 +0000 2014.
+INC_TXT_114,Text,Other,"San Jose, Ca",Sat Feb 01 05:11:50 +0000 2014,Low,"A Low-severity Other incident was reported via Text at San Jose, Ca. The reported time was Sat Feb 01 05:11:50 +0000 2014."
+INC_TXT_115,Text,Other,"Wyoming Highway, United States",Sat Feb 01 05:11:45 +0000 2014,Low,"A Low-severity Other incident was reported via Text at Wyoming Highway, United States. The reported time was Sat Feb 01 05:11:45 +0000 2014."

@@ -54,13 +54,6 @@ coverage.xml
 .pytest_cache/
 cover/
 
-# Generated modality/integration outputs
-audio/output/
-images/output/
-integration/output/
-pdf/output/
-text/output/
-video/output/
 
 # Local model weights downloaded by Ultralytics.
 *.pt
@@ -235,13 +228,6 @@ __marimo__/
 # macOS metadata
 .DS_Store
 
-# Local modality datasets and archives
-src/*/data/*
-!src/*/data/.gitkeep
-src/*/data/**/*.zip
-
-# Temporary output writes; reviewed CSV outputs may be committed
-src/*/output/*.tmp
 
 # Local model caches
 .cache/whisper/

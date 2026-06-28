@@ -1,0 +1,122 @@
+Timestamp,Frame_ID,Event_Detected,Objects,Confidence
+00:00:00,FRM_000,Possible altercation,4 persons,0.95
+00:00:01,FRM_036,Person standing,1 motion region,0.53
+00:00:02,FRM_048,Multiple persons detected,3 motion regions,0.65
+00:00:02,FRM_060,Person standing,1 motion region,0.54
+00:00:03,FRM_072,Person collapsing,4 persons,0.87
+00:00:03,FRM_084,Person collapsing,4 motion regions,0.52
+00:00:05,FRM_132,Person standing,1 motion region,0.52
+00:00:07,FRM_180,Person standing,1 motion region,0.53
+00:00:08,FRM_192,Multiple persons detected,3 persons,0.9
+00:00:08,FRM_204,Person walking,1 motion region,0.64
+00:00:09,FRM_216,Person standing,1 motion region,0.53
+00:00:09,FRM_228,Multiple persons detected,3 motion regions,0.63
+00:00:15,FRM_384,Multiple persons present,2 persons,0.89
+00:00:16,FRM_396,Multiple persons present,2 motion regions,0.58
+00:00:16,FRM_408,Person standing,1 motion region,0.53
+00:00:17,FRM_420,Multiple persons present,2 motion regions,0.58
+00:00:17,FRM_432,Multiple persons present,2 persons,0.85
+00:00:18,FRM_444,Multiple persons present,2 motion regions,0.58
+00:00:18,FRM_456,Person standing,1 motion region,0.53
+00:00:00,FRM_000,Person running,1 person,0.92
+00:00:04,FRM_108,Person standing,1 motion region,0.52
+00:00:05,FRM_120,Multiple persons detected,2 motion regions,0.64
+00:00:05,FRM_132,Person standing,1 motion region,0.53
+00:00:06,FRM_144,Multiple persons detected,2 persons,0.84
+00:00:06,FRM_156,Multiple persons detected,3 motion regions,0.64
+00:00:07,FRM_168,Multiple persons present,2 motion regions,0.58
+00:00:07,FRM_180,Multiple persons present,2 motion regions,0.58
+00:00:09,FRM_216,Multiple persons present,3 persons,0.87
+00:00:09,FRM_228,Multiple persons present,2 motion regions,0.58
+00:00:10,FRM_240,Multiple persons present,2 motion regions,0.58
+00:00:00,FRM_000,Possible altercation,3 persons,0.95
+00:00:08,FRM_192,Multiple persons detected,2 motion regions,0.63
+00:00:08,FRM_204,Person standing,1 motion region,0.53
+00:00:09,FRM_216,Person standing,1 motion region,0.52
+00:00:09,FRM_228,Multiple persons present,7 persons,0.8
+00:00:35,FRM_864,Person standing,1 motion region,0.52
+00:00:52,FRM_1308,Person standing,1 motion region,0.52
+00:00:53,FRM_1320,Multiple persons detected,3 motion regions,0.64
+00:00:53,FRM_1332,Multiple persons detected,6 persons,0.89
+00:00:54,FRM_1344,Person collapsing,3 motion regions,0.57
+00:00:54,FRM_1356,Person collapsing,4 motion regions,0.6
+00:00:55,FRM_1368,Multiple persons detected,4 motion regions,0.63
+00:00:55,FRM_1380,Multiple persons detected,6 persons,0.88
+00:00:56,FRM_1392,Multiple persons detected,2 motion regions,0.63
+00:00:56,FRM_1404,Multiple persons present,2 motion regions,0.58
+00:00:58,FRM_1452,Multiple persons present,2 motion regions,0.57
+00:01:00,FRM_1512,Multiple persons present,5 persons,0.89
+00:01:01,FRM_1524,Person standing,1 motion region,0.52
+00:01:01,FRM_1536,Person standing,1 motion region,0.52
+00:01:02,FRM_1548,Person standing,1 motion region,0.53
+00:01:02,FRM_1560,Multiple persons present,4 persons,0.82
+00:01:12,FRM_1788,Multiple persons detected,2 motion regions,0.63
+00:01:12,FRM_1800,Multiple persons detected,2 motion regions,0.63
+00:01:12,FRM_1812,Person standing,1 motion region,0.53
+00:01:13,FRM_1824,Multiple persons detected,5 persons,0.86
+00:01:13,FRM_1836,Person standing,1 motion region,0.53
+00:01:14,FRM_1848,Multiple persons detected,3 motion regions,0.63
+00:01:14,FRM_1860,Multiple persons detected,2 motion regions,0.64
+00:01:15,FRM_1872,Multiple persons detected,5 persons,0.89
+00:01:15,FRM_1884,Multiple persons detected,3 motion regions,0.64
+00:01:16,FRM_1896,Multiple persons present,3 motion regions,0.58
+00:01:16,FRM_1908,Person standing,1 motion region,0.53
+00:01:17,FRM_1920,Multiple persons present,4 persons,0.91
+00:01:17,FRM_1932,Person standing,1 motion region,0.53
+00:01:18,FRM_1944,Multiple persons detected,2 motion regions,0.64
+00:01:18,FRM_1956,Multiple persons detected,2 motion regions,0.63
+00:01:19,FRM_1968,Multiple persons detected,4 persons,0.89
+00:01:19,FRM_1980,Multiple persons present,2 motion regions,0.58
+00:01:20,FRM_1992,Multiple persons present,2 motion regions,0.58
+00:01:20,FRM_2004,Multiple persons present,2 motion regions,0.57
+00:01:22,FRM_2040,Multiple persons present,4 persons,0.9
+00:01:22,FRM_2052,Person standing,1 motion region,0.55
+00:01:23,FRM_2064,Multiple persons detected,2 motion regions,0.64
+00:01:24,FRM_2100,Person standing,1 motion region,0.52
+00:01:25,FRM_2124,Multiple persons present,4 persons,0.92
+00:01:25,FRM_2136,Multiple persons present,3 motion regions,0.58
+00:01:26,FRM_2148,Multiple persons detected,3 motion regions,0.64
+00:01:26,FRM_2160,Multiple persons detected,3 motion regions,0.63
+00:01:27,FRM_2172,Multiple persons detected,5 persons,0.89
+00:01:27,FRM_2184,Multiple persons present,2 motion regions,0.58
+00:01:28,FRM_2208,Multiple persons detected,2 motion regions,0.63
+00:01:29,FRM_2220,Person standing,1 motion region,0.52
+00:01:32,FRM_2304,Person collapsing,6 persons,0.89
+00:01:33,FRM_2316,Person standing,1 motion region,0.53
+00:01:33,FRM_2328,Person standing,1 motion region,0.55
+00:01:34,FRM_2340,Multiple persons detected,3 motion regions,0.64
+00:01:34,FRM_2352,Multiple persons present,4 persons,0.81
+00:00:00,FRM_000,Person running,1 person,0.92
+00:00:33,FRM_816,Multiple persons present,3 motion regions,0.57
+00:00:33,FRM_828,Multiple persons present,3 motion regions,0.58
+00:00:34,FRM_840,Multiple persons detected,3 motion regions,0.64
+00:00:34,FRM_852,Multiple persons present,2 persons,0.91
+00:00:35,FRM_864,Person collapsing,3 motion regions,0.54
+00:00:35,FRM_876,Multiple persons present,2 motion regions,0.58
+00:00:36,FRM_888,Multiple persons detected,3 motion regions,0.63
+00:01:04,FRM_1596,Multiple persons detected,2 persons,0.85
+00:01:04,FRM_1608,Multiple persons detected,3 motion regions,0.63
+00:01:05,FRM_1620,Multiple persons detected,3 motion regions,0.64
+00:01:05,FRM_1632,Multiple persons detected,2 motion regions,0.64
+00:01:06,FRM_1644,Multiple persons detected,2 persons,0.89
+00:01:06,FRM_1656,Multiple persons detected,2 motion regions,0.63
+00:01:13,FRM_1836,Multiple persons present,2 motion regions,0.57
+00:01:14,FRM_1848,Multiple persons detected,2 motion regions,0.66
+00:01:14,FRM_1860,Multiple persons detected,4 persons,0.75
+00:01:15,FRM_1872,Multiple persons present,3 motion regions,0.58
+00:01:15,FRM_1884,Person standing,1 motion region,0.52
+00:01:16,FRM_1896,Person collapsing,3 motion regions,0.56
+00:01:16,FRM_1908,Multiple persons detected,2 persons,0.79
+00:01:17,FRM_1920,Person standing,1 motion region,0.54
+00:01:17,FRM_1932,Person collapsing,3 motion regions,0.57
+00:01:18,FRM_1944,Person collapsing,3 motion regions,0.56
+00:01:18,FRM_1956,Multiple persons detected,3 persons,0.85
+00:01:19,FRM_1968,Person collapsing,4 motion regions,0.56
+00:01:19,FRM_1980,Multiple persons detected,3 motion regions,0.64
+00:01:24,FRM_2088,Multiple persons detected,2 motion regions,0.63
+00:01:24,FRM_2100,Multiple persons detected,2 persons,0.87
+00:01:25,FRM_2124,Multiple persons detected,2 motion regions,0.65
+00:01:25,FRM_2136,Person standing,1 motion region,0.53
+00:01:26,FRM_2148,Multiple persons present,2 motion regions,0.58
+00:01:26,FRM_2160,Multiple persons present,3 persons,0.89
+00:01:30,FRM_2256,Multiple persons present,2 motion regions,0.57

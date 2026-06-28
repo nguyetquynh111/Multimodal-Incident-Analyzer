@@ -1,0 +1,4 @@
+Call_ID,Transcript,Extracted_Event,Location,Sentiment,Urgency_Score
+call_116_0,"Hey, um, they just broke into my house. They had guns. They told us to just be on the floor. There's flowers in my house.",shooting,Unknown,Distressed,0.7
+call_189_0,"Yes, ma'am. This is, uh, uh, just on the other side of the facility. Yes, sir.",unknown emergency,other side of the facility,Calm,0.3
+call_75_0,"Hi, I called a little while ago. I believe I talked to you, Stacey. My...",unknown emergency,Unknown,Calm,0.3
