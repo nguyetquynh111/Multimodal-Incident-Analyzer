@@ -23,7 +23,8 @@ Video: .mp4, .mov, .mpg, .mpeg (max 5 minutes)
 Text:  .txt, .csv
 ```
 
-JSON uploads are intentionally unsupported.
+## Quick reference output
+[Final merged CSV](integration/output/final_incident_dataset.csv)
 
 ## Quick Start
 
