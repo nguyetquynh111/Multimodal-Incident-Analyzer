@@ -1,17 +1,4 @@
-"""Public LLM summary API (tickets T-022/T-023/T-024).
-
-``summarize_incident(incident_row)`` is the single entry point the platform
-calls after Integration and before Supabase insert. It returns a short,
-grounded ``incident_summary`` plus the ``summary_method``/``summary_model``
-provenance fields.
-
-Design mirrors ``pdf/processor.py``: the side-effecting dependency (here the
-LLM HTTP call) is injectable via ``llm_call=`` so tests exercise every branch
--- success, network failure, invalid output -- without a real API key or any
-network access. The default caller uses OpenRouter's free tier and is the only
-code that imports ``requests``, kept inside the function so importing this
-module never requires it.
-"""
+"""Public LLM summary API."""
 
 from __future__ import annotations
 
@@ -22,16 +9,14 @@ from typing import Callable, Optional
 from . import fallback, prompts, schemas
 
 
-# OpenRouter is OpenAI-compatible. Any ":free" model works here; the default is
-# a small, fast free-tier instruct model verified against OpenRouter's live API
-# (clean prose, no fabrication, within length limits). Override with the
-# LLM_MODEL_NAME env var (e.g. "mistralai/mistral-7b-instruct:free").
+# OpenRouter is OpenAI-compatible; override with LLM_MODEL_NAME if needed.
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL_NAME = "openai/gpt-oss-20b:free"
 DEFAULT_TIMEOUT_SECONDS = 6.0
 
 
 # --- Environment helpers -----------------------------------------------------
+
 
 def _llm_configured() -> bool:
     """Return whether an OpenRouter key is available for summary generation."""
@@ -54,6 +39,7 @@ def _timeout_seconds() -> float:
 
 
 # --- LLM call + response handling --------------------------------------------
+
 
 def _summary_fields_only(incident_row: dict) -> dict:
     """Return only the cleaned fields allowed to enter summary generation."""
@@ -91,7 +77,7 @@ def _build_location_request(text: str, model: str) -> dict:
 def _default_llm_call(request: dict) -> dict:
     """Post the chat-completion request to OpenRouter and return parsed JSON."""
 
-    import requests  # local import: only the real network path needs it
+    import requests
 
     api_key = os.getenv("OPENROUTER_API_KEY", "")
     headers = {
@@ -142,7 +128,11 @@ def _is_valid_summary(text: str) -> bool:
         return False
     if not any(char.isalpha() for char in stripped):
         return False
-    if re.search(r"\b(raw|ocr)\s+text\b|\braw_text\b|\btext\s+reads\b|\breads\s*:", stripped, re.IGNORECASE):
+    if re.search(
+        r"\b(raw|ocr)\s+text\b|\braw_text\b|\btext\s+reads\b|\breads\s*:",
+        stripped,
+        re.IGNORECASE,
+    ):
         return False
     return True
 
@@ -189,8 +179,7 @@ def _rule_based_location_from_text(text: str) -> str:
     if _looks_like_domain_or_source(cleaned):
         return schemas.UNKNOWN
 
-    # Addresses and named roads/highways are the most common useful image OCR
-    # locations. Keep only the explicit road phrase and stop before OCR noise.
+    # Keep explicit road phrases and stop before OCR noise.
     road_suffixes = (
         "street|st|avenue|ave|road|rd|highway|hwy|boulevard|blvd|drive|dr|"
         "lane|ln|route|freeway|parkway|pkwy|way|court|ct|place|pl"
@@ -253,6 +242,7 @@ def _clean_location_output(text: str) -> str:
 
 # --- Public API --------------------------------------------------------------
 
+
 def summarize_incident(
     incident_row: dict,
     *,
@@ -260,20 +250,12 @@ def summarize_incident(
 ) -> dict:
     """Summarize one cleaned integrated incident row.
 
-    Input keys expected (specs.md §7): source, source_type, event, location,
-    time, severity, confidence. ``raw_text`` may be present on the row, but it
-    is not included in the summary prompt.
-
-    Returns exactly: incident_summary (str), summary_method
-    ("llm" | "rule_based" | "disabled" | "error"), summary_model (str).
-
-    ``llm_call`` is an injectable ``Callable[[request_dict], response_dict]``
-    used in place of the real OpenRouter HTTP call (tests pass a fake).
+    ``llm_call`` can replace the real OpenRouter transport in tests.
     """
 
     summary_row = _summary_fields_only(incident_row)
 
-    # No key means the deterministic fallback is the active summary path.
+    # No key means the deterministic fallback is active.
     if not _llm_configured():
         return fallback.summarize_fallback(
             summary_row,
@@ -284,7 +266,7 @@ def summarize_incident(
     model = _model_name()
     caller = llm_call or _default_llm_call
 
-    # 2-5. Try the LLM; any error, timeout, or invalid output -> error fallback.
+    # Fall back on error, timeout, or invalid output.
     try:
         response = caller(_build_request(summary_row, model))
         summary = _extract_text(response).strip()
@@ -323,7 +305,9 @@ def _extract_location_from_text(
         model = _model_name()
         caller = llm_call or _default_llm_call
         try:
-            location = _clean_location_output(_extract_text(caller(_build_location_request(cleaned_input, model))))
+            location = _clean_location_output(
+                _extract_text(caller(_build_location_request(cleaned_input, model)))
+            )
             if location != schemas.UNKNOWN:
                 return location
         except Exception:

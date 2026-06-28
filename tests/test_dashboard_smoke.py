@@ -24,14 +24,24 @@ def test_streamlit_dashboard_loads_without_an_exception() -> None:
 def test_incident_dates_use_time_column_not_created_at() -> None:
     from integration.dashboard_time import incident_dates
 
-    dates = incident_dates(pd.DataFrame([
-        {"created_at": "2026-06-27T12:00:00Z", "time": "June 20, 2026"},
-        {"created_at": "2026-06-27T12:00:00Z", "time": "2026-06-21T08:30:00Z"},
-        {"created_at": "2026-06-27T12:00:00Z", "time": "Sat Feb 01 05:11:45 +0000 2014"},
-        {"created_at": "2026-06-27T12:00:00Z", "time": "Today, Fri Jan 31 07:22:18 +0000 2014"},
-        {"created_at": "2026-06-27T12:00:00Z", "time": "00:00:12"},
-        {"created_at": "2026-06-27T12:00:00Z", "time": "Unknown"},
-    ]))
+    dates = incident_dates(
+        pd.DataFrame(
+            [
+                {"created_at": "2026-06-27T12:00:00Z", "time": "June 20, 2026"},
+                {"created_at": "2026-06-27T12:00:00Z", "time": "2026-06-21T08:30:00Z"},
+                {
+                    "created_at": "2026-06-27T12:00:00Z",
+                    "time": "Sat Feb 01 05:11:45 +0000 2014",
+                },
+                {
+                    "created_at": "2026-06-27T12:00:00Z",
+                    "time": "Today, Fri Jan 31 07:22:18 +0000 2014",
+                },
+                {"created_at": "2026-06-27T12:00:00Z", "time": "00:00:12"},
+                {"created_at": "2026-06-27T12:00:00Z", "time": "Unknown"},
+            ]
+        )
+    )
 
     assert dates.astype(str).tolist() == [
         "2026-06-20",

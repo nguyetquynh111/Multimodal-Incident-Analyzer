@@ -30,9 +30,10 @@ DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "output" / "video_output
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg", ".wmv"}
 _SAMPLE_SECONDS = 0.5
 _MAX_DURATION_SECONDS = 300  # reject clips longer than 5 minutes
-_DEFAULT_YOLO_IMAGE_SIZE = 320
+_DEFAULT_YOLO_IMAGE_SIZE = 640
 _DEFAULT_YOLO_SAMPLE_STRIDE = 4
-_DEFAULT_YOLO_MODEL_PATH = "video/yolov8s.pt"
+_DEFAULT_YOLO_MODEL_PATH = "video/yolov8s.onnx"
+_ONNX_YOLO_IMAGE_SIZE = 640
 
 PERSON_CONF_THRESHOLD = 0.15
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle", "bicycle"}
@@ -47,8 +48,19 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
     return max(minimum, value)
 
 
-def _yolo_image_size() -> int:
-    return _env_int("VIDEO_YOLO_IMAGE_SIZE", _DEFAULT_YOLO_IMAGE_SIZE, minimum=320)
+def _yolo_model_path() -> str:
+    return (
+        os.getenv("VIDEO_YOLO_MODEL_PATH", _DEFAULT_YOLO_MODEL_PATH).strip()
+        or _DEFAULT_YOLO_MODEL_PATH
+    )
+
+
+def _yolo_image_size(model_path: str | Path | None = None) -> int:
+    size = _env_int("VIDEO_YOLO_IMAGE_SIZE", _DEFAULT_YOLO_IMAGE_SIZE, minimum=320)
+    path = Path(model_path or _yolo_model_path())
+    if path.suffix.lower() == ".onnx":
+        return _ONNX_YOLO_IMAGE_SIZE
+    return size
 
 
 def _yolo_sample_stride() -> int:
@@ -64,7 +76,7 @@ def _cuda_available() -> bool:
 
 
 def _yolo_device() -> str | None:
-    requested = (os.getenv("VIDEO_YOLO_DEVICE", "auto").strip() or "auto")
+    requested = os.getenv("VIDEO_YOLO_DEVICE", "auto").strip() or "auto"
     normalized = requested.lower()
     if normalized == "auto":
         return "cuda" if _cuda_available() else None
@@ -77,11 +89,11 @@ def _should_run_yolo(eligible: bool, candidate_index: int, stride: int) -> bool:
     return eligible and candidate_index % max(1, stride) == 0
 
 
-def load_yolo_model():
+def load_yolo_model(model_path: str | Path | None = None):
     try:
         from ultralytics import YOLO
 
-        return YOLO(os.getenv("VIDEO_YOLO_MODEL_PATH", _DEFAULT_YOLO_MODEL_PATH))
+        return YOLO(str(model_path or _yolo_model_path()), task="detect")
     except Exception:
         return None
 
@@ -89,14 +101,14 @@ def load_yolo_model():
 def enhance_frame(frame):
     denoised = cv2.GaussianBlur(frame, (3, 3), 0)
     lab = cv2.cvtColor(denoised, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
+    lightness, a, b = cv2.split(lab)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced = cv2.merge([clahe.apply(l), a, b])
+    enhanced = cv2.merge([clahe.apply(lightness), a, b])
     return cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
 
 def run_yolo(model, frame, *, imgsz: int | None = None, device: str | None = None):
-    """Run YOLO once and return objects, max confidence, collapse flag, and filtered boxes for annotation."""
+    """Run YOLO once and return detection metadata."""
     if model is None:
         return [], 0.0, False, 0.0, []
 
@@ -169,7 +181,7 @@ def apply_mog2(fgmask) -> Tuple[float, int, List[Tuple]]:
 def detect_fire(frame) -> Tuple[bool, float]:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    lower1 = np.array([0,  120, 120])
+    lower1 = np.array([0, 120, 120])
     upper1 = np.array([20, 255, 255])
     lower2 = np.array([160, 120, 120])
     upper2 = np.array([180, 255, 255])
@@ -190,7 +202,9 @@ def classify_event(
     score: float, objects: List[str], moving_regions: int, yolo_ran: bool = False
 ) -> Tuple[str, float]:
     person_count = objects.count("person")
-    has_vehicle = any(obj in objects for obj in ["car", "truck", "bus", "motorcycle", "bicycle"])
+    has_vehicle = any(
+        obj in objects for obj in ["car", "truck", "bus", "motorcycle", "bicycle"]
+    )
 
     effective_persons = person_count if person_count > 0 else moving_regions
 
@@ -221,9 +235,14 @@ def classify_event(
 
 def event_to_severity(event: str) -> str:
     event_lower = event.lower()
-    if any(k in event_lower for k in ["fire", "collapsing", "altercation", "high motion"]):
+    if any(
+        k in event_lower for k in ["fire", "collapsing", "altercation", "high motion"]
+    ):
         return "High"
-    if any(k in event_lower for k in ["running", "multiple persons", "unclear motion", "vehicle movement"]):
+    if any(
+        k in event_lower
+        for k in ["running", "multiple persons", "unclear motion", "vehicle movement"]
+    ):
         return "Medium"
     return "Unknown" if event_lower == "no activity" else "Low"
 
@@ -238,32 +257,47 @@ def save_annotated_frame(
     clip_id: str,
     frame_id: str,
 ) -> Optional[str]:
-    """Draw bounding boxes and event label on frame and save as JPEG. Returns path or None."""
+    """Save an annotated frame and return its path."""
     if output_dir is None:
         return None
 
     annotated = frame.copy()
 
     if filtered_boxes:
-        for (x1, y1, x2, y2, label, conf) in filtered_boxes:
+        for x1, y1, x2, y2, label, conf in filtered_boxes:
             color = (0, 140, 255) if label == "person" else (255, 200, 0)
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             box_label = f"{label} {conf:.2f}"
             (tw, th), _ = cv2.getTextSize(box_label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
             cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 4, y1), color, -1)
-            cv2.putText(annotated, box_label, (x1 + 2, y1 - 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
+            cv2.putText(
+                annotated,
+                box_label,
+                (x1 + 2, y1 - 4),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (255, 255, 255),
+                1,
+            )
     else:
-        for (x1, y1, x2, y2) in motion_boxes:
+        for x1, y1, x2, y2 in motion_boxes:
             cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 220, 220), 2)
-            cv2.putText(annotated, "motion region", (x1 + 2, y1 - 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 220), 1)
+            cv2.putText(
+                annotated,
+                "motion region",
+                (x1 + 2, y1 - 4),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (0, 220, 220),
+                1,
+            )
 
     banner = f"{event}  ({confidence:.2f})"
     (tw, th), _ = cv2.getTextSize(banner, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
     cv2.rectangle(annotated, (8, 8), (14 + tw, 22 + th), (0, 0, 0), -1)
-    cv2.putText(annotated, banner, (10, 10 + th),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
+    cv2.putText(
+        annotated, banner, (10, 10 + th), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2
+    )
 
     out_dir = output_dir / clip_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -314,7 +348,9 @@ def process_video_file(
     yolo_sample_stride = _yolo_sample_stride()
     yolo_imgsz = _yolo_image_size()
     yolo_device = _yolo_device()
-    mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
+    mog2 = cv2.createBackgroundSubtractorMOG2(
+        history=100, varThreshold=25, detectShadows=False
+    )
     frame_index = 0
     yolo_candidate_index = 0
     extractor_rows = []
@@ -338,23 +374,37 @@ def process_video_file(
 
                 enhanced = enhance_frame(resized)
                 yolo_eligible = qualifies_for_detection and not fire_detected
-                run_yolo_now = _should_run_yolo(yolo_eligible, yolo_candidate_index, yolo_sample_stride)
+                run_yolo_now = _should_run_yolo(
+                    yolo_eligible, yolo_candidate_index, yolo_sample_stride
+                )
                 if yolo_eligible:
                     yolo_candidate_index += 1
                 if run_yolo_now:
-                    objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
-                        model, enhanced, imgsz=yolo_imgsz, device=yolo_device
-                    )
+                    (
+                        objects,
+                        yolo_confidence,
+                        collapsed,
+                        collapse_confidence,
+                        filtered_boxes,
+                    ) = run_yolo(model, enhanced, imgsz=yolo_imgsz, device=yolo_device)
                 else:
-                    objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
+                    (
+                        objects,
+                        yolo_confidence,
+                        collapsed,
+                        collapse_confidence,
+                        filtered_boxes,
+                    ) = [], 0.0, False, 0.0, []
 
-                # MOG2 collapse fallback: overhead cameras make lying people invisible to YOLO
+                # MOG2 fallback for low-confidence overhead views.
                 if not collapsed and "person" not in objects:
-                    for (mx1, my1, mx2, my2) in motion_boxes:
+                    for mx1, my1, mx2, my2 in motion_boxes:
                         mw, mh = mx2 - mx1, my2 - my1
                         if mh > 0 and (mw / mh) > 2.0 and mw > 60:
                             collapsed = True
-                            collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
+                            collapse_confidence = round(
+                                min(0.72, 0.40 + (mw / mh) * 0.06), 2
+                            )
                             break
 
                 yolo_ran = run_yolo_now and model is not None
@@ -362,9 +412,14 @@ def process_video_file(
                 if fire_detected:
                     event, confidence = "Fire detected", fire_confidence
                 elif collapsed:
-                    event, confidence = "Person collapsing", max(collapse_confidence, yolo_confidence)
+                    event, confidence = (
+                        "Person collapsing",
+                        max(collapse_confidence, yolo_confidence),
+                    )
                 else:
-                    event, event_confidence = classify_event(score, objects, moving_regions, yolo_ran)
+                    event, event_confidence = classify_event(
+                        score, objects, moving_regions, yolo_ran
+                    )
                     confidence = max(event_confidence, yolo_confidence)
 
                 frame_id = f"FRM_{frame_index:03d}"
@@ -372,18 +427,25 @@ def process_video_file(
                 objects_str = format_objects(objects, moving_regions)
 
                 save_annotated_frame(
-                    filtered_boxes, motion_boxes, enhanced,
-                    event, round(float(confidence), 2),
-                    annotated_frames_dir, path.stem, frame_id,
+                    filtered_boxes,
+                    motion_boxes,
+                    enhanced,
+                    event,
+                    round(float(confidence), 2),
+                    annotated_frames_dir,
+                    path.stem,
+                    frame_id,
                 )
 
-                extractor_rows.append({
-                    "Timestamp": timestamp,
-                    "Frame_ID": frame_id,
-                    "Event_Detected": event,
-                    "Objects": objects_str,
-                    "Confidence": round(float(confidence), 2),
-                })
+                extractor_rows.append(
+                    {
+                        "Timestamp": timestamp,
+                        "Frame_ID": frame_id,
+                        "Event_Detected": event,
+                        "Objects": objects_str,
+                        "Confidence": round(float(confidence), 2),
+                    }
+                )
 
             frame_index += 1
     finally:
@@ -421,7 +483,9 @@ def process_video_stream(
     yolo_sample_stride = _yolo_sample_stride()
     yolo_imgsz = _yolo_image_size()
     yolo_device = _yolo_device()
-    mog2 = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
+    mog2 = cv2.createBackgroundSubtractorMOG2(
+        history=100, varThreshold=25, detectShadows=False
+    )
     frame_index = 0
     yolo_candidate_index = 0
 
@@ -444,22 +508,36 @@ def process_video_stream(
 
                 enhanced = enhance_frame(resized)
                 yolo_eligible = qualifies_for_detection and not fire_detected
-                run_yolo_now = _should_run_yolo(yolo_eligible, yolo_candidate_index, yolo_sample_stride)
+                run_yolo_now = _should_run_yolo(
+                    yolo_eligible, yolo_candidate_index, yolo_sample_stride
+                )
                 if yolo_eligible:
                     yolo_candidate_index += 1
                 if run_yolo_now:
-                    objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = run_yolo(
-                        model, enhanced, imgsz=yolo_imgsz, device=yolo_device
-                    )
+                    (
+                        objects,
+                        yolo_confidence,
+                        collapsed,
+                        collapse_confidence,
+                        filtered_boxes,
+                    ) = run_yolo(model, enhanced, imgsz=yolo_imgsz, device=yolo_device)
                 else:
-                    objects, yolo_confidence, collapsed, collapse_confidence, filtered_boxes = [], 0.0, False, 0.0, []
+                    (
+                        objects,
+                        yolo_confidence,
+                        collapsed,
+                        collapse_confidence,
+                        filtered_boxes,
+                    ) = [], 0.0, False, 0.0, []
 
                 if not collapsed and "person" not in objects:
-                    for (mx1, my1, mx2, my2) in motion_boxes:
+                    for mx1, my1, mx2, my2 in motion_boxes:
                         mw, mh = mx2 - mx1, my2 - my1
                         if mh > 0 and (mw / mh) > 2.0 and mw > 60:
                             collapsed = True
-                            collapse_confidence = round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
+                            collapse_confidence = round(
+                                min(0.72, 0.40 + (mw / mh) * 0.06), 2
+                            )
                             break
 
                 yolo_ran = run_yolo_now and model is not None
@@ -467,9 +545,14 @@ def process_video_stream(
                 if fire_detected:
                     event, confidence = "Fire detected", fire_confidence
                 elif collapsed:
-                    event, confidence = "Person collapsing", max(collapse_confidence, yolo_confidence)
+                    event, confidence = (
+                        "Person collapsing",
+                        max(collapse_confidence, yolo_confidence),
+                    )
                 else:
-                    event, event_confidence = classify_event(score, objects, moving_regions, yolo_ran)
+                    event, event_confidence = classify_event(
+                        score, objects, moving_regions, yolo_ran
+                    )
                     confidence = max(event_confidence, yolo_confidence)
 
                 frame_id = f"FRM_{frame_index:03d}"
@@ -477,18 +560,26 @@ def process_video_stream(
                 objects_str = format_objects(objects, moving_regions)
 
                 frame_path = save_annotated_frame(
-                    filtered_boxes, motion_boxes, enhanced,
-                    event, round(float(confidence), 2),
-                    annotated_frames_dir, path.stem, frame_id,
+                    filtered_boxes,
+                    motion_boxes,
+                    enhanced,
+                    event,
+                    round(float(confidence), 2),
+                    annotated_frames_dir,
+                    path.stem,
+                    frame_id,
                 )
 
-                yield {
-                    "Timestamp": timestamp,
-                    "Frame_ID": frame_id,
-                    "Event_Detected": event,
-                    "Objects": objects_str,
-                    "Confidence": round(float(confidence), 2),
-                }, frame_path
+                yield (
+                    {
+                        "Timestamp": timestamp,
+                        "Frame_ID": frame_id,
+                        "Event_Detected": event,
+                        "Objects": objects_str,
+                        "Confidence": round(float(confidence), 2),
+                    },
+                    frame_path,
+                )
 
             frame_index += 1
     finally:
@@ -502,7 +593,46 @@ def process_video(
 ) -> pd.DataFrame:
     """Analyze one video and return the five-column video draft contract."""
 
-    frame = process_video_file(str(video_path), annotated_frames_dir=annotated_frames_dir)
+    frame = process_video_file(
+        str(video_path), annotated_frames_dir=annotated_frames_dir
+    )
+    output = Path(output_csv_path).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(output, index=False)
+    return frame
+
+
+def process_video_folder(
+    folder_path: str | Path,
+    output_csv_path: str | Path = DEFAULT_OUTPUT_PATH,
+    annotated_frames_dir: Optional[Path] = None,
+) -> pd.DataFrame:
+    """Analyze all supported top-level videos in a folder and save one CSV."""
+
+    folder = Path(folder_path).expanduser()
+    if not folder.is_dir():
+        raise NotADirectoryError(f"Video folder not found: {folder}")
+
+    video_files = sorted(
+        path
+        for path in folder.iterdir()
+        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+    )
+    if not video_files:
+        supported = ", ".join(sorted(VIDEO_EXTENSIONS))
+        raise ValueError(
+            f"No supported video files found in {folder}. Expected: {supported}"
+        )
+
+    frames = [
+        process_video_file(str(path), annotated_frames_dir=annotated_frames_dir)
+        for path in video_files
+    ]
+    frame = (
+        pd.concat(frames, ignore_index=True)
+        if frames
+        else pd.DataFrame(columns=DRAFT_COLUMNS)
+    )
     output = Path(output_csv_path).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output, index=False)
@@ -510,25 +640,38 @@ def process_video(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the video processor for one evidence file from the command line."""
+    """Run the video processor for one evidence file or folder from the command line."""
 
     parser = argparse.ArgumentParser(description="Analyze video evidence.")
-    parser.add_argument("--input", required=True, help="A supported video file")
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH), help="Destination CSV path")
     parser.add_argument(
-        "--annotated-frames-dir", default=None,
+        "--input", required=True, help="A supported video file or folder of videos"
+    )
+    parser.add_argument(
+        "--output", default=str(DEFAULT_OUTPUT_PATH), help="Destination CSV path"
+    )
+    parser.add_argument(
+        "--annotated-frames-dir",
+        default=None,
         help="Optional directory for annotated sampled frames",
     )
     args = parser.parse_args(argv)
     input_path = Path(args.input).expanduser()
-    if not input_path.is_file():
-        parser.error(f"Input file does not exist: {input_path}")
 
     annotated_frames_dir = (
         Path(args.annotated_frames_dir).expanduser()
-        if args.annotated_frames_dir else None
+        if args.annotated_frames_dir
+        else None
     )
-    frame = process_video(input_path, args.output, annotated_frames_dir)
+    try:
+        if input_path.is_file():
+            frame = process_video(input_path, args.output, annotated_frames_dir)
+        elif input_path.is_dir():
+            frame = process_video_folder(input_path, args.output, annotated_frames_dir)
+        else:
+            parser.error(f"Input path does not exist: {input_path}")
+    except (NotADirectoryError, ValueError) as exc:
+        parser.error(str(exc))
+
     print(frame.to_string(index=False))
     print(f"Saved {len(frame)} row(s) to {Path(args.output).expanduser()}")
     return 0
@@ -542,5 +685,6 @@ __all__ = [
     "DRAFT_COLUMNS",
     "process_video",
     "process_video_file",
+    "process_video_folder",
     "process_video_stream",
 ]

@@ -82,8 +82,7 @@ Integration calls
 `llm_summarizer.update_image_location(...)` to fill a missing `Location`, and only
 then Integration calls `summarize_incident(...)`. It runs the fire Roboflow model
 plus the person model through the default
-`https://detect.roboflow.com` endpoint, uses labels such as `Fire Scene`,
-`Smoke Scene`, `Fire and Smoke Scene`, and `Fire and Person Scene`, and averages valid detection
+`https://detect.roboflow.com` endpoint, uses labels such as `Fire Scene` and `Fire and Person Scene`, and averages valid detection
 confidences from the model response bounded from `0.0` to `1.0`. The score is
 the rounded model-derived average, and the neutral `0.5` confidence is used
 only when no valid detection confidence is available. When no object is

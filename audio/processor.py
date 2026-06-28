@@ -66,7 +66,9 @@ def process_audio_folder(
     )
     if not files:
         supported = ", ".join(sorted(SUPPORTED_AUDIO_EXTENSIONS))
-        raise ValueError(f"No supported audio files found in {folder}. Expected: {supported}")
+        raise ValueError(
+            f"No supported audio files found in {folder}. Expected: {supported}"
+        )
 
     rows = [
         process_audio_file(
@@ -95,9 +97,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Transcribe emergency audio and write structured incident CSV rows."
     )
     source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument("--input", help="A supported audio file or a folder of audio files")
-    source.add_argument("--demo-transcript", help="Analyze text without running Whisper")
-    parser.add_argument("--call-id", default=None, help="Optional ID for one file/demo row")
+    source.add_argument(
+        "--input", help="A supported audio file or a folder of audio files"
+    )
+    source.add_argument(
+        "--demo-transcript", help="Analyze text without running Whisper"
+    )
+    parser.add_argument(
+        "--call-id", default=None, help="Optional ID for one file/demo row"
+    )
     parser.add_argument(
         "--output",
         default=str(DEFAULT_OUTPUT_PATH),

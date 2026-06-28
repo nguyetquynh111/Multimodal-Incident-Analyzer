@@ -53,7 +53,10 @@ def test_pdf_six_column_draft_maps_to_incident_schema() -> None:
             "Incident_Summary": "A Medium-severity Burglary / Robbery incident was reported via PDF at Main Street. The reported time was June 23, 2026.",
         }
     ]
-    assert to_supabase_payload_frame(result).to_dict(orient="records")[0]["incident_id"] == "INC_PDF_001"
+    assert (
+        to_supabase_payload_frame(result).to_dict(orient="records")[0]["incident_id"]
+        == "INC_PDF_001"
+    )
     assert list(to_final_csv_frame(result).columns) == list(FINAL_CSV_COLUMNS)
 
 
@@ -173,7 +176,9 @@ def test_image_artifact_placeholders_map_to_safe_final_values() -> None:
     assert "N/A" not in result.loc[0, "Incident_Summary"]
 
 
-def test_image_ocr_text_can_populate_location_with_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_image_ocr_text_can_populate_location_with_llm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import integration.integration as ig
 
     draft = pd.DataFrame(

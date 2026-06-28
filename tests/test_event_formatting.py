@@ -5,7 +5,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from integration.integration import normalize_event, to_final_csv_frame, with_display_ids
+from integration.integration import (
+    normalize_event,
+    to_final_csv_frame,
+    with_display_ids,
+)
 
 
 @pytest.mark.parametrize(

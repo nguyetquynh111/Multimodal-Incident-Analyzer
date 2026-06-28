@@ -41,7 +41,9 @@ def validate_incidents_df(df: pd.DataFrame) -> None:
     if df.empty:
         raise ValueError("The incidents DataFrame is empty.")
 
-    missing_columns = [column for column in INCIDENT_COLUMNS if column not in df.columns]
+    missing_columns = [
+        column for column in INCIDENT_COLUMNS if column not in df.columns
+    ]
     if missing_columns:
         raise ValueError(
             "The incidents DataFrame is missing required columns: "
@@ -54,7 +56,9 @@ def validate_incidents_df(df: pd.DataFrame) -> None:
 
     id_text = incident_ids.astype(str)
     if not id_text.map(lambda value: bool(ID_PATTERN.match(value))).all():
-        raise ValueError("Every incident_id must follow INC_TYPE_NUMBER, such as INC_PDF_001.")
+        raise ValueError(
+            "Every incident_id must follow INC_TYPE_NUMBER, such as INC_PDF_001."
+        )
 
     if id_text.duplicated().any():
         raise ValueError("Every incident_id must be unique within an upload.")
@@ -68,8 +72,11 @@ def validate_incidents_df(df: pd.DataFrame) -> None:
     if not df["severity"].isin(SEVERITY_LEVELS).all():
         raise ValueError("Severity must be Low, Medium, High, or Unknown.")
 
-    unknown_event = df["event"].astype(str).str.strip().str.match(
-        r"^unknown(?:\b|[_/-])", case=False, na=False
+    unknown_event = (
+        df["event"]
+        .astype(str)
+        .str.strip()
+        .str.match(r"^unknown(?:\b|[_/-])", case=False, na=False)
     )
     if (df.loc[unknown_event, "severity"] != "Low").any():
         raise ValueError("Severity must be Low when event is Unknown.")

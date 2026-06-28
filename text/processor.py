@@ -224,7 +224,7 @@ def _iter_text_chunks(text: str, max_chars: int = _SPACY_CHUNK_CHARS) -> Iterabl
         chunk = text[start:end].strip()
         if chunk:
             yield chunk
-        start = end + 1 if end < length and text[end:end + 1].isspace() else end
+        start = end + 1 if end < length and text[end : end + 1].isspace() else end
 
 
 def _clean_candidate(text: str) -> str:
@@ -316,9 +316,7 @@ def format_entities(entities: Iterable[dict[str, str]]) -> str:
             groups[label].append(text)
 
     parts = [
-        f"{label}: {', '.join(values)}"
-        for label, values in groups.items()
-        if values
+        f"{label}: {', '.join(values)}" for label, values in groups.items() if values
     ]
     return "; ".join(parts) if parts else UNKNOWN
 
@@ -439,8 +437,7 @@ def classify_topic(text: str) -> str:
     """Classify into the approved topic labels, or ``Other``."""
 
     scores = [
-        (label, _pattern_score(text, patterns))
-        for label, patterns in _TOPIC_PATTERNS
+        (label, _pattern_score(text, patterns)) for label, patterns in _TOPIC_PATTERNS
     ]
     best_label, best_score = max(scores, key=lambda item: item[1])
     return best_label if best_score > 0 else "Other"
@@ -461,6 +458,7 @@ def classify_sentiment(text: str) -> str:
 
 
 # --- Public analysis / file processing --------------------------------------
+
 
 def analyze_text(text_id: str, raw_text: str, source: str = "Text") -> dict[str, Any]:
     """Convert one raw text item into the exact six-field text draft row."""
@@ -549,6 +547,10 @@ def _analyze_json_record(
 
 def _validate_text_path(input_path: str | Path) -> Path:
     path = Path(input_path).expanduser()
+    if path.is_dir():
+        raise IsADirectoryError(
+            f"Expected a text or CSV file, but got a directory: {path}"
+        )
     if not path.is_file():
         raise FileNotFoundError(f"Text input not found: {path}")
     if path.suffix.lower() not in SUPPORTED_TEXT_EXTENSIONS:
@@ -559,7 +561,23 @@ def _validate_text_path(input_path: str | Path) -> Path:
     return path
 
 
-def _first_existing_column(columns: Iterable[str], candidates: Iterable[str]) -> str | None:
+def _supported_text_files(folder: Path) -> list[Path]:
+    files = sorted(
+        path
+        for path in folder.iterdir()
+        if path.is_file() and path.suffix.lower() in SUPPORTED_TEXT_EXTENSIONS
+    )
+    if not files:
+        supported = ", ".join(sorted(SUPPORTED_TEXT_EXTENSIONS))
+        raise ValueError(
+            f"No supported text files found in {folder}. Expected: {supported}"
+        )
+    return files
+
+
+def _first_existing_column(
+    columns: Iterable[str], candidates: Iterable[str]
+) -> str | None:
     available = {column.casefold(): column for column in columns}
     for candidate in candidates:
         found = available.get(candidate.casefold())
@@ -614,19 +632,31 @@ def _rows_from_csv(
     if frame.empty:
         return []
 
-    selected_text_column = text_column or _first_existing_column(frame.columns, _CSV_TEXT_COLUMNS)
+    selected_text_column = text_column or _first_existing_column(
+        frame.columns, _CSV_TEXT_COLUMNS
+    )
     if selected_text_column is None or selected_text_column not in frame.columns:
         candidates = ", ".join(_CSV_TEXT_COLUMNS)
-        raise ValueError(f"Could not find a text column in {path.name}. Tried: {candidates}")
+        raise ValueError(
+            f"Could not find a text column in {path.name}. Tried: {candidates}"
+        )
 
     source_column = _first_existing_column(frame.columns, _CSV_SOURCE_COLUMNS)
     id_column = _first_existing_column(frame.columns, _CSV_ID_COLUMNS)
 
     rows: list[dict[str, Any]] = []
     for index, record in frame.iterrows():
-        text_id = _safe_field(record[id_column]) if id_column else f"TXT_{index + 1:03d}"
-        row_source = _safe_field(record[source_column]) if source_column else (source or path.stem)
-        rows.append(analyze_text(text_id, str(record[selected_text_column]), row_source))
+        text_id = (
+            _safe_field(record[id_column]) if id_column else f"TXT_{index + 1:03d}"
+        )
+        row_source = (
+            _safe_field(record[source_column])
+            if source_column
+            else (source or path.stem)
+        )
+        rows.append(
+            analyze_text(text_id, str(record[selected_text_column]), row_source)
+        )
     return rows
 
 
@@ -635,7 +665,11 @@ def _rows_from_json_file(path: Path, source: str | None) -> list[dict[str, Any]]
     if isinstance(payload, list):
         records = payload
     elif isinstance(payload, dict):
-        records = payload.get("incidents") if isinstance(payload.get("incidents"), list) else [payload]
+        records = (
+            payload.get("incidents")
+            if isinstance(payload.get("incidents"), list)
+            else [payload]
+        )
     else:
         records = [{"text": str(payload)}]
 
@@ -644,7 +678,41 @@ def _rows_from_json_file(path: Path, source: str | None) -> list[dict[str, Any]]
         if isinstance(record, dict):
             rows.append(_analyze_json_record(record, index, source))
         else:
-            rows.append(analyze_text(f"TXT_{index:03d}", str(record), source or path.stem))
+            rows.append(
+                analyze_text(f"TXT_{index:03d}", str(record), source or path.stem)
+            )
+    return rows
+
+
+def _rows_from_text_path(
+    path: Path,
+    source: str | None,
+    text_column: str | None,
+) -> list[dict[str, Any]]:
+    return (
+        _rows_from_csv(path, source, text_column)
+        if path.suffix.lower() == ".csv"
+        else _rows_from_txt(path, source)
+    )
+
+
+def _renumber_rows(rows: list[dict[str, Any]]) -> None:
+    for index, row in enumerate(rows, start=1):
+        row["Text_ID"] = f"TXT_{index:03d}"
+
+
+def _rows_from_folder(
+    folder: Path,
+    source: str | None,
+    text_column: str | None,
+) -> list[dict[str, Any]]:
+    if not folder.is_dir():
+        raise NotADirectoryError(f"Text folder not found: {folder}")
+
+    rows: list[dict[str, Any]] = []
+    for path in _supported_text_files(folder):
+        rows.extend(_rows_from_text_path(path, source, text_column))
+    _renumber_rows(rows)
     return rows
 
 
@@ -670,18 +738,20 @@ def process_text(
     source: str | None = None,
     text_column: str | None = None,
 ) -> pd.DataFrame:
-    """Process one text or CSV file into the six-column draft.
+    """Process one text/CSV file or a folder into the six-column draft.
 
     ``.txt`` inputs produce one row unless they contain JSON Lines. ``.csv``
     inputs produce one row per record using a recognized text column such as
     ``Raw_Text``, ``text``, ``details``, or a user-provided ``text_column``.
+    Folder inputs process supported top-level files in sorted order and assign
+    sequential ``Text_ID`` values across the combined output.
     """
 
-    path = _validate_text_path(input_path)
+    candidate = Path(input_path).expanduser()
     rows = (
-        _rows_from_csv(path, source, text_column)
-        if path.suffix.lower() == ".csv"
-        else _rows_from_txt(path, source)
+        _rows_from_folder(candidate, source, text_column)
+        if candidate.is_dir()
+        else _rows_from_text_path(_validate_text_path(candidate), source, text_column)
     )
     if output_csv_path is not None:
         return save_artifact(rows, output_csv_path)
@@ -698,11 +768,36 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Extract entities, sentiment, and incident topic from text evidence."
     )
-    parser.add_argument("input", help="A .txt social/news post or .csv text dataset")
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH), help="Destination CSV path")
+    parser.add_argument(
+        "input_path",
+        nargs="?",
+        help="A .txt social/news post, .csv text dataset, or folder of text files",
+    )
+    parser.add_argument(
+        "--input",
+        dest="input_option",
+        default=None,
+        help="A .txt social/news post, .csv text dataset, or folder of text files",
+    )
+    parser.add_argument(
+        "--output", default=str(DEFAULT_OUTPUT_PATH), help="Destination CSV path"
+    )
     parser.add_argument("--source", default=None, help="Override Source value")
-    parser.add_argument("--text-column", default=None, help="CSV column containing raw text")
+    parser.add_argument(
+        "--text-column", default=None, help="CSV column containing raw text"
+    )
     return parser
+
+
+def _resolve_cli_input(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> str:
+    if args.input_path and args.input_option:
+        parser.error("provide input either positionally or with --input, not both")
+    input_path = args.input_option or args.input_path
+    if not input_path:
+        parser.error("the following arguments are required: input or --input")
+    return input_path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -711,9 +806,11 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    input_path = _resolve_cli_input(args, parser)
     frame = process_text(
-        args.input,
+        input_path,
         output_csv_path=args.output,
         source=args.source,
         text_column=args.text_column,

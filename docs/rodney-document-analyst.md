@@ -20,7 +20,7 @@ replace them.
 | **Summary deliverable** | LLM-based human-readable incident summary (`llm_summarizer/`), stored by the app as `incident_summary`. |
 | **Not in scope** | The other four modalities (audio/image/video/text), the Integration implementation, ID generation implementation, and Supabase insertion. |
 
-The sample document is [`tests/fixtures/LESO2.pdf`](../tests/fixtures/LESO2.pdf):
+The sample document is [`pdf/sample_data/LESO2.pdf`](../pdf/sample_data/LESO2.pdf):
 the **Benton County, AR Sheriff's Office 1033 / MRAP training proposal**, obtained
 via the assignment's MuckRock FOIA link. It is a 75-page bundle in which only
 ~10 pages carry an embedded text layer; the remaining ~65 are scanned images.

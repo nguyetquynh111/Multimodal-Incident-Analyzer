@@ -19,6 +19,7 @@ def process_audio_folder(*args, **kwargs):
 
     return _process_audio_folder(*args, **kwargs)
 
+
 __all__ = [
     "analyze_transcript",
     "process_audio_file",

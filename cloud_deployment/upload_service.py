@@ -27,7 +27,9 @@ def _existing_incident_ids() -> list[str]:
     ]
 
 
-def _assign_fresh_incident_ids(payload: pd.DataFrame, existing_ids: list[str]) -> pd.DataFrame:
+def _assign_fresh_incident_ids(
+    payload: pd.DataFrame, existing_ids: list[str]
+) -> pd.DataFrame:
     """Return a payload copy with IDs that follow the current Supabase state."""
 
     refreshed = payload.copy()

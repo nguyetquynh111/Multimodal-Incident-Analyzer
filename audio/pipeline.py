@@ -1,15 +1,12 @@
-"""Backward-compatible alias for :mod:`audio.processor`.
-
-New code should import from ``audio.processor`` or run ``python -m audio.processor``.
-"""
+"""Backward-compatible alias for :mod:`audio.processor`."""
 
 from .processor import (
     analyze_transcript,
-    build_parser,
+    build_parser as build_parser,
     main,
     process_audio_file,
     process_audio_folder,
-    save_rows,
+    save_rows as save_rows,
 )
 
 

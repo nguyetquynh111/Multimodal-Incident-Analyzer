@@ -1,23 +1,7 @@
-"""Public PDF processing API.
+"""PDF processing API for the eight-column Integration draft.
 
-Produces the exact eight-column PDF draft used by Integration:
-``Report_ID, Incident_Type, Date, Location, Officer, Summary,
-Suspect_Description, Outcome``.
-
-Text is extracted directly first (PyMuPDF, then pdfplumber). OCR
-(pytesseract) is applied *page by page* and only to pages that have no
-embedded text layer (scanned images); pages that already contain text are
-read directly and never needlessly OCR'd. When pytesseract or its system
-binary is unavailable, the scanned pages are skipped gracefully (with a
-logged warning) rather than crashing. spaCy NER is used to help pull entities
-when available, but no field is ever invented: a field with no real match
-becomes ``Unknown``.
-
-When one PDF bundles several agencies' stapled letters/proposals, the per-page
-text is split into one row per document via content-based boundary detection
-(:func:`segment_pages`) -- a new letterhead, cover letter, or policy/SOP title
-page that names a different agency -- so each agency becomes its own
-``RPT_NNN`` row with fields drawn only from that agency's pages.
+The processor reads embedded text first and OCRs scanned pages when possible.
+Missing evidence is preserved as ``Unknown`` rather than inferred.
 """
 
 from __future__ import annotations
@@ -52,9 +36,7 @@ ARTIFACT_COLUMNS = [
 UNKNOWN = "Unknown"
 SUPPORTED_PDF_EXTENSIONS = {".pdf"}
 
-# Below this many characters, a page's direct extraction is treated as having
-# no usable text layer (scanned-image page), making it a candidate for OCR.
-# Also used for the document-level empty check on the injected-extractor path.
+# Below this threshold, direct extraction is treated as unusable.
 _MIN_DIRECT_TEXT_CHARS = 20
 
 _DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "output"
@@ -73,65 +55,95 @@ _DATE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Ranked law-enforcement title followed by a proper name. Name tokens are
-# separated by spaces only (not \s) so the match never bleeds across a line
-# break into the next, unrelated line.
+# Ranked law-enforcement title followed by a proper name.
 _OFFICER_PATTERN = re.compile(
     r"\b(?:Cpl|Sgt|Lt|Capt|Det|Ofc|Officer|Patrolman|Deputy|Sergeant|"
     r"Corporal|Lieutenant|Captain|Chief)\.?[ ]+"
     r"[A-Z][A-Za-z.'-]+(?:[ ]+[A-Z][A-Za-z.'-]+){0,2}"
 )
 
-# A place name that precedes a law-enforcement org, e.g. "Fort Smith Police
-# Department" -> "Fort Smith". Source-grounded, so it never invents a place.
+# Place name before a law-enforcement organization, e.g. "Fort Smith Police".
 _ORG_LOCATION_PATTERN = re.compile(
     r"\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,3})\s+"
     r"(?:Police Department|Sheriff(?:'s)? Office|Fire Department|"
     r"County Sheriff)\b"
 )
 # "City, ST" style location.
-_CITY_STATE_PATTERN = re.compile(r"\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)?,\s*[A-Z]{2})\b")
+_CITY_STATE_PATTERN = re.compile(
+    r"\b([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+)?,\s*[A-Z]{2})\b"
+)
 
-# Strong, crime-specific incident keywords. Generic words such as "accident",
-# "emergency", or "fire" are intentionally excluded to avoid mislabelling
-# administrative or training documents that merely mention them.
+# Crime-specific keywords; broad administrative terms are handled separately.
 _INCIDENT_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Theft / Robbery",
-        (r"\brobber(?:y|ies)\b", r"\brobbed\b", r"\bburglar(?:y|ies|s)?\b",
-         r"\btheft\b", r"\bstolen\b", r"\bshoplift(?:ing|ed)?\b", r"\blarceny\b"),
+        (
+            r"\brobber(?:y|ies)\b",
+            r"\brobbed\b",
+            r"\bburglar(?:y|ies|s)?\b",
+            r"\btheft\b",
+            r"\bstolen\b",
+            r"\bshoplift(?:ing|ed)?\b",
+            r"\blarceny\b",
+        ),
     ),
     (
         "Assault / Violence",
-        # Avoid equipment false positives from bare "battery" and "trouble shooting".
-        (r"\bassault(?:s|ed)?\b", r"\bassault and battery\b", r"\bstabb(?:ing|ed)\b",
-         r"(?<!trouble )\bshooting\b", r"\bshots fired\b", r"\bhomicide\b", r"\bmurder\b"),
+        # Avoid equipment false positives.
+        (
+            r"\bassault(?:s|ed)?\b",
+            r"\bassault and battery\b",
+            r"\bstabb(?:ing|ed)\b",
+            r"(?<!trouble )\bshooting\b",
+            r"\bshots fired\b",
+            r"\bhomicide\b",
+            r"\bmurder\b",
+        ),
     ),
     ("Fire / Arson", (r"\barson(?:ist)?\b",)),
     (
         "Traffic Accident",
-        (r"\bcollision\b", r"\btraffic accident\b", r"\bcar crash\b",
-         r"\bvehicle crash\b", r"\bhit[- ]and[- ]run\b"),
+        (
+            r"\bcollision\b",
+            r"\btraffic accident\b",
+            r"\bcar crash\b",
+            r"\bvehicle crash\b",
+            r"\bhit[- ]and[- ]run\b",
+        ),
     ),
     (
         "Public Disturbance",
-        (r"\briot(?:ing|s)?\b", r"\bvandalism\b", r"\bdisturbance\b", r"\btrespass(?:ing)?\b"),
+        (
+            r"\briot(?:ing|s)?\b",
+            r"\bvandalism\b",
+            r"\bdisturbance\b",
+            r"\btrespass(?:ing)?\b",
+        ),
     ),
 )
 
-# Source-grounded fallback for administrative documents, not reported crimes.
+# Administrative documents are labeled separately from reported crimes.
 ADMIN_INCIDENT_LABEL = "Training / Administrative"
 _ADMIN_KEYWORDS: tuple[str, ...] = (
-    r"\btraining\b", r"\bMRAP\b", r"\blesson plan\b", r"\boperations?\b",
-    r"\bproposal\b", r"\b1033 program\b", r"\bLESO\b", r"\bpolic(?:y|ies)\b",
-    r"\bprocedures?\b", r"\bcurriculum\b", r"\bcertification\b",
-    r"\bstandard operating procedure\b", r"\bmemorandum\b",
+    r"\btraining\b",
+    r"\bMRAP\b",
+    r"\blesson plan\b",
+    r"\boperations?\b",
+    r"\bproposal\b",
+    r"\b1033 program\b",
+    r"\bLESO\b",
+    r"\bpolic(?:y|ies)\b",
+    r"\bprocedures?\b",
+    r"\bcurriculum\b",
+    r"\bcertification\b",
+    r"\bstandard operating procedure\b",
+    r"\bmemorandum\b",
 )
 
 # Treat crime mentions as incidental when administrative cues dominate.
 _ADMIN_DOMINANCE_RATIO = 5
 
-# Severity signals keyed to a detected incident, per rules.md section 7.
+# Severity signals keyed to a detected incident.
 _HIGH_SEVERITY = re.compile(
     r"\b(?:fire|weapon|gun|shoot|shot|trapped|collapse|fighting|stabb|"
     r"homicide|murder|arson)\b",
@@ -151,8 +163,6 @@ def extract_date(text: str) -> str:
     """Return the first explicit date found in the document, else Unknown."""
 
     match = _DATE_PATTERN.search(text)
-    # Collapse any internal whitespace (the pattern can span an OCR line break,
-    # e.g. "July 2,\n2014") so the field is a single clean line.
     return re.sub(r"\s+", " ", match.group(0)).strip() if match else UNKNOWN
 
 
@@ -214,9 +224,7 @@ def _count_keyword_hits(text: str, patterns: Iterable[str]) -> int:
     """Total occurrences of every pattern in ``patterns`` within ``text``."""
 
     return sum(
-        1
-        for pattern in patterns
-        for _ in re.finditer(pattern, text, re.IGNORECASE)
+        1 for pattern in patterns for _ in re.finditer(pattern, text, re.IGNORECASE)
     )
 
 
@@ -264,7 +272,7 @@ def _extract_context(text: str, keyword: str) -> str:
     return re.sub(r"\s+", " ", match.group(0)).strip() if match else UNKNOWN
 
 
-# Prefer a subject line or body sentence over letterhead details in summaries.
+# Prefer subject/body text over letterhead in summaries.
 _SUBJECT_LINE = re.compile(
     r"^[ \t]*(?:RE|Ref|Reference|Subject)\b[ \t]*[:.\-]?[ \t]*(.+)$",
     re.IGNORECASE | re.MULTILINE,
@@ -274,8 +282,7 @@ _HEADER_LABEL = re.compile(
     r"Fax|Attn|Cell|E-?mail)\b",
     re.IGNORECASE,
 )
-# Address/contact lines that can be long enough to look like prose but are still
-# letterhead, e.g. "440 Dee Dee Lane Lonoke, AR 72086 Office 501-676-3001".
+# Address/contact lines can look like prose but are still letterhead.
 _LETTERHEAD_NOISE = re.compile(
     r"\bP\.?\s*O\.?\s*Box\b|\bFax\b|\bTel\b|\bPhone\b|\bSuite\b"
     r"|\d{3}[)\-.\s]\s*\d{3}[\-.\s]\d{4}|\b[A-Z]{2}\s+\d{5}\b|\b\d{5}(?:-\d{4})?\b"
@@ -331,14 +338,7 @@ def _subject_summary(text: str) -> str | None:
 
 
 def summarize_document(text: str, *, max_chars: int = 240) -> str:
-    """Return a source-grounded lead summary (the LLM summary is separate).
-
-    Prefers the document's subject/``RE:`` line when it is descriptive, since
-    that is the clearest one-line statement of what a letter/memo is about.
-    Otherwise it skips the letterhead block (names, address, phone numbers) and
-    returns the first substantive body sentence, truncated. Falls back to the
-    raw text only when no body line is found, and never returns bare letterhead.
-    """
+    """Return a source-grounded lead summary for the PDF draft."""
 
     normalized = str(text or "")
     if not normalized.strip():
@@ -353,7 +353,9 @@ def summarize_document(text: str, *, max_chars: int = 240) -> str:
     return _truncate_summary(flat, max_chars)
 
 
-def _extract_keyword_sentence(text: str, keywords: tuple[str, ...], *, max_chars: int = 180) -> str:
+def _extract_keyword_sentence(
+    text: str, keywords: tuple[str, ...], *, max_chars: int = 180
+) -> str:
     """Return the first sentence containing one of the requested keywords."""
 
     normalized = re.sub(r"\s+", " ", str(text or "")).strip()
@@ -407,10 +409,7 @@ def analyze_document(report_id: str, text: str) -> dict[str, Any]:
 
     normalized = _normalize_text(text)
     incident_type = classify_incident(normalized)
-    # Suspect / outcome only make sense for an actual crime report. On an
-    # administrative or unclassified document the literal words "suspect"/
-    # "outcome" appear incidentally (e.g. boilerplate), so the keyword-context
-    # grab yields meaningless fragments like "suspect."; suppress to Unknown.
+    # Suspect/outcome fields only apply to classified crime reports.
     is_crime_report = incident_type not in (UNKNOWN, ADMIN_INCIDENT_LABEL)
     return {
         "Report_ID": str(report_id),
@@ -427,6 +426,7 @@ def analyze_document(report_id: str, text: str) -> dict[str, Any]:
 
 
 # --- Text extraction (direct first, OCR fallback) ----------------------------
+
 
 def _extract_text_direct(pdf_path: str) -> str:
     """Extract embedded text with PyMuPDF, falling back to pdfplumber."""
@@ -451,12 +451,7 @@ def _extract_text_direct(pdf_path: str) -> str:
 
 
 def _extract_pages_direct(pdf_path: str) -> list[str]:
-    """Return per-page embedded text via PyMuPDF.
-
-    The list has one entry per page; a page with no text layer yields ``""``.
-    Returns ``[]`` if PyMuPDF cannot open or iterate the document, signalling
-    the caller to fall back to whole-document direct extraction.
-    """
+    """Return per-page embedded text via PyMuPDF."""
 
     try:
         import fitz  # type: ignore  # PyMuPDF
@@ -467,24 +462,13 @@ def _extract_pages_direct(pdf_path: str) -> list[str]:
         return []
 
 
-# Default install location of the Tesseract engine on Windows. Used as a last
-# resort when the binary is not on PATH and no override is set.
+# Windows fallback when Tesseract is not on PATH.
 _WINDOWS_TESSERACT_DEFAULT = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 _DEFAULT_PDF_OCR_WORKERS = 8
 
 
 def _configure_tesseract_cmd(pytesseract: Any) -> None:
-    """Point pytesseract at a runnable tesseract binary when it is not on PATH.
-
-    Resolution order, most explicit first:
-      1. the ``TESSERACT_CMD`` environment variable, so a teammate or grader can
-         point at their own install without editing code;
-      2. ``tesseract`` already discoverable on PATH (``shutil.which``);
-      3. the default Windows install path.
-    The first existing candidate is set as ``tesseract_cmd``. If none exist this
-    is a no-op and the caller's version probe still decides OCR availability, so
-    a missing engine degrades gracefully rather than crashing.
-    """
+    """Configure pytesseract with the first available Tesseract binary."""
 
     for candidate in (
         os.environ.get("TESSERACT_CMD"),
@@ -516,14 +500,10 @@ def _pdf_ocr_worker_count(page_count: int) -> int:
     return max(1, min(requested, page_count))
 
 
-def _ocr_pages(pdf_path: str, page_indices: Iterable[int]) -> tuple[dict[int, str], bool]:
-    """OCR only the given page indices.
-
-    Returns ``(text_by_index, ocr_available)``. ``ocr_available`` is ``False``
-    when pytesseract or its system ``tesseract`` binary is missing, in which
-    case nothing is OCR'd and the caller skips the scanned pages instead of
-    crashing. Pages not listed in ``page_indices`` are never rendered/OCR'd.
-    """
+def _ocr_pages(
+    pdf_path: str, page_indices: Iterable[int]
+) -> tuple[dict[int, str], bool]:
+    """OCR selected pages and report whether OCR is available."""
 
     wanted = sorted(set(page_indices))
     if not wanted:
@@ -536,13 +516,8 @@ def _ocr_pages(pdf_path: str, page_indices: Iterable[int]) -> tuple[dict[int, st
     except Exception:
         return {}, False
 
-    # Locate the engine (PATH / TESSERACT_CMD / known Windows path) before the
-    # probe; pytesseract defaults to a bare "tesseract" that fails when the
-    # binary is installed but not on PATH.
     _configure_tesseract_cmd(pytesseract)
 
-    # The Python binding can import even when the tesseract executable is not
-    # installed; this probe confirms the binary is actually runnable.
     try:
         pytesseract.get_tesseract_version()
     except Exception:
@@ -550,7 +525,9 @@ def _ocr_pages(pdf_path: str, page_indices: Iterable[int]) -> tuple[dict[int, st
 
     result: dict[int, str] = {}
     workers = _pdf_ocr_worker_count(len(wanted))
-    logger.info("OCR'ing %d scanned PDF page(s) with %d worker(s).", len(wanted), workers)
+    logger.info(
+        "OCR'ing %d scanned PDF page(s) with %d worker(s).", len(wanted), workers
+    )
 
     def ocr_one_page(index: int) -> tuple[int, str]:
         import io
@@ -559,7 +536,7 @@ def _ocr_pages(pdf_path: str, page_indices: Iterable[int]) -> tuple[dict[int, st
             if index >= doc.page_count:
                 return index, ""
             page = doc.load_page(index)
-            pix = page.get_pixmap(dpi=300)  # higher DPI improves OCR accuracy
+            pix = page.get_pixmap(dpi=300)
             with Image.open(io.BytesIO(pix.tobytes("png"))) as image:
                 image.load()
                 return index, pytesseract.image_to_string(image)
@@ -601,7 +578,8 @@ def _extract_pages_text(pdf_path: str) -> tuple[list[str], list[bool]]:
         return [_extract_text_direct(pdf_path)], [False]
 
     scanned = [
-        i for i, page_text in enumerate(pages)
+        i
+        for i, page_text in enumerate(pages)
         if len(page_text.strip()) < _MIN_DIRECT_TEXT_CHARS
     ]
     text_pages = len(pages) - len(scanned)
@@ -617,7 +595,9 @@ def _extract_pages_text(pdf_path: str) -> tuple[list[str], list[bool]]:
             "OCR unavailable (pytesseract or the tesseract binary is not "
             "installed): %d scanned page(s) skipped; only %d text-layer "
             "page(s) of %d were read.",
-            len(scanned), text_pages, len(pages),
+            len(scanned),
+            text_pages,
+            len(pages),
         )
         return pages, used_ocr
 
@@ -628,7 +608,9 @@ def _extract_pages_text(pdf_path: str) -> tuple[list[str], list[bool]]:
             used_ocr[i] = True
     logger.info(
         "Read %d page(s): %d from embedded text, %d via OCR.",
-        len(pages), text_pages, sum(used_ocr),
+        len(pages),
+        text_pages,
+        sum(used_ocr),
     )
     return pages, used_ocr
 
@@ -664,6 +646,8 @@ def extract_pdf_text(pdf_path: str | Path) -> str:
 
 def _validate_pdf_path(pdf_path: str | Path) -> Path:
     path = Path(pdf_path).expanduser()
+    if path.is_dir():
+        raise IsADirectoryError(f"Expected a PDF file, but got a directory: {path}")
     if not path.is_file():
         raise FileNotFoundError(f"PDF file not found: {path}")
     if path.suffix.lower() not in SUPPORTED_PDF_EXTENSIONS:
@@ -675,6 +659,7 @@ def _validate_pdf_path(pdf_path: str | Path) -> Path:
 
 
 # --- Public API --------------------------------------------------------------
+
 
 def process_pdf_file(
     pdf_path: str,
@@ -713,14 +698,58 @@ def process_pdf(
     output_csv_path: str | Path | None = None,
     report_id: str | None = None,
 ) -> pd.DataFrame:
-    """Process one PDF and return the eight-column PDF draft contract."""
+    """Process one PDF file or folder and return the eight-column draft."""
 
+    path = Path(pdf_path).expanduser()
+    if path.is_dir():
+        return process_pdf_folder(path, output_csv_path)
     return process_pdf_file(
-        str(pdf_path),
+        str(path),
         report_id=report_id,
         write_artifact=True,
         output_csv_path=output_csv_path,
     )
+
+
+def process_pdf_folder(
+    folder_path: str | Path,
+    output_csv_path: str | Path | None = None,
+    *,
+    text_extractor: Callable[[str], str] | None = None,
+    ocr_extractor: Callable[[str], str] | None = None,
+    write_artifact: bool = True,
+) -> pd.DataFrame:
+    """Process supported top-level PDFs in a folder into one draft CSV."""
+
+    folder = Path(folder_path).expanduser()
+    if not folder.is_dir():
+        raise NotADirectoryError(f"PDF folder not found: {folder}")
+
+    pdf_files = sorted(
+        path
+        for path in folder.iterdir()
+        if path.is_file() and path.suffix.lower() in SUPPORTED_PDF_EXTENSIONS
+    )
+    if not pdf_files:
+        supported = ", ".join(sorted(SUPPORTED_PDF_EXTENSIONS))
+        raise ValueError(
+            f"No supported PDF files found in {folder}. Expected: {supported}"
+        )
+
+    frames = [
+        process_pdf_file(
+            str(path),
+            report_id=f"RPT_{index:03d}",
+            text_extractor=text_extractor,
+            ocr_extractor=ocr_extractor,
+            write_artifact=False,
+        )
+        for index, path in enumerate(pdf_files, start=1)
+    ]
+    frame = pd.concat(frames, ignore_index=True)
+    if write_artifact:
+        return save_artifact(frame.to_dict("records"), output_csv_path)
+    return frame
 
 
 def save_artifact(
@@ -729,8 +758,10 @@ def save_artifact(
 ) -> pd.DataFrame:
     """Write artifact rows with the exact PDF column order and return them."""
 
-    output = Path(output_csv_path).expanduser() if output_csv_path else (
-        _DEFAULT_OUTPUT_DIR / _DEFAULT_ARTIFACT_NAME
+    output = (
+        Path(output_csv_path).expanduser()
+        if output_csv_path
+        else (_DEFAULT_OUTPUT_DIR / _DEFAULT_ARTIFACT_NAME)
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     frame = pd.DataFrame(artifact_rows, columns=ARTIFACT_COLUMNS).fillna(UNKNOWN)
@@ -742,10 +773,14 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the PDF processor command-line parser."""
 
     parser = argparse.ArgumentParser(
-        description="Extract incident fields from one official PDF document."
+        description="Extract incident fields from official PDF documents."
     )
-    parser.add_argument("--input", required=True, help="A supported .pdf file")
-    parser.add_argument("--report-id", default=None, help="Optional Report_ID for the artifact row")
+    parser.add_argument(
+        "--input", required=True, help="A supported .pdf file or folder"
+    )
+    parser.add_argument(
+        "--report-id", default=None, help="Optional Report_ID for the artifact row"
+    )
     parser.add_argument("--output", default=None, help="Optional artifact CSV path")
     return parser
 
@@ -753,16 +788,26 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """Run the PDF processor command-line interface."""
 
-    # Surface the page/OCR extraction summary (and any OCR-skipped warning).
+    # Surface page/OCR extraction details.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    args = build_parser().parse_args(argv)
-    frame = process_pdf_file(
-        args.input,
-        report_id=args.report_id,
-        output_csv_path=args.output,
-    )
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    input_path = Path(args.input).expanduser()
+    try:
+        if input_path.is_dir():
+            frame = process_pdf_folder(input_path, output_csv_path=args.output)
+        elif input_path.is_file():
+            frame = process_pdf_file(
+                str(input_path),
+                report_id=args.report_id,
+                output_csv_path=args.output,
+            )
+        else:
+            parser.error(f"Input path does not exist: {input_path}")
+    except (NotADirectoryError, ValueError) as exc:
+        parser.error(str(exc))
     print(frame.to_string(index=False))
-    print(f"Returned {len(frame)} PDF row(s) for {Path(args.input).name}")
+    print(f"Returned {len(frame)} PDF row(s) for {input_path.name}")
     return 0
 
 
@@ -777,7 +822,7 @@ __all__ = [
     "extract_pdf_text",
     "process_pdf",
     "process_pdf_file",
+    "process_pdf_folder",
     "save_artifact",
-    "segment_pages",
     "summarize_document",
 ]

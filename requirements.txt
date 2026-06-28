@@ -33,6 +33,7 @@ opencv-python-headless==4.10.0.84
 # Pip package name is inference_sdk; Python imports it as inference_sdk.
 inference_sdk
 ultralytics==8.4.70
+onnxruntime
 Pillow
 
 # LLM summarizer

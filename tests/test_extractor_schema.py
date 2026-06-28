@@ -7,10 +7,15 @@ import unittest
 
 import pandas as pd
 
-from pdf.processor import ARTIFACT_COLUMNS, ADMIN_INCIDENT_LABEL, UNKNOWN, process_pdf_file
+from pdf.processor import (
+    ARTIFACT_COLUMNS,
+    ADMIN_INCIDENT_LABEL,
+    UNKNOWN,
+    process_pdf_file,
+)
 
 
-FIXTURE_PDF = Path(__file__).resolve().parent / "fixtures" / "LESO2.pdf"
+FIXTURE_PDF = Path(__file__).resolve().parents[1] / "pdf" / "sample_data" / "LESO2.pdf"
 
 
 class PdfDraftSchemaTests(unittest.TestCase):
@@ -59,7 +64,9 @@ class PdfDraftSchemaTests(unittest.TestCase):
     def test_missing_values_are_literal_unknown(self) -> None:
         frame = process_pdf_file(
             str(FIXTURE_PDF),
-            text_extractor=lambda _: "Administrative training document with no incident.",
+            text_extractor=lambda _: (
+                "Administrative training document with no incident."
+            ),
             write_artifact=False,
         )
 

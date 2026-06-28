@@ -67,9 +67,7 @@ def get_supabase_client() -> Client:
     if not url:
         missing.append("SUPABASE_URL")
     if not key:
-        missing.append(
-            "SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, or SUPABASE_KEY"
-        )
+        missing.append("SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY, or SUPABASE_KEY")
     if missing:
         raise RuntimeError(
             "Missing required Supabase environment variable(s): " + ", ".join(missing)
@@ -297,7 +295,9 @@ def _validate_updates(updates: Mapping[str, Any]) -> dict[str, Any]:
         payload["event"] = normalize_event(payload["event"])
     if "severity" in payload:
         payload["severity"] = normalize_severity(payload["severity"])
-    if re.match(r"^unknown(?:\b|[_/-])", str(payload.get("event", "")).strip(), re.IGNORECASE):
+    if re.match(
+        r"^unknown(?:\b|[_/-])", str(payload.get("event", "")).strip(), re.IGNORECASE
+    ):
         payload["event"] = "Unknown"
         payload["severity"] = "Low"
     return payload

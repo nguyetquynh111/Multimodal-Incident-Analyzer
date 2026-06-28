@@ -70,8 +70,8 @@ WHISPER_MODEL_DIR=              # Optional local model cache
 WHISPER_BEAM_SIZE=5
 VIDEO_YOLO_DEVICE=auto          # auto uses cuda when available, otherwise default
 VIDEO_YOLO_SAMPLE_STRIDE=4      # Skip YOLO work on more video frames for speed
-VIDEO_YOLO_IMAGE_SIZE=320
-VIDEO_YOLO_MODEL_PATH=video/yolov8s.pt
+VIDEO_YOLO_IMAGE_SIZE=640
+VIDEO_YOLO_MODEL_PATH=video/yolov8s.onnx
 TESSERACT_CMD=                  # Optional path when tesseract is outside PATH
 PDF_OCR_WORKERS=8               # Parallel scanned-page OCR workers
 ```
@@ -80,19 +80,19 @@ Without OpenRouter, summaries use the deterministic fallback.
 
 ## Run Processors Directly
 
-Run these commands from the repository root. Use slashes for file paths
-(`audio/processor.py`) or module mode (`python -m audio.processor`), not
-`audio.processor.py`.
-
 ```bash
-python audio/processor.py --input "path/to/call.wav" --output "output/audio.csv"
-python pdf/processor.py --input "path/to/report.pdf" --output "output/pdf.csv"
-python images/processor.py --input "path/to/photo.jpg" --output "output/image.csv"
-python video/processor.py --input "path/to/footage.mp4" --output "output/video.csv"
-python text/processor.py "path/to/report.txt" --output "output/text.csv"
+python audio/processor.py --input "path/to/audio_or_folder" --output "output/audio_output.csv"
+python pdf/processor.py --input "path/to/report_or_folder" --output "output/pdf_output.csv"
+python images/processor.py --input "path/to/photo_or_folder" --output "output/image_output.csv"
+python video/processor.py --input "path/to/video_or_folder" --output "output/video_output.csv"
+python text/processor.py --input "path/to/csv_or_text_or_folder" --output "output/text_output.csv"
+python integration/integration.py --input_audio "audio/output/audio_output.csv" --input_pdf "pdf/output/pdf_output.csv" --input_image "images/output/image_output.csv" --input_video "video/output/video_output.csv" --input_text "text/output/text_output.csv"
 ```
 
-Each processor writes a modality draft CSV. The Streamlit app runs these
+Each processor writes a modality draft CSV. The integration command accepts any
+mix of those processor output CSVs; empty strings are skipped when a modality is
+not available. By default, integration writes
+`integration/output/final_incident_dataset.csv`. The Streamlit app runs these
 processors automatically during upload review.
 
 ## Output

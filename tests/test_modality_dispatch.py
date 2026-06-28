@@ -72,3 +72,98 @@ def test_audio_dispatch_always_calls_file_processor(
 def test_audio_dispatch_rejects_transcript_bypass() -> None:
     with pytest.raises(TypeError, match="transcript"):
         ig.run_modality("audio", AUDIO_PATH, transcript="typed text")  # type: ignore[call-arg]
+
+
+def test_integration_input_paths_skip_empty_values(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def integrate_records(
+        draft: pd.DataFrame,
+        source_type: str,
+        existing_ids=(),
+        *,
+        source_filename: str | None = None,
+    ) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "Incident_ID": f"INC_{ig.source_prefix(source_type)}_001",
+                    "Source": ig.source_label(source_type),
+                    "Event": "Unknown",
+                    "Location": "Unknown",
+                    "Time": "Unknown",
+                    "Severity": "Low",
+                    "Incident_Summary": f"{source_filename} integrated.",
+                }
+            ]
+        )
+
+    monkeypatch.setattr(ig, "integrate_records", integrate_records)
+    audio_draft = tmp_path / "audio.csv"
+    pd.DataFrame([{"draft": "audio"}]).to_csv(audio_draft, index=False)
+    output = tmp_path / "integrated.csv"
+
+    frame = ig.integrate_input_paths(
+        {
+            "audio": audio_draft,
+            "pdf": "",
+            "image": None,
+            "video": "   ",
+            "text": "",
+        },
+        output,
+    )
+
+    assert frame["Incident_ID"].tolist() == ["INC_AUD_001"]
+    assert pd.read_csv(output)["Incident_ID"].tolist() == ["INC_AUD_001"]
+
+
+def test_integration_input_paths_falls_back_to_processor_default_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def integrate_records(
+        draft: pd.DataFrame,
+        source_type: str,
+        existing_ids=(),
+        *,
+        source_filename: str | None = None,
+    ) -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "Incident_ID": f"INC_{ig.source_prefix(source_type)}_001",
+                    "Source": ig.source_label(source_type),
+                    "Event": "Unknown",
+                    "Location": "Unknown",
+                    "Time": "Unknown",
+                    "Severity": "Low",
+                    "Incident_Summary": f"{source_filename} integrated.",
+                }
+            ]
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ig, "integrate_records", integrate_records)
+    default_audio_draft = tmp_path / "audio" / "output" / "audio.csv"
+    default_audio_draft.parent.mkdir(parents=True)
+    pd.DataFrame([{"draft": "audio"}]).to_csv(default_audio_draft, index=False)
+    output = tmp_path / "integrated.csv"
+
+    frame = ig.integrate_input_paths({"audio": "output/audio.csv"}, output)
+
+    assert frame["Incident_ID"].tolist() == ["INC_AUD_001"]
+    assert frame["Incident_Summary"].tolist() == ["audio.csv integrated."]
+    assert pd.read_csv(output)["Incident_ID"].tolist() == ["INC_AUD_001"]
+
+
+def test_integration_input_paths_does_not_fallback_for_custom_missing_path(
+    tmp_path: Path,
+) -> None:
+    default_audio_draft = tmp_path / "audio" / "output" / "audio.csv"
+    default_audio_draft.parent.mkdir(parents=True)
+    pd.DataFrame([{"draft": "audio"}]).to_csv(default_audio_draft, index=False)
+
+    with pytest.raises(FileNotFoundError, match="missing/audio.csv"):
+        ig.integrate_input_paths(
+            {"audio": tmp_path / "missing" / "audio.csv"}, tmp_path / "out.csv"
+        )
