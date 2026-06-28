@@ -122,8 +122,6 @@ Set `RUN_SUPABASE_LIVE_TESTS=1` only when valid Supabase credentials are
 configured and a live CRUD round trip is intended.
 
 ## More Docs
-
-- [Deployment](DEPLOYMENT.md)
 - [Product Requirements](docs/PRD.md)
 - [Specifications](docs/specs.md)
 - [Rules](docs/rules.md)
