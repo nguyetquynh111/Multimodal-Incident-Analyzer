@@ -54,6 +54,13 @@ def _load_image_environment() -> None:
     load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 
+def _roboflow_api_key() -> str:
+    """Load image environment once and return the configured Roboflow key."""
+
+    _load_image_environment()
+    return os.getenv("ROBOFLOW_API_KEY", "").strip()
+
+
 def classify_scene(labels: list[str]) -> str:
     labels_lower = {label.casefold() for label in labels}
     if "fire" in labels_lower and "person" in labels_lower:
@@ -148,9 +155,10 @@ def _build_roboflow_client(api_key: str, image_name: str) -> Any | None:
         return None
 
 
-def _infer_detection_result(img_path: str) -> tuple[list[dict[str, Any]], bool]:
-    _load_image_environment()
-    api_key = os.getenv("ROBOFLOW_API_KEY", "").strip()
+def _infer_detection_result(
+    img_path: str, *, api_key: str | None = None
+) -> tuple[list[dict[str, Any]], bool]:
+    api_key = _roboflow_api_key() if api_key is None else api_key
     if not api_key:
         logger.warning(
             "ROBOFLOW_API_KEY is not configured; using image detection fallback."
@@ -307,11 +315,10 @@ def _coerce_ocr_response(value: Any) -> str:
     return ""
 
 
-def _ocr_text(img_path: str) -> str:
+def _ocr_text(img_path: str, *, api_key: str | None = None) -> str:
     """Run full-image OCR through Roboflow's GLM-OCR LMM endpoint."""
 
-    _load_image_environment()
-    api_key = os.getenv("ROBOFLOW_API_KEY", "").strip()
+    api_key = _roboflow_api_key() if api_key is None else api_key
     if not api_key:
         logger.warning("ROBOFLOW_API_KEY is not configured; using N/A for OCR.")
         return NO_TEXT
@@ -354,12 +361,15 @@ def _analyze_image_with_detections(
     image_id: str = "IMG_001",
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     path = Path(img_path)
-    detections, _inference_available = _infer_detection_result(str(path))
+    api_key = _roboflow_api_key()
+    detections, _inference_available = _infer_detection_result(
+        str(path), api_key=api_key
+    )
     labels, confidence = _labels_and_confidence(
         detections,
         fallback_confidence=0.5,
     )
-    ocr_text = _ocr_text(str(path))
+    ocr_text = _ocr_text(str(path), api_key=api_key)
     return {
         "Image_ID": image_id,
         "Scene_Type": classify_scene(labels),

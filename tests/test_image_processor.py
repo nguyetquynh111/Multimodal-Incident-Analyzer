@@ -36,7 +36,7 @@ def test_sample_image_returns_exact_draft_schema_without_network_calls(
     monkeypatch.setattr(
         processor,
         "_infer_detection_result",
-        lambda _: (
+        lambda *_, **__: (
             [
                 {
                     "class": "fire",
@@ -58,7 +58,7 @@ def test_sample_image_returns_exact_draft_schema_without_network_calls(
             True,
         ),
     )
-    monkeypatch.setattr(processor, "_ocr_text", lambda _: "Main Street")
+    monkeypatch.setattr(processor, "_ocr_text", lambda *_, **__: "Main Street")
 
     frame = processor.process_image(sample)
 
@@ -81,8 +81,10 @@ def test_folder_processing_uses_the_samples_in_sorted_order(
 ) -> None:
     for sample in SAMPLE_IMAGES:
         shutil.copy2(sample, tmp_path / sample.name)
-    monkeypatch.setattr(processor, "_infer_detection_result", lambda _: ([], False))
-    monkeypatch.setattr(processor, "_ocr_text", lambda _: processor.UNKNOWN)
+    monkeypatch.setattr(
+        processor, "_infer_detection_result", lambda *_, **__: ([], False)
+    )
+    monkeypatch.setattr(processor, "_ocr_text", lambda *_, **__: processor.UNKNOWN)
 
     output = tmp_path / "image_output.csv"
     frame = processor.process_folder(tmp_path, output)
@@ -99,8 +101,10 @@ def test_folder_processing_uses_the_samples_in_sorted_order(
 def test_no_image_signal_uses_documented_artifact_placeholders(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(processor, "_infer_detection_result", lambda _: ([], True))
-    monkeypatch.setattr(processor, "_ocr_text", lambda _: processor.NO_TEXT)
+    monkeypatch.setattr(
+        processor, "_infer_detection_result", lambda *_, **__: ([], True)
+    )
+    monkeypatch.setattr(processor, "_ocr_text", lambda *_, **__: processor.NO_TEXT)
 
     row = processor.analyze_image(SAMPLE_IMAGES[0])
 
