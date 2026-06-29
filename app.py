@@ -16,11 +16,6 @@ st.set_page_config(
 )
 
 from integration import integration as ig
-from cloud_deployment.supabase_client import (
-    delete_incident,
-    update_incident,
-    validate_incident_key,
-)
 from cloud_deployment.exporter import export_incidents_csv
 from cloud_deployment.upload_service import upload_incidents
 from integration.app_support import (
@@ -40,7 +35,6 @@ from integration.app_support import (
     icon as _icon,
     known_locations as _known_locations,
     load_incidents,
-    manual_summary_override as _manual_summary_override,
     page_head as _page_head,
     queue_review as _queue_review,
     queued_review_status as _queued_review_status,
@@ -56,6 +50,7 @@ from integration.app_support import (
     timeline as _timeline,
     top_locations as _top_locations,
 )
+from integration.manage_view import view_manage
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +75,7 @@ def _sentiment_badge(sentiment: str) -> str:
 
 
 def _show_audio_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> None:
+    import html as _html
     import re as _re
 
     if file_path and Path(file_path).exists():
@@ -136,7 +132,7 @@ def _show_audio_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -
             "stolen",
             "crash",
         ]
-        highlighted = transcript
+        highlighted = _html.escape(transcript)
         for word in incident_words:
             highlighted = _re.sub(
                 rf"\b({_re.escape(word)})\b",
@@ -251,8 +247,8 @@ def _show_pdf_evidence(draft_df: pd.DataFrame, file_path: str | None = None) -> 
             from pdf.processor import extract_pdf_text
 
             full_text = extract_pdf_text(file_path).strip()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not extract full PDF text for preview: %s", exc)
     if not full_text:
         full_text = str(row.get("Summary", ""))
 
@@ -397,117 +393,143 @@ def _show_text_evidence(draft_df: pd.DataFrame) -> None:
         st.write("")
 
 
-def _show_video_evidence(file_path: str | None, filename: str) -> None:
-    from pathlib import Path as _Path
+def _transcoded_video_bytes(file_path: Path, filename: str) -> bytes:
+    """Return browser-friendly video bytes, falling back to the original file."""
+
+    import shutil as _shutil
+    import subprocess as _sp
     import tempfile as _tempfile
 
-    if not file_path or not _Path(file_path).exists():
-        st.caption("Source file is no longer available for frame extraction.")
-        return
+    ffmpeg = _shutil.which("ffmpeg")
+    if not ffmpeg:
+        logger.warning(
+            "ffmpeg is unavailable; using original preview for %s.", filename
+        )
+        return file_path.read_bytes()
 
-    # Normalize preview format for browser playback.
+    with _tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        result = _sp.run(  # noqa: S603 - file_path is an app-created temp upload.
+            [
+                ffmpeg,
+                "-y",
+                "-i",
+                str(file_path),
+                "-vcodec",
+                "libx264",
+                "-acodec",
+                "aac",
+                "-movflags",
+                "+faststart",
+                str(tmp_path),
+            ],
+            capture_output=True,
+            timeout=180,
+            check=False,
+        )
+        if result.returncode == 0:
+            return tmp_path.read_bytes()
+        logger.warning("ffmpeg preview transcode failed for %s.", filename)
+        return file_path.read_bytes()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "ffmpeg preview transcode skipped for %s: %s",
+            filename,
+            type(exc).__name__,
+        )
+        return file_path.read_bytes()
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
+def _video_preview_bytes(file_path: Path, filename: str) -> bytes:
     cache_key = f"video_bytes_{filename}"
     video_bytes = st.session_state.get(cache_key)
     if video_bytes is None:
-        import subprocess as _sp
-        import tempfile as _tf
-
-        with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-            tmp_path = tmp.name
-        try:
-            result = _sp.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    file_path,
-                    "-vcodec",
-                    "libx264",
-                    "-acodec",
-                    "aac",
-                    "-movflags",
-                    "+faststart",
-                    tmp_path,
-                ],
-                capture_output=True,
-                timeout=180,
-            )
-            if result.returncode == 0:
-                video_bytes = _Path(tmp_path).read_bytes()
-            else:
-                logger.warning("ffmpeg preview transcode failed for %s.", filename)
-                video_bytes = _Path(file_path).read_bytes()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "ffmpeg preview transcode skipped for %s: %s",
-                filename,
-                type(exc).__name__,
-            )
-            video_bytes = _Path(file_path).read_bytes()
-        finally:
-            _Path(tmp_path).unlink(missing_ok=True)
+        video_bytes = _transcoded_video_bytes(file_path, filename)
         st.session_state[cache_key] = video_bytes
-    st.video(video_bytes)
+    return video_bytes
 
-    cache_key = f"frames_dir_{filename}"
-    frames_dir: _Path | None = st.session_state.get(cache_key)
 
+def _render_frame_gallery(paths: list[Path]) -> str:
     import base64 as _b64
+    import html as _html
 
-    def _render_gallery(paths):
-        tiles = ""
-        for fp in paths:
-            img_b64 = _b64.b64encode(fp.read_bytes()).decode()
-            tiles += (
-                f'<div style="flex:0 0 30%;min-width:200px">'
-                f'<img src="data:image/jpeg;base64,{img_b64}" style="width:100%;border-radius:6px">'
-                f'<div style="font-size:.75rem;color:#64748B;text-align:center;margin-top:3px">{fp.stem}</div>'
-                f"</div>"
-            )
-        return (
-            f'<div style="display:flex;flex-wrap:wrap;gap:10px;max-height:480px;'
-            f'overflow-y:auto;padding:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px">'
-            f"{tiles}</div>"
+    tiles = ""
+    for frame_path in paths:
+        img_b64 = _b64.b64encode(frame_path.read_bytes()).decode()
+        caption = _html.escape(frame_path.stem)
+        tiles += (
+            f'<div style="flex:0 0 30%;min-width:200px">'
+            f'<img src="data:image/jpeg;base64,{img_b64}" style="width:100%;border-radius:6px">'
+            f'<div style="font-size:.75rem;color:#64748B;text-align:center;margin-top:3px">{caption}</div>'
+            f"</div>"
         )
+    return (
+        f'<div style="display:flex;flex-wrap:wrap;gap:10px;max-height:480px;'
+        f'overflow-y:auto;padding:10px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px">'
+        f"{tiles}</div>"
+    )
 
-    if frames_dir is None:
-        try:
-            from video.processor import process_video_stream
 
-            frames_dir = _Path(_tempfile.mkdtemp(prefix="frames_"))
-            frame_paths: list[_Path] = []
-            status = st.empty()
-            gallery = st.empty()
+def _show_cached_video_frames(frames_dir: Path) -> None:
+    frame_paths = sorted(frames_dir.rglob("*.jpg"))
+    if not frame_paths:
+        st.caption("No annotated frames were produced (video may have no motion).")
+        return
+    st.caption(f"{len(frame_paths)} annotated frames")
+    st.markdown(_render_frame_gallery(frame_paths), unsafe_allow_html=True)
 
-            for _row, frame_path in process_video_stream(
-                file_path, annotated_frames_dir=frames_dir
-            ):
-                if frame_path:
-                    frame_paths.append(_Path(frame_path))
-                    status.caption(f"Processing… {len(frame_paths)} frames done")
-                    gallery.markdown(
-                        _render_gallery(frame_paths), unsafe_allow_html=True
-                    )
-                    import time as _time
 
-                    _time.sleep(0)
+def _process_video_frames(file_path: Path, filename: str) -> None:
+    import tempfile as _tempfile
 
-            status.caption(f"{len(frame_paths)} annotated frames")
-            if not frame_paths:
-                gallery.caption(
-                    "No annotated frames were produced (video may have no motion)."
-                )
-            st.session_state[cache_key] = frames_dir
-        except Exception as exc:
-            st.caption(f"Could not extract frames: {exc}")
-            return
-    else:
-        frame_paths = sorted(_Path(frames_dir).rglob("*.jpg"))
-        if not frame_paths:
-            st.caption("No annotated frames were produced (video may have no motion).")
-            return
-        st.caption(f"{len(frame_paths)} annotated frames")
-        st.markdown(_render_gallery(frame_paths), unsafe_allow_html=True)
+    from video.processor import process_video_stream
+
+    frames_dir = Path(_tempfile.mkdtemp(prefix="frames_"))
+    frame_paths: list[Path] = []
+    status = st.empty()
+    gallery = st.empty()
+
+    for _row, frame_path in process_video_stream(
+        str(file_path), annotated_frames_dir=frames_dir
+    ):
+        if frame_path:
+            frame_paths.append(Path(frame_path))
+            status.caption(f"Processing… {len(frame_paths)} frames done")
+            gallery.markdown(_render_frame_gallery(frame_paths), unsafe_allow_html=True)
+
+    status.caption(f"{len(frame_paths)} annotated frames")
+    if not frame_paths:
+        gallery.caption("No annotated frames were produced (video may have no motion).")
+    st.session_state[f"frames_dir_{filename}"] = frames_dir
+
+
+def _show_video_frames(file_path: Path, filename: str) -> None:
+    frames_dir: Path | None = st.session_state.get(f"frames_dir_{filename}")
+    if frames_dir is not None:
+        _show_cached_video_frames(frames_dir)
+        return
+    try:
+        _process_video_frames(file_path, filename)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Video frame extraction failed")
+        st.caption(f"Could not extract frames: {exc}")
+
+
+def _show_video_evidence(file_path: str | None, filename: str) -> None:
+    if not file_path:
+        st.caption("Source file is no longer available for frame extraction.")
+        return
+
+    source_path = Path(file_path)
+    if not source_path.exists():
+        st.caption("Source file is no longer available for frame extraction.")
+        return
+
+    st.video(_video_preview_bytes(source_path, filename))
+    _show_video_frames(source_path, filename)
 
 
 def _show_visual_evidence(
@@ -534,29 +556,17 @@ def _show_visual_evidence(
 # --------------------------------------------------------------------------- #
 # View 1: Ingest & Convert
 # --------------------------------------------------------------------------- #
-def view_ingest() -> None:
-    _page_head(
-        "upload_file",
-        "Add Incident",
-        "Choose a file and we'll turn it into a clear incident record.",
-    )
-
-    uploaded = st.file_uploader(
-        "Choose an evidence file", type=ig.supported_extensions()
-    )
-    if uploaded is None:
-        st.info(
-            "You can add an audio recording, document, image, text file, or CSV file."
-        )
-        return
-
+def _uploaded_source(uploaded) -> tuple[str, str | None]:
     uploaded_filename = _safe_upload_filename(uploaded)
     source_type = ig.detect_source_type(uploaded_filename)
     if source_type is None:
         st.error(
             "We can't review this file type yet. Please choose an audio, document, image, video, text, or CSV file."
         )
-        return
+    return uploaded_filename, source_type
+
+
+def _reset_ingest_when_file_changes(uploaded_filename: str) -> None:
     current_result = st.session_state.get("ingest")
     if (
         isinstance(current_result, dict)
@@ -564,6 +574,8 @@ def view_ingest() -> None:
     ):
         _clear_ingest_state()
 
+
+def _show_upload_ready(source_type: str) -> None:
     label = ig.source_label(source_type)
     st.markdown(
         f'<span class="badge b-info">{_icon(SOURCE_ICON.get(label, "description"))} '
@@ -575,33 +587,66 @@ def view_ingest() -> None:
     if source_type == "audio":
         st.info("We'll create a written transcript from this recording.")
 
-    if st.button("Review evidence", type="primary", icon=":material/play_arrow:"):
-        path: Path | None = None
-        with st.spinner("Reviewing your file…"):
-            try:
-                _clear_ingest_state()
-                path = _save_upload_to_tempdir(uploaded)
-                draft_df = ig.run_modality(source_type, path)
-                final_df = ig.integrate_records(
-                    draft_df,
-                    source_type,
-                    existing_incident_ids(),
-                    source_filename=uploaded_filename,
-                )
-                _queue_review(uploaded_filename, source_type, draft_df)
-                st.session_state["ingest"] = {
-                    "draft": draft_df,
-                    "final": final_df,
-                    "filename": uploaded_filename,
-                    "source_type": source_type,
-                    "path": str(path),
-                }
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("Evidence processing failed")
-                _cleanup_temp_path(path)
-                _clear_ingest_state()
-                st.error(_friendly_error(exc, "review this evidence"))
 
+def _review_uploaded_evidence(
+    uploaded, uploaded_filename: str, source_type: str
+) -> None:
+    path: Path | None = None
+    with st.spinner("Reviewing your file…"):
+        try:
+            _clear_ingest_state()
+            path = _save_upload_to_tempdir(uploaded)
+            draft_df = ig.run_modality(source_type, path)
+            final_df = ig.integrate_records(
+                draft_df,
+                source_type,
+                existing_incident_ids(),
+                source_filename=uploaded_filename,
+            )
+            _queue_review(uploaded_filename, source_type, draft_df)
+            st.session_state["ingest"] = {
+                "draft": draft_df,
+                "final": final_df,
+                "filename": uploaded_filename,
+                "source_type": source_type,
+                "path": str(path),
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Evidence processing failed")
+            _cleanup_temp_path(path)
+            _clear_ingest_state()
+            st.error(_friendly_error(exc, "review this evidence"))
+
+
+def _save_ingest_result(final_df: pd.DataFrame, result: dict) -> None:
+    saved_summary = result.get("saved_summary")
+    if saved_summary:
+        incident_ids = ", ".join(saved_summary.get("incident_ids", []))
+        suffix = f": {incident_ids}" if incident_ids else ""
+        st.success(
+            f"Added {saved_summary['inserted_count']} incident record(s){suffix}."
+        )
+        return
+
+    if not st.button(
+        "Add to incident records",
+        type="primary",
+        icon=":material/cloud_upload:",
+        width="stretch",
+    ):
+        return
+    try:
+        summary = upload_incidents(final_df, refresh_ids=True)
+        incident_ids = ", ".join(summary.get("incident_ids", []))
+        suffix = f": {incident_ids}" if incident_ids else ""
+        st.success(f"Added {summary['inserted_count']} incident record(s){suffix}.")
+        result["saved_summary"] = summary
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Incident upload failed")
+        st.error(_friendly_error(exc, "add this incident"))
+
+
+def _show_ingest_result(uploaded_filename: str, source_type: str) -> None:
     result = st.session_state.get("ingest")
     if not result or result.get("filename") != uploaded_filename:
         return
@@ -621,29 +666,7 @@ def view_ingest() -> None:
         _section("Incident record")
         st.dataframe(_style_table(final_df), width="stretch", hide_index=True)
 
-    saved_summary = result.get("saved_summary")
-    if saved_summary:
-        incident_ids = ", ".join(saved_summary.get("incident_ids", []))
-        suffix = f": {incident_ids}" if incident_ids else ""
-        st.success(
-            f"Added {saved_summary['inserted_count']} incident record(s){suffix}."
-        )
-    elif st.button(
-        "Add to incident records",
-        type="primary",
-        icon=":material/cloud_upload:",
-        width="stretch",
-    ):
-        try:
-            summary = upload_incidents(final_df, refresh_ids=True)
-            incident_ids = ", ".join(summary.get("incident_ids", []))
-            suffix = f": {incident_ids}" if incident_ids else ""
-            st.success(f"Added {summary['inserted_count']} incident record(s){suffix}.")
-            result["saved_summary"] = summary
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Incident upload failed")
-            st.error(_friendly_error(exc, "add this incident"))
-
+    _save_ingest_result(final_df, result)
     _section("Visual evidence")
     _show_visual_evidence(
         result.get("source_type", source_type),
@@ -651,6 +674,33 @@ def view_ingest() -> None:
         result.get("path"),
         uploaded_filename,
     )
+
+
+def view_ingest() -> None:
+    _page_head(
+        "upload_file",
+        "Add Incident",
+        "Choose a file and we'll turn it into a clear incident record.",
+    )
+
+    uploaded = st.file_uploader(
+        "Choose an evidence file", type=ig.supported_extensions()
+    )
+    if uploaded is None:
+        st.info(
+            "You can add an audio recording, document, image, text file, or CSV file."
+        )
+        return
+
+    uploaded_filename, source_type = _uploaded_source(uploaded)
+    if source_type is None:
+        return
+    _reset_ingest_when_file_changes(uploaded_filename)
+    _show_upload_ready(source_type)
+
+    if st.button("Review evidence", type="primary", icon=":material/play_arrow:"):
+        _review_uploaded_evidence(uploaded, uploaded_filename, source_type)
+    _show_ingest_result(uploaded_filename, source_type)
 
 
 # --------------------------------------------------------------------------- #
@@ -740,25 +790,20 @@ def view_integrate() -> None:
 # --------------------------------------------------------------------------- #
 # View 3: Dashboard
 # --------------------------------------------------------------------------- #
-def view_dashboard() -> None:
-    _page_head(
-        "insights",
-        "Incident Overview",
-        "See priorities, patterns, and recent activity at a glance.",
-    )
-
+def _load_dashboard_frame() -> pd.DataFrame | None:
     try:
         df = load_incidents()
     except Exception as exc:  # noqa: BLE001
         logger.exception("Incident loading failed")
         st.error(_friendly_error(exc, "load incident records"))
-        return
+        return None
     if df.empty:
         st.info("No incidents have been added yet. Start with **Add Incident**.")
-        return
+        return None
+    return ig.with_display_ids(df)
 
-    df = ig.with_display_ids(df)
 
+def _dashboard_filters(df: pd.DataFrame) -> tuple[list[str], list[str], str, str, str]:
     with st.expander("Filters", expanded=False):
         c1, c2, c3, c4, c5 = st.columns(5)
         sources = sorted(df["source"].dropna().unique().tolist())
@@ -768,12 +813,22 @@ def view_dashboard() -> None:
         pick_id = c3.text_input("Incident ID", "")
         pick_event = c4.text_input("Event", "")
         pick_location = c5.text_input("Location", "")
+    return pick_source, pick_severity, pick_id, pick_event, pick_location
 
-    view = df[df["source"].isin(pick_source) & df["severity"].isin(pick_severity)]
+
+def _filter_dashboard_frame(
+    df: pd.DataFrame,
+    sources: list[str],
+    severities: list[str],
+    incident_id: str,
+    event: str,
+    location: str,
+) -> pd.DataFrame:
+    view = df[df["source"].isin(sources) & df["severity"].isin(severities)]
     for column, query in (
-        ("Incident_ID", pick_id),
-        ("event", pick_event),
-        ("location", pick_location),
+        ("Incident_ID", incident_id),
+        ("event", event),
+        ("location", location),
     ):
         if query:
             view = view[
@@ -781,26 +836,29 @@ def view_dashboard() -> None:
                 .astype(str)
                 .str.contains(query, case=False, regex=False, na=False)
             ]
+    return view
 
+
+def _dashboard_stats(view: pd.DataFrame) -> None:
     counts = view["severity"].value_counts()
-    k = st.columns(4)
-    _stat(k[0], "Total incidents", len(view), icon="summarize")
+    cols = st.columns(4)
+    _stat(cols[0], "Total incidents", len(view), icon="summarize")
     _stat(
-        k[1],
+        cols[1],
         "High",
         int(counts.get("High", 0)),
         color=SEV_COLORS["High"],
         icon="local_fire_department",
     )
     _stat(
-        k[2],
+        cols[2],
         "Medium",
         int(counts.get("Medium", 0)),
         color=SEV_COLORS["Medium"],
         icon="warning",
     )
     _stat(
-        k[3],
+        cols[3],
         "Low",
         int(counts.get("Low", 0)),
         color=SEV_COLORS["Low"],
@@ -808,470 +866,118 @@ def view_dashboard() -> None:
     )
     st.write("")
 
-    if view.empty:
-        st.info("No incidents match the current filters.")
-        return
 
+def _dashboard_overview_tab(view: pd.DataFrame) -> None:
+    c1, c2 = st.columns([1, 1.3])
+    with c1:
+        _section("By severity")
+        st.altair_chart(_severity_donut(view), width="stretch")
+    with c2:
+        _section("By source")
+        st.altair_chart(_hbar(view["source"].value_counts(), "Source"), width="stretch")
+    timeline = _timeline(view)
+    if timeline is not None:
+        _section("Incidents over time")
+        st.altair_chart(timeline, width="stretch")
+
+
+def _location_hotspot_table(view: pd.DataFrame) -> None:
+    known = _known_locations(view)
+    if known.empty:
+        return
+    _section("Location hotspot table")
+    hotspots = (
+        known.groupby("location")
+        .agg(
+            Incidents=("incident_id", "count"),
+            High=("severity", lambda s: int((s == "High").sum())),
+        )
+        .reset_index()
+        .rename(columns={"location": "Location"})
+        .sort_values(["Incidents", "High"], ascending=False)
+        .head(10)
+    )
+    st.dataframe(hotspots, width="stretch", hide_index=True)
+
+
+def _dashboard_breakdown_tab(view: pd.DataFrame) -> None:
+    c1, c2 = st.columns(2)
+    with c1:
+        _section("Severity by source")
+        st.altair_chart(_severity_by_source(view), width="stretch")
+    with c2:
+        _section("Source × severity")
+        st.altair_chart(_heatmap_source_severity(view), width="stretch")
+    c3, c4 = st.columns(2)
+    with c3:
+        _section("Location hotspots")
+        loc_chart = _top_locations(view)
+        if loc_chart is not None:
+            st.altair_chart(loc_chart, width="stretch")
+        else:
+            st.caption("No known locations yet.")
+    with c4:
+        _section("Top events")
+        st.altair_chart(
+            _hbar(view["event"].value_counts().head(8), "Event", color="#7C3AED"),
+            width="stretch",
+        )
+    _location_hotspot_table(view)
+
+
+def _dashboard_records_tab(view: pd.DataFrame) -> None:
+    final_view = ig.to_final_csv_frame(view)
+    high = final_view[final_view["severity"] == "High"]
+    if not high.empty:
+        _section(f"High-priority queue · {len(high)}")
+        st.dataframe(_style_table(high), width="stretch", hide_index=True)
+    _section(f"All incidents · {len(final_view)}")
+    st.dataframe(_style_table(final_view), width="stretch", hide_index=True)
+    selected_id = st.selectbox("Selected incident", view["Incident_ID"].tolist())
+    selected = view.loc[view["Incident_ID"] == selected_id].iloc[0]
+    st.text_area(
+        "Incident summary",
+        str(selected.get("incident_summary", "Unknown")),
+        height=110,
+        disabled=True,
+    )
+    st.download_button(
+        "Download incident report",
+        export_incidents_csv(),
+        file_name="final_incident_dataset.csv",
+        mime="text/csv",
+        icon=":material/download:",
+    )
+
+
+def _dashboard_tabs(view: pd.DataFrame) -> None:
     tab_overview, tab_breakdown, tab_records = st.tabs(
         ["Overview", "Breakdown", "Records"]
     )
-
     with tab_overview:
-        c1, c2 = st.columns([1, 1.3])
-        with c1:
-            _section("By severity")
-            st.altair_chart(_severity_donut(view), width="stretch")
-        with c2:
-            _section("By source")
-            st.altair_chart(
-                _hbar(view["source"].value_counts(), "Source"), width="stretch"
-            )
-        timeline = _timeline(view)
-        if timeline is not None:
-            _section("Incidents over time")
-            st.altair_chart(timeline, width="stretch")
-
+        _dashboard_overview_tab(view)
     with tab_breakdown:
-        c1, c2 = st.columns(2)
-        with c1:
-            _section("Severity by source")
-            st.altair_chart(_severity_by_source(view), width="stretch")
-        with c2:
-            _section("Source × severity")
-            st.altair_chart(_heatmap_source_severity(view), width="stretch")
-        c3, c4 = st.columns(2)
-        with c3:
-            _section("Location hotspots")
-            loc_chart = _top_locations(view)
-            if loc_chart is not None:
-                st.altair_chart(loc_chart, width="stretch")
-            else:
-                st.caption("No known locations yet.")
-        with c4:
-            _section("Top events")
-            st.altair_chart(
-                _hbar(view["event"].value_counts().head(8), "Event", color="#7C3AED"),
-                width="stretch",
-            )
-
-        known = _known_locations(view)
-        if not known.empty:
-            _section("Location hotspot table")
-            hotspots = (
-                known.groupby("location")
-                .agg(
-                    Incidents=("incident_id", "count"),
-                    High=("severity", lambda s: int((s == "High").sum())),
-                )
-                .reset_index()
-                .rename(columns={"location": "Location"})
-                .sort_values(["Incidents", "High"], ascending=False)
-                .head(10)
-            )
-            st.dataframe(hotspots, width="stretch", hide_index=True)
-
+        _dashboard_breakdown_tab(view)
     with tab_records:
-        final_view = ig.to_final_csv_frame(view)
-        high = final_view[final_view["severity"] == "High"]
-        if not high.empty:
-            _section(f"High-priority queue · {len(high)}")
-            st.dataframe(_style_table(high), width="stretch", hide_index=True)
-        _section(f"All incidents · {len(final_view)}")
-        st.dataframe(_style_table(final_view), width="stretch", hide_index=True)
-        selected_id = st.selectbox("Selected incident", view["Incident_ID"].tolist())
-        selected = view.loc[view["Incident_ID"] == selected_id].iloc[0]
-        st.text_area(
-            "Incident summary",
-            str(selected.get("incident_summary", "Unknown")),
-            height=110,
-            disabled=True,
-        )
-        st.download_button(
-            "Download incident report",
-            export_incidents_csv(),
-            file_name="final_incident_dataset.csv",
-            mime="text/csv",
-            icon=":material/download:",
-        )
+        _dashboard_records_tab(view)
 
 
-# --------------------------------------------------------------------------- #
-# View 4: Manage Data (CRUD)
-# --------------------------------------------------------------------------- #
-@st.dialog("Add incident")
-def _add_incident_dialog(existing_ids: list) -> None:
-    source_type = st.selectbox(
-        "Source", list(ig.MODALITIES.keys()), format_func=ig.source_label
-    )
-    next_label = ig.generate_next_incident_id(source_type, existing_ids)
-    st.caption(f"New incident ID: `{next_label}`")
-    event = st.text_input("Event", "Unknown")
-    location = st.text_input("Location", "Unknown")
-    time_val = st.text_input("Time", "Unknown")
-    severity = st.selectbox("Severity", SEVERITY_ORDER, index=1)
-    incident_summary = st.text_area(
-        "Incident summary",
-        "",
-        height=90,
-        placeholder="Leave blank to auto-generate a summary.",
-    )
-    if st.button("Save", type="primary", icon=":material/save:"):
-        draft = pd.DataFrame(
-            [
-                {
-                    "Event": event,
-                    "Location": location or "Unknown",
-                    "Time": time_val or "Unknown",
-                    "Severity": severity,
-                    "Summary": incident_summary or "Unknown",
-                }
-            ]
-        )
-        row = ig.integrate_records(draft, source_type, existing_ids)
-        summary_override = _manual_summary_override(incident_summary)
-        if summary_override is not None:
-            row["Incident_Summary"] = summary_override
-        try:
-            summary = upload_incidents(row, refresh_ids=True)
-            incident_ids = ", ".join(summary.get("incident_ids", []))
-            st.success(f"Added {incident_ids or row.iloc[0]['Incident_ID']}")
-            st.rerun()
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Manual incident creation failed")
-            st.error(_friendly_error(exc, "add this incident"))
-
-
-def view_manage() -> None:
+def view_dashboard() -> None:
     _page_head(
-        "edit_note",
-        "Manage Incidents",
-        "Add new incidents or keep existing details up to date.",
+        "insights",
+        "Incident Overview",
+        "See priorities, patterns, and recent activity at a glance.",
     )
 
-    notice = st.session_state.pop("manage_notice", None)
-    if notice:
-        st.success(notice)
-
-    if st.button("Add incident", type="primary", icon=":material/add:"):
-        _add_incident_dialog(existing_incident_ids())
-
-    try:
-        df = load_incidents()
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Incident loading failed")
-        st.error(_friendly_error(exc, "load incident records"))
+    df = _load_dashboard_frame()
+    if df is None:
         return
-    if df.empty:
-        st.info("No incidents yet. Use **Add incident** above.")
-        return
-
-    df = ig.with_display_ids(df)
-
-    with st.expander("Bulk actions", expanded=False):
-        st.caption(
-            "Update several incidents at once or remove a group. Incident IDs and sources never change."
-        )
-        filter_source_col, filter_severity_col, filter_search_col = st.columns(3)
-        available_sources = sorted(df["source"].dropna().unique().tolist())
-        available_severities = [
-            severity
-            for severity in SEVERITY_ORDER
-            if severity in df["severity"].unique()
-        ]
-        bulk_sources = filter_source_col.multiselect(
-            "Filter by source",
-            available_sources,
-            default=available_sources,
-            key="bulk_filter_sources",
-        )
-        bulk_severities = filter_severity_col.multiselect(
-            "Filter by severity",
-            available_severities,
-            default=available_severities,
-            key="bulk_filter_severities",
-        )
-        bulk_search = filter_search_col.text_input(
-            "Search ID, event, or location",
-            key="bulk_filter_search",
-        )
-
-        filtered = df[
-            df["source"].isin(bulk_sources) & df["severity"].isin(bulk_severities)
-        ]
-        if bulk_search:
-            search_mask = pd.Series(False, index=filtered.index)
-            for column in ("Incident_ID", "event", "location"):
-                search_mask |= (
-                    filtered[column]
-                    .astype(str)
-                    .str.contains(
-                        bulk_search,
-                        case=False,
-                        regex=False,
-                        na=False,
-                    )
-                )
-            filtered = filtered[search_mask]
-        target_labels = filtered["Incident_ID"].tolist()
-        st.info(f"{len(target_labels)} of {len(df)} incidents match these filters.")
-
-        field_labels = st.multiselect(
-            "Fields to update",
-            ["Event", "Location", "Time", "Severity", "Incident summary"],
-            help="Only selected fields will be overwritten.",
-            key="bulk_fields",
-        )
-        bulk_values: dict[str, str] = {}
-        input_columns = st.columns(2)
-        if "Event" in field_labels:
-            bulk_values["event"] = input_columns[0].text_input(
-                "New event", key="bulk_event"
-            )
-        if "Location" in field_labels:
-            bulk_values["location"] = input_columns[1].text_input(
-                "New location", key="bulk_location"
-            )
-        if "Time" in field_labels:
-            bulk_values["time"] = input_columns[0].text_input(
-                "New time", key="bulk_time"
-            )
-        if "Severity" in field_labels:
-            bulk_values["severity"] = input_columns[1].selectbox(
-                "New severity", SEVERITY_ORDER, index=1, key="bulk_severity"
-            )
-        if "Incident summary" in field_labels:
-            bulk_values["incident_summary"] = st.text_area(
-                "New incident summary",
-                key="bulk_incident_summary",
-                height=90,
-            )
-
-        target_count = len(target_labels)
-        confirm_remove = st.checkbox(
-            f"I understand that removing {target_count} incident(s) cannot be undone.",
-            key="confirm_bulk_remove",
-        )
-        update_col, remove_col = st.columns(2)
-        do_bulk_update = update_col.button(
-            f"Update {target_count} incident(s)",
-            type="primary",
-            icon=":material/edit:",
-            width="stretch",
-            disabled=target_count == 0 or not field_labels,
-        )
-        remove_label = (
-            "Remove all incidents"
-            if target_count == len(df)
-            else f"Remove {target_count} incident(s)"
-        )
-        do_bulk_remove = remove_col.button(
-            remove_label,
-            icon=":material/delete:",
-            width="stretch",
-            disabled=target_count == 0 or not confirm_remove,
-        )
-
-    if do_bulk_update or do_bulk_remove:
-        targets = df[df["Incident_ID"].isin(target_labels)]
-        succeeded = 0
-        failures: list[str] = []
-        for _, target in targets.iterrows():
-            label = str(target["Incident_ID"])
-            try:
-                if do_bulk_remove:
-                    incident_key = validate_incident_key(target["incident_id"])
-                    delete_incident(incident_key)
-                else:
-                    incident_key = validate_incident_key(target["incident_id"])
-                    payload = {
-                        field: (
-                            ig.normalize_event(value)
-                            if field == "event"
-                            else (str(value).strip() or "Unknown")
-                        )
-                        for field, value in bulk_values.items()
-                    }
-                    if (
-                        ig.normalize_event(payload.get("event", target["event"]))
-                        == "Unknown"
-                    ):
-                        payload["severity"] = "Low"
-                    update_incident(incident_key, payload)
-                succeeded += 1
-            except Exception:  # noqa: BLE001
-                logger.exception("Bulk incident action failed for %s", label)
-                failures.append(label)
-
-        if failures:
-            action = "removed" if do_bulk_remove else "updated"
-            st.error(
-                f"{succeeded} incident(s) were {action}, but {len(failures)} could not be changed. "
-                "Please try those records again."
-            )
-            return
-
-        action = "removed" if do_bulk_remove else "updated"
-        st.session_state["manage_notice"] = (
-            f"Successfully {action} {succeeded} incident(s)."
-        )
-        st.rerun()
-
-    _section("Incident list")
-    if len(filtered) == len(df):
-        st.caption(
-            "Edit any unlocked cell. Select Remove for records you no longer need, then apply your changes."
-        )
-    else:
-        st.caption(
-            f"Showing {len(filtered)} of {len(df)} incidents matching the filters above. "
-            "Edit any unlocked cell or select Remove, then apply your changes."
-        )
-
-    if filtered.empty:
+    view = _filter_dashboard_frame(df, *_dashboard_filters(df))
+    _dashboard_stats(view)
+    if view.empty:
         st.info("No incidents match the current filters.")
         return
-
-    editable = filtered.loc[
-        :,
-        [
-            "Incident_ID",
-            "source",
-            "event",
-            "location",
-            "time",
-            "severity",
-            "incident_summary",
-        ],
-    ].copy()
-    editable["remove"] = False
-
-    with st.form("incident_table_form"):
-        edited = st.data_editor(
-            editable,
-            width="stretch",
-            hide_index=True,
-            disabled=["Incident_ID", "source"],
-            column_order=[
-                "Incident_ID",
-                "source",
-                "event",
-                "location",
-                "time",
-                "severity",
-                "incident_summary",
-                "remove",
-            ],
-            column_config={
-                "Incident_ID": st.column_config.TextColumn(
-                    "Incident ID", width="small"
-                ),
-                "source": st.column_config.TextColumn("Source", width="small"),
-                "event": st.column_config.TextColumn(
-                    "Event", width="large", required=True
-                ),
-                "location": st.column_config.TextColumn(
-                    "Location", width="medium", required=True
-                ),
-                "time": st.column_config.TextColumn(
-                    "Time", width="medium", required=True
-                ),
-                "severity": st.column_config.SelectboxColumn(
-                    "Severity",
-                    options=SEVERITY_ORDER,
-                    required=True,
-                    width="small",
-                ),
-                "incident_summary": st.column_config.TextColumn(
-                    "Incident summary",
-                    width="large",
-                    required=True,
-                ),
-                "remove": st.column_config.CheckboxColumn(
-                    "Remove",
-                    help="Checked incidents will be deleted when you apply changes.",
-                    default=False,
-                    width="small",
-                ),
-            },
-            num_rows="fixed",
-            key="incident_editor",
-        )
-        apply_changes = st.form_submit_button(
-            "Apply changes",
-            type="primary",
-            icon=":material/save:",
-            width="stretch",
-        )
-
-    if not apply_changes:
-        return
-
-    original = df.set_index("Incident_ID", drop=False)
-    updated_count = 0
-    deleted_count = 0
-    failures: list[str] = []
-
-    def clean(value) -> str:
-        return (
-            "Unknown"
-            if pd.isna(value) or not str(value).strip()
-            else str(value).strip()
-        )
-
-    for _, row in edited.iterrows():
-        label = str(row["Incident_ID"])
-        current = original.loc[label]
-        try:
-            incident_id = validate_incident_key(current["incident_id"])
-            if bool(row["remove"]):
-                delete_incident(incident_id)
-                deleted_count += 1
-                continue
-
-            changes = {
-                field: (
-                    ig.normalize_event(row[field])
-                    if field == "event"
-                    else clean(row[field])
-                )
-                for field in ("event", "location", "time", "severity")
-                if (
-                    ig.normalize_event(row[field]) != ig.normalize_event(current[field])
-                    if field == "event"
-                    else clean(row[field]) != clean(current[field])
-                )
-            }
-            summary = clean(row["incident_summary"])
-            if summary != clean(current["incident_summary"]):
-                changes["incident_summary"] = summary
-            if ig.normalize_event(row["event"]) == "Unknown":
-                changes["severity"] = "Low"
-            if changes:
-                update_incident(incident_id, changes)
-                updated_count += 1
-        except Exception:  # noqa: BLE001
-            logger.exception("Incident table change failed for %s", label)
-            failures.append(label)
-
-    if failures:
-        saved_count = updated_count + deleted_count
-        st.error(
-            f"We couldn't save changes for {len(failures)} incident(s). "
-            f"{saved_count} other change(s) were saved. Please try again."
-        )
-        return
-
-    if not updated_count and not deleted_count:
-        st.info("No changes to apply.")
-        return
-
-    parts = []
-    if updated_count:
-        parts.append(f"updated {updated_count}")
-    if deleted_count:
-        parts.append(f"removed {deleted_count}")
-    st.session_state["manage_notice"] = "Changes saved: " + " and ".join(parts) + "."
-    st.rerun()
+    _dashboard_tabs(view)
 
 
 PAGES = [

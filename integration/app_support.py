@@ -420,7 +420,9 @@ def timeline(view: pd.DataFrame):
     timed = timed.dropna(subset=["Date"])
     if timed.empty:
         return None
-    grouped = timed.groupby("Date", as_index=False).size().rename(columns={"size": "Count"})
+    grouped = (
+        timed.groupby("Date", as_index=False).size().rename(columns={"size": "Count"})
+    )
     return (
         alt.Chart(grouped)
         .mark_area(line={"color": "#6366F1"}, opacity=0.25, color="#A5B4FC")

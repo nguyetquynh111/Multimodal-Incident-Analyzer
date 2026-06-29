@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Callable, Optional
 
 from . import fallback, prompts, schemas
+
+logger = logging.getLogger(__name__)
 
 
 # OpenRouter is OpenAI-compatible; override with LLM_MODEL_NAME if needed.
@@ -277,7 +280,8 @@ def summarize_incident(
             "summary_method": schemas.SUMMARY_METHOD_LLM,
             "summary_model": model,
         }
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("LLM summary failed; using deterministic fallback: %s", exc)
         return fallback.summarize_fallback(
             summary_row,
             method=schemas.SUMMARY_METHOD_ERROR,
@@ -310,8 +314,8 @@ def _extract_location_from_text(
             )
             if location != schemas.UNKNOWN:
                 return location
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("LLM location extraction failed; using rules: %s", exc)
 
     return _rule_based_location_from_text(cleaned_input)
 

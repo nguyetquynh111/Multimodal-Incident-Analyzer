@@ -115,5 +115,3 @@ The required summary module lives in [`llm_summarizer/`](../llm_summarizer/).
 - **Tests:** [`tests/test_llm_summarizer.py`](../tests/test_llm_summarizer.py)
   covers summary output, disabled/error fallbacks, invalid model output, and
   image OCR location extraction. No test makes a network call.
-
-See the README for sample input, output, and run instructions.

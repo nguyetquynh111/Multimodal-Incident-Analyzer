@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import logging
 import os
 import re
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import pandas as pd
+import requests
 from dotenv import load_dotenv
 
 
@@ -31,6 +33,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MODEL_ID = "fire-detection-data-pre/4"
 DEFAULT_PERSON_MODEL_ID = "yolov8n-640"
 DEFAULT_API_URL = "https://detect.roboflow.com"
+DEFAULT_LMM_API_URL = "https://serverless.roboflow.com/infer/lmm"
+DEFAULT_OCR_MODEL_ID = "glm-ocr"
+DEFAULT_OCR_PROMPT = "Read all visible text in this image. Return only the text."
+DEFAULT_OCR_MAX_NEW_TOKENS = 128
+DEFAULT_OCR_TIMEOUT_SECONDS = 20.0
 logger = logging.getLogger(__name__)
 
 
@@ -80,6 +87,34 @@ def _env_text(name: str, default: str) -> str:
     """Read a non-empty string from the environment."""
 
     return os.getenv(name, "").strip() or default
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read a positive integer from the environment."""
+
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r; using %s.", name, raw, default)
+        return default
+    return value if value > 0 else default
+
+
+def _env_float(name: str, default: float) -> float:
+    """Read a positive float from the environment."""
+
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r; using %s.", name, raw, default)
+        return default
+    return value if value > 0 else default
 
 
 def _roboflow_model_specs() -> tuple[RoboflowModelSpec, ...]:
@@ -224,26 +259,90 @@ def _clean_ocr_candidate(text: str, *, max_length: int = 160) -> str:
     return cleaned_text[:max_length].strip()
 
 
+def _encode_image_for_roboflow(img_path: str) -> dict[str, str]:
+    """Build the image payload accepted by Roboflow's hosted LMM endpoint."""
+
+    with open(img_path, "rb") as image_file:
+        encoded = base64.b64encode(image_file.read()).decode("ascii")
+    return {"type": "base64", "value": encoded}
+
+
+def _post_roboflow_lmm(
+    endpoint: str,
+    payload: Mapping[str, Any],
+    *,
+    timeout: float,
+) -> dict[str, Any]:
+    """Post a JSON request to Roboflow's LMM endpoint."""
+
+    response = requests.post(
+        endpoint,
+        headers={"Content-Type": "application/json"},
+        json=dict(payload),
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    parsed = response.json()
+    return parsed if isinstance(parsed, dict) else {"response": parsed}
+
+
+def _coerce_ocr_response(value: Any) -> str:
+    """Extract OCR text from common LMM response shapes."""
+
+    if isinstance(value, str):
+        return value
+    if isinstance(value, Mapping):
+        for key in ("response", "text", "output", "result", "content"):
+            text = _coerce_ocr_response(value.get(key))
+            if text:
+                return text
+        outputs = value.get("outputs")
+        if isinstance(outputs, list):
+            parts = [_coerce_ocr_response(item) for item in outputs]
+            return "\n".join(part for part in parts if part)
+        return ""
+    if isinstance(value, list):
+        parts = [_coerce_ocr_response(item) for item in value]
+        return "\n".join(part for part in parts if part)
+    return ""
+
+
 def _ocr_text(img_path: str) -> str:
-    """Run full-image grayscale OCR, matching the original image draft flow."""
+    """Run full-image OCR through Roboflow's GLM-OCR LMM endpoint."""
+
+    _load_image_environment()
+    api_key = os.getenv("ROBOFLOW_API_KEY", "").strip()
+    if not api_key:
+        logger.warning("ROBOFLOW_API_KEY is not configured; using N/A for OCR.")
+        return NO_TEXT
 
     try:
-        import cv2  # type: ignore
-        import pytesseract  # type: ignore
-
-        img = cv2.imread(img_path)
-        if img is None:
-            logger.warning(
-                "Could not read image %s for OCR; using N/A.", Path(img_path).name
-            )
-            return NO_TEXT
-
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        cleaned_text = _clean_ocr_candidate(pytesseract.image_to_string(gray))
+        payload = {
+            "api_key": api_key,
+            "image": _encode_image_for_roboflow(img_path),
+            "model_id": _env_text("ROBOFLOW_OCR_MODEL_ID", DEFAULT_OCR_MODEL_ID),
+            "prompt": _env_text("ROBOFLOW_OCR_PROMPT", DEFAULT_OCR_PROMPT),
+            "max_new_tokens": _env_int(
+                "ROBOFLOW_OCR_MAX_NEW_TOKENS", DEFAULT_OCR_MAX_NEW_TOKENS
+            ),
+        }
+        result = _post_roboflow_lmm(
+            _env_text("ROBOFLOW_LMM_API_URL", DEFAULT_LMM_API_URL),
+            payload,
+            timeout=_env_float(
+                "ROBOFLOW_OCR_TIMEOUT_SECONDS", DEFAULT_OCR_TIMEOUT_SECONDS
+            ),
+        )
+        cleaned_text = _clean_ocr_candidate(_coerce_ocr_response(result))
         return cleaned_text if cleaned_text else NO_TEXT
-    except Exception as exc:  # noqa: BLE001
+    except (
+        OSError,
+        ValueError,
+        requests.RequestException,
+        TimeoutError,
+    ) as exc:
         logger.warning(
-            "OCR failed for %s (%s); using N/A.",
+            "Roboflow GLM-OCR failed for %s (%s); using N/A.",
             Path(img_path).name,
             type(exc).__name__,
         )

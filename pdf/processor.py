@@ -191,7 +191,8 @@ def _spacy_location(text: str) -> str:
 
     try:  # spaCy is optional; never a hard dependency for this module.
         import spacy  # type: ignore
-    except Exception:
+    except ImportError as exc:
+        logger.info("spaCy import unavailable for PDF location extraction: %s", exc)
         return UNKNOWN
     try:
         nlp = _load_spacy_model(spacy)
@@ -201,7 +202,8 @@ def _spacy_location(text: str) -> str:
         for ent in doc.ents:
             if ent.label_ in {"GPE", "LOC", "FAC"} and ent.text.strip():
                 return ent.text.strip()
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("spaCy PDF location extraction failed: %s", exc)
         return UNKNOWN
     return UNKNOWN
 
@@ -215,7 +217,8 @@ def _load_spacy_model(spacy: Any) -> Any:
         return _SPACY_MODEL
     try:
         _SPACY_MODEL = spacy.load("en_core_web_sm")
-    except Exception:
+    except OSError as exc:
+        logger.info("spaCy model unavailable for PDF extraction: %s", exc)
         _SPACY_MODEL = None
     return _SPACY_MODEL
 
@@ -438,15 +441,16 @@ def _extract_text_direct(pdf_path: str) -> str:
             text = "\n".join(page.get_text() for page in doc)
         if text.strip():
             return text
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("PyMuPDF direct extraction failed for %s: %s", pdf_path, exc)
 
     try:
         import pdfplumber  # type: ignore
 
         with pdfplumber.open(pdf_path) as pdf:
             return "\n".join(page.extract_text() or "" for page in pdf.pages)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("pdfplumber direct extraction failed for %s: %s", pdf_path, exc)
         return ""
 
 
@@ -458,7 +462,8 @@ def _extract_pages_direct(pdf_path: str) -> list[str]:
 
         with fitz.open(pdf_path) as doc:
             return [page.get_text() for page in doc]
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("PyMuPDF page extraction failed for %s: %s", pdf_path, exc)
         return []
 
 
@@ -500,6 +505,79 @@ def _pdf_ocr_worker_count(page_count: int) -> int:
     return max(1, min(requested, page_count))
 
 
+def _pdf_ocr_dependencies() -> tuple[Any, Any, Any] | None:
+    try:
+        import fitz  # type: ignore  # PyMuPDF
+        import pytesseract  # type: ignore
+        from PIL import Image  # type: ignore
+    except ImportError as exc:
+        logger.info("PDF OCR dependencies are unavailable: %s", exc)
+        return None
+    return fitz, pytesseract, Image
+
+
+def _tesseract_available(pytesseract: Any) -> bool:
+    _configure_tesseract_cmd(pytesseract)
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Tesseract is unavailable for PDF OCR: %s", exc)
+        return False
+    return True
+
+
+def _ocr_one_pdf_page(
+    pdf_path: str,
+    index: int,
+    *,
+    fitz: Any,
+    image_cls: Any,
+    pytesseract: Any,
+) -> tuple[int, str]:
+    import io
+
+    with fitz.open(pdf_path) as doc:
+        if index >= doc.page_count:
+            return index, ""
+        page = doc.load_page(index)
+        pix = page.get_pixmap(dpi=300)
+        with image_cls.open(io.BytesIO(pix.tobytes("png"))) as image:
+            image.load()
+            return index, pytesseract.image_to_string(image)
+
+
+def _ocr_pages_sequential(
+    wanted: list[int],
+    ocr_one_page: Callable[[int], tuple[int, str]],
+) -> dict[int, str]:
+    result: dict[int, str] = {}
+    for index in wanted:
+        try:
+            page_index, text = ocr_one_page(index)
+            result[page_index] = text
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("OCR failed for PDF page %d: %s", index + 1, exc)
+    return result
+
+
+def _ocr_pages_parallel(
+    wanted: list[int],
+    workers: int,
+    ocr_one_page: Callable[[int], tuple[int, str]],
+) -> dict[int, str]:
+    result: dict[int, str] = {}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(ocr_one_page, index): index for index in wanted}
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                page_index, text = future.result()
+                result[page_index] = text
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("OCR failed for PDF page %d: %s", index + 1, exc)
+    return result
+
+
 def _ocr_pages(
     pdf_path: str, page_indices: Iterable[int]
 ) -> tuple[dict[int, str], bool]:
@@ -509,57 +587,30 @@ def _ocr_pages(
     if not wanted:
         return {}, True
 
-    try:
-        import fitz  # type: ignore  # PyMuPDF
-        import pytesseract  # type: ignore
-        from PIL import Image  # type: ignore
-    except Exception:
+    dependencies = _pdf_ocr_dependencies()
+    if dependencies is None:
+        return {}, False
+    fitz, pytesseract, image_cls = dependencies
+    if not _tesseract_available(pytesseract):
         return {}, False
 
-    _configure_tesseract_cmd(pytesseract)
-
-    try:
-        pytesseract.get_tesseract_version()
-    except Exception:
-        return {}, False
-
-    result: dict[int, str] = {}
     workers = _pdf_ocr_worker_count(len(wanted))
     logger.info(
         "OCR'ing %d scanned PDF page(s) with %d worker(s).", len(wanted), workers
     )
 
     def ocr_one_page(index: int) -> tuple[int, str]:
-        import io
-
-        with fitz.open(pdf_path) as doc:
-            if index >= doc.page_count:
-                return index, ""
-            page = doc.load_page(index)
-            pix = page.get_pixmap(dpi=300)
-            with Image.open(io.BytesIO(pix.tobytes("png"))) as image:
-                image.load()
-                return index, pytesseract.image_to_string(image)
+        return _ocr_one_pdf_page(
+            pdf_path,
+            index,
+            fitz=fitz,
+            image_cls=image_cls,
+            pytesseract=pytesseract,
+        )
 
     if workers == 1:
-        for index in wanted:
-            try:
-                page_index, text = ocr_one_page(index)
-                result[page_index] = text
-            except Exception:
-                logger.warning("OCR failed for PDF page %d.", index + 1)
-        return result, True
-
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(ocr_one_page, index): index for index in wanted}
-        for future in as_completed(futures):
-            index = futures[future]
-            try:
-                page_index, text = future.result()
-                result[page_index] = text
-            except Exception:
-                logger.warning("OCR failed for PDF page %d.", index + 1)
-    return result, True
+        return _ocr_pages_sequential(wanted, ocr_one_page), True
+    return _ocr_pages_parallel(wanted, workers, ocr_one_page), True
 
 
 def _extract_pages_text(pdf_path: str) -> tuple[list[str], list[bool]]:
@@ -627,7 +678,8 @@ def _extract_text_ocr(pdf_path: str) -> str:
 
         with fitz.open(pdf_path) as doc:
             page_count = doc.page_count
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Could not open %s for document-level OCR: %s", pdf_path, exc)
         return ""
 
     ocr_by_index, ocr_available = _ocr_pages(pdf_path, range(page_count))

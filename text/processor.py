@@ -13,12 +13,15 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import logging
 import re
 import sys
 from pathlib import Path
 from typing import Any, Iterable
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 ARTIFACT_COLUMNS = [
@@ -193,7 +196,8 @@ def _load_spacy_model() -> Any:
         import spacy  # type: ignore
 
         _SPACY_MODEL = spacy.load("en_core_web_sm")
-    except Exception:
+    except (ImportError, OSError) as exc:
+        logger.info("spaCy NER unavailable; using regex entity fallback: %s", exc)
         _SPACY_MODEL = None
     return _SPACY_MODEL
 
@@ -259,41 +263,66 @@ def _add_entity(
         entities.append({"text": value, "label": label})
 
 
+def _add_spacy_entities(
+    text: str,
+    entities: list[dict[str, str]],
+    seen: set[tuple[str, str]],
+) -> None:
+    nlp = _load_spacy_model()
+    if nlp is None:
+        return
+    try:
+        for chunk in _iter_text_chunks(text):
+            doc = nlp(chunk)
+            for ent in doc.ents:
+                label = _entity_label(ent.label_)
+                if label:
+                    _add_entity(entities, seen, ent.text, label)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("spaCy entity extraction failed; using regex fallback: %s", exc)
+
+
+def _add_regex_group_entities(
+    text: str,
+    pattern: re.Pattern[str],
+    entities: list[dict[str, str]],
+    seen: set[tuple[str, str]],
+    label: str,
+    *,
+    group: int = 0,
+) -> None:
+    for match in pattern.finditer(text):
+        _add_entity(entities, seen, match.group(group), label)
+
+
+def _add_preposition_locations(
+    text: str,
+    entities: list[dict[str, str]],
+    seen: set[tuple[str, str]],
+) -> None:
+    for match in _PREP_LOCATION_PATTERN.finditer(text):
+        candidate = _trim_location_candidate(match.group(1))
+        if candidate:
+            _add_entity(entities, seen, candidate, "LOCATION")
+
+
 def extract_entities(text: str) -> list[dict[str, str]]:
     """Extract people, locations, organizations, and dates from cleaned text."""
 
     entities: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
-
-    nlp = _load_spacy_model()
-    if nlp is not None:
-        try:
-            for chunk in _iter_text_chunks(text):
-                doc = nlp(chunk)
-                for ent in doc.ents:
-                    label = _entity_label(ent.label_)
-                    if label:
-                        _add_entity(entities, seen, ent.text, label)
-        except Exception:
-            pass
-
-    for match in _PERSON_PATTERN.finditer(text):
-        _add_entity(entities, seen, match.group(0), "PERSON")
-    for match in _STREET_PATTERN.finditer(text):
-        _add_entity(entities, seen, match.group(0), "LOCATION")
-    for match in _CITY_STATE_PATTERN.finditer(text):
-        _add_entity(entities, seen, match.group(1), "LOCATION")
-    for match in _PREP_LOCATION_PATTERN.finditer(text):
-        candidate = _trim_location_candidate(match.group(1))
-        if candidate:
-            _add_entity(entities, seen, candidate, "LOCATION")
-    for match in _ORG_PATTERN.finditer(text):
-        _add_entity(entities, seen, match.group(0), "ORGANIZATION")
-    for match in _STANDALONE_ORG_PATTERN.finditer(text):
-        _add_entity(entities, seen, match.group(0), "ORGANIZATION")
-    for match in _DATE_PATTERN.finditer(text):
-        _add_entity(entities, seen, match.group(0), "DATE")
-
+    _add_spacy_entities(text, entities, seen)
+    _add_regex_group_entities(text, _PERSON_PATTERN, entities, seen, "PERSON")
+    _add_regex_group_entities(text, _STREET_PATTERN, entities, seen, "LOCATION")
+    _add_regex_group_entities(
+        text, _CITY_STATE_PATTERN, entities, seen, "LOCATION", group=1
+    )
+    _add_preposition_locations(text, entities, seen)
+    _add_regex_group_entities(text, _ORG_PATTERN, entities, seen, "ORGANIZATION")
+    _add_regex_group_entities(
+        text, _STANDALONE_ORG_PATTERN, entities, seen, "ORGANIZATION"
+    )
+    _add_regex_group_entities(text, _DATE_PATTERN, entities, seen, "DATE")
     return entities
 
 
