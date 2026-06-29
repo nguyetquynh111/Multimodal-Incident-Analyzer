@@ -19,9 +19,7 @@ from pdf.processor import (
 )
 
 
-FIXTURE_PDF = (
-    Path(__file__).resolve().parents[1] / "pdf" / "sample_data" / "LESO2.pdf"
-)
+FIXTURE_PDF = Path(__file__).resolve().parents[1] / "pdf" / "sample_data" / "LESO2.pdf"
 
 
 class PdfArtifactSchemaTests(unittest.TestCase):

@@ -8,14 +8,17 @@ Timestamp, Frame_ID, Event_Detected, Objects, Confidence
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import cv2
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 DRAFT_COLUMNS = [
@@ -27,7 +30,7 @@ DRAFT_COLUMNS = [
 ]
 DEFAULT_OUTPUT_PATH = Path(__file__).resolve().parent / "output" / "video_output.csv"
 
-VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".mpg", ".mpeg", ".wmv"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mpg", ".mpeg"}
 _SAMPLE_SECONDS = 0.5
 _MAX_DURATION_SECONDS = 300  # reject clips longer than 5 minutes
 _DEFAULT_YOLO_IMAGE_SIZE = 640
@@ -38,6 +41,22 @@ _ONNX_YOLO_IMAGE_SIZE = 640
 PERSON_CONF_THRESHOLD = 0.15
 VEHICLE_CLASSES = {"car", "truck", "bus", "motorcycle", "bicycle"}
 VEHICLE_CONF_THRESHOLD = 0.40
+
+
+class VideoProcessingSettings(NamedTuple):
+    fps: float
+    sample_every_frames: int
+    yolo_sample_stride: int
+    yolo_imgsz: int
+    yolo_device: str | None
+
+
+class YoloFrameResult(NamedTuple):
+    objects: List[str]
+    confidence: float
+    collapsed: bool
+    collapse_confidence: float
+    boxes: List[Tuple]
 
 
 def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
@@ -70,7 +89,8 @@ def _yolo_sample_stride() -> int:
 def _cuda_available() -> bool:
     try:
         import torch
-    except Exception:
+    except (ImportError, OSError) as exc:
+        logger.info("PyTorch unavailable for CUDA detection: %s", exc)
         return False
     return bool(torch.cuda.is_available())
 
@@ -94,7 +114,8 @@ def load_yolo_model(model_path: str | Path | None = None):
         from ultralytics import YOLO
 
         return YOLO(str(model_path or _yolo_model_path()), task="detect")
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("YOLO model could not be loaded; using video fallbacks: %s", exc)
         return None
 
 
@@ -202,30 +223,28 @@ def classify_event(
     score: float, objects: List[str], moving_regions: int, yolo_ran: bool = False
 ) -> Tuple[str, float]:
     person_count = objects.count("person")
-    has_vehicle = any(
-        obj in objects for obj in ["car", "truck", "bus", "motorcycle", "bicycle"]
-    )
-
+    has_vehicle = any(obj in objects for obj in VEHICLE_CLASSES)
     effective_persons = person_count if person_count > 0 else moving_regions
-
-    if effective_persons >= 2 and score >= 0.12:
-        return "Possible altercation", min(0.95, 0.72 + score)
-    if effective_persons >= 2 and score >= 0.03:
-        return "Multiple persons detected", min(0.88, 0.60 + score)
-    if effective_persons >= 2:
-        return "Multiple persons present", min(0.82, 0.55 + score)
-    if effective_persons == 1 and score >= 0.15:
-        return "Person running", min(0.92, 0.68 + score)
-    if effective_persons == 1 and score >= 0.05:
-        return "Person walking", min(0.88, 0.58 + score)
-    if effective_persons == 1:
-        return "Person standing", min(0.80, 0.50 + score)
-    if has_vehicle and score >= 0.05:
-        return "Vehicle movement", min(0.90, 0.60 + score)
+    rules = (
+        (effective_persons >= 2 and score >= 0.12, "Possible altercation", 0.95, 0.72),
+        (
+            effective_persons >= 2 and score >= 0.03,
+            "Multiple persons detected",
+            0.88,
+            0.60,
+        ),
+        (effective_persons >= 2, "Multiple persons present", 0.82, 0.55),
+        (effective_persons == 1 and score >= 0.15, "Person running", 0.92, 0.68),
+        (effective_persons == 1 and score >= 0.05, "Person walking", 0.88, 0.58),
+        (effective_persons == 1, "Person standing", 0.80, 0.50),
+        (has_vehicle and score >= 0.05, "Vehicle movement", 0.90, 0.60),
+        (score >= 0.18, "High motion anomaly", 0.85, 0.60),
+    )
+    for matched, event, cap, base in rules:
+        if matched:
+            return event, min(cap, base + score)
     if has_vehicle:
         return "Vehicle present", 0.55
-    if score >= 0.18:
-        return "High motion anomaly", min(0.85, 0.60 + score)
     if score >= 0.02:
         if yolo_ran:
             return "Unclear motion detected", min(0.65, 0.40 + score)
@@ -314,6 +333,213 @@ def format_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
+def _video_processing_settings(cap) -> VideoProcessingSettings:
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or math.isnan(fps) or fps <= 0:
+        fps = 25.0
+
+    total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    if total_frames / fps > _MAX_DURATION_SECONDS:
+        raise ValueError("Video exceeds the five-minute MVP limit.")
+
+    return VideoProcessingSettings(
+        fps=fps,
+        sample_every_frames=max(1, int(round(fps * _SAMPLE_SECONDS))),
+        yolo_sample_stride=_yolo_sample_stride(),
+        yolo_imgsz=_yolo_image_size(),
+        yolo_device=_yolo_device(),
+    )
+
+
+def _empty_yolo_result() -> YoloFrameResult:
+    return YoloFrameResult([], 0.0, False, 0.0, [])
+
+
+def _run_yolo_for_sample(
+    model,
+    enhanced,
+    *,
+    run_now: bool,
+    settings: VideoProcessingSettings,
+) -> YoloFrameResult:
+    if not run_now:
+        return _empty_yolo_result()
+    return YoloFrameResult(
+        *run_yolo(
+            model,
+            enhanced,
+            imgsz=settings.yolo_imgsz,
+            device=settings.yolo_device,
+        )
+    )
+
+
+def _motion_collapse_fallback(motion_boxes: List[Tuple]) -> tuple[bool, float]:
+    for mx1, my1, mx2, my2 in motion_boxes:
+        mw, mh = mx2 - mx1, my2 - my1
+        if mh > 0 and (mw / mh) > 2.0 and mw > 60:
+            return True, round(min(0.72, 0.40 + (mw / mh) * 0.06), 2)
+    return False, 0.0
+
+
+def _collapse_with_motion_fallback(
+    yolo_result: YoloFrameResult,
+    motion_boxes: List[Tuple],
+) -> tuple[bool, float]:
+    if yolo_result.collapsed or "person" in yolo_result.objects:
+        return yolo_result.collapsed, yolo_result.collapse_confidence
+    return _motion_collapse_fallback(motion_boxes)
+
+
+def _frame_event(
+    *,
+    fire_detected: bool,
+    fire_confidence: float,
+    collapsed: bool,
+    collapse_confidence: float,
+    yolo_result: YoloFrameResult,
+    score: float,
+    moving_regions: int,
+    yolo_ran: bool,
+) -> tuple[str, float]:
+    if fire_detected:
+        return "Fire detected", fire_confidence
+    if collapsed:
+        return "Person collapsing", max(collapse_confidence, yolo_result.confidence)
+    event, event_confidence = classify_event(
+        score, yolo_result.objects, moving_regions, yolo_ran
+    )
+    return event, max(event_confidence, yolo_result.confidence)
+
+
+def _video_row(
+    *,
+    frame_index: int,
+    fps: float,
+    event: str,
+    objects: List[str],
+    moving_regions: int,
+    confidence: float,
+) -> dict[str, object]:
+    return {
+        "Timestamp": format_timestamp(frame_index / fps),
+        "Frame_ID": f"FRM_{frame_index:03d}",
+        "Event_Detected": event,
+        "Objects": format_objects(objects, moving_regions),
+        "Confidence": round(float(confidence), 2),
+    }
+
+
+def _process_sampled_video_frame(
+    *,
+    frame,
+    frame_index: int,
+    path: Path,
+    model,
+    mog2,
+    settings: VideoProcessingSettings,
+    yolo_candidate_index: int,
+    annotated_frames_dir: Optional[Path],
+) -> tuple[tuple[dict[str, object], Optional[str]] | None, int]:
+    resized = cv2.resize(frame, (640, 360))
+    fgmask = mog2.apply(resized)
+    score, moving_regions, motion_boxes = apply_mog2(fgmask)
+    fire_detected, fire_confidence = detect_fire(resized)
+    qualifies_for_detection = moving_regions > 0 and score >= 0.02
+    if not qualifies_for_detection and not fire_detected:
+        return None, yolo_candidate_index
+
+    enhanced = enhance_frame(resized)
+    yolo_eligible = qualifies_for_detection and not fire_detected
+    run_yolo_now = _should_run_yolo(
+        yolo_eligible, yolo_candidate_index, settings.yolo_sample_stride
+    )
+    yolo_candidate_index += int(yolo_eligible)
+    yolo_result = _run_yolo_for_sample(
+        model, enhanced, run_now=run_yolo_now, settings=settings
+    )
+    collapsed, collapse_confidence = _collapse_with_motion_fallback(
+        yolo_result, motion_boxes
+    )
+    event, confidence = _frame_event(
+        fire_detected=fire_detected,
+        fire_confidence=fire_confidence,
+        collapsed=collapsed,
+        collapse_confidence=collapse_confidence,
+        yolo_result=yolo_result,
+        score=score,
+        moving_regions=moving_regions,
+        yolo_ran=run_yolo_now and model is not None,
+    )
+    frame_id = f"FRM_{frame_index:03d}"
+    frame_path = save_annotated_frame(
+        yolo_result.boxes,
+        motion_boxes,
+        enhanced,
+        event,
+        round(float(confidence), 2),
+        annotated_frames_dir,
+        path.stem,
+        frame_id,
+    )
+    return (
+        _video_row(
+            frame_index=frame_index,
+            fps=settings.fps,
+            event=event,
+            objects=yolo_result.objects,
+            moving_regions=moving_regions,
+            confidence=confidence,
+        ),
+        frame_path,
+    ), yolo_candidate_index
+
+
+def _iter_processed_video_frames(
+    video_path: str,
+    annotated_frames_dir: Optional[Path] = None,
+):
+    """Yield processed video draft rows and optional annotated frame paths."""
+
+    path = Path(video_path)
+    model = load_yolo_model()
+
+    cap = cv2.VideoCapture(str(path))
+    if not cap.isOpened():
+        return
+
+    settings = _video_processing_settings(cap)
+    mog2 = cv2.createBackgroundSubtractorMOG2(
+        history=100, varThreshold=25, detectShadows=False
+    )
+    frame_index = 0
+    yolo_candidate_index = 0
+
+    try:
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+
+            if frame_index % settings.sample_every_frames == 0:
+                processed, yolo_candidate_index = _process_sampled_video_frame(
+                    frame=frame,
+                    frame_index=frame_index,
+                    path=path,
+                    model=model,
+                    mog2=mog2,
+                    settings=settings,
+                    yolo_candidate_index=yolo_candidate_index,
+                    annotated_frames_dir=annotated_frames_dir,
+                )
+                if processed is not None:
+                    yield processed
+
+            frame_index += 1
+    finally:
+        cap.release()
+
+
 def process_video_file(
     video_path: str,
     annotated_frames_dir: Optional[Path] = None,
@@ -328,128 +554,13 @@ def process_video_file(
         annotated_frames_dir: If provided, save annotated JPEG frames to this
             directory (one sub-folder per clip). Default None (no frames saved).
     """
-    path = Path(video_path)
-    model = load_yolo_model()
 
-    cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        return pd.DataFrame(columns=DRAFT_COLUMNS)
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if not fps or math.isnan(fps) or fps <= 0:
-        fps = 25.0
-
-    total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    if total_frames / fps > _MAX_DURATION_SECONDS:
-        cap.release()
-        raise ValueError("Video exceeds the five-minute MVP limit.")
-
-    sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
-    yolo_sample_stride = _yolo_sample_stride()
-    yolo_imgsz = _yolo_image_size()
-    yolo_device = _yolo_device()
-    mog2 = cv2.createBackgroundSubtractorMOG2(
-        history=100, varThreshold=25, detectShadows=False
-    )
-    frame_index = 0
-    yolo_candidate_index = 0
-    extractor_rows = []
-
-    try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
-
-            resized = cv2.resize(frame, (640, 360))
-            fgmask = mog2.apply(resized)
-
-            if frame_index % sample_every_frames == 0:
-                score, moving_regions, motion_boxes = apply_mog2(fgmask)
-                fire_detected, fire_confidence = detect_fire(resized)
-                qualifies_for_detection = moving_regions > 0 and score >= 0.02
-                if not qualifies_for_detection and not fire_detected:
-                    frame_index += 1
-                    continue
-
-                enhanced = enhance_frame(resized)
-                yolo_eligible = qualifies_for_detection and not fire_detected
-                run_yolo_now = _should_run_yolo(
-                    yolo_eligible, yolo_candidate_index, yolo_sample_stride
-                )
-                if yolo_eligible:
-                    yolo_candidate_index += 1
-                if run_yolo_now:
-                    (
-                        objects,
-                        yolo_confidence,
-                        collapsed,
-                        collapse_confidence,
-                        filtered_boxes,
-                    ) = run_yolo(model, enhanced, imgsz=yolo_imgsz, device=yolo_device)
-                else:
-                    (
-                        objects,
-                        yolo_confidence,
-                        collapsed,
-                        collapse_confidence,
-                        filtered_boxes,
-                    ) = [], 0.0, False, 0.0, []
-
-                # MOG2 fallback for low-confidence overhead views.
-                if not collapsed and "person" not in objects:
-                    for mx1, my1, mx2, my2 in motion_boxes:
-                        mw, mh = mx2 - mx1, my2 - my1
-                        if mh > 0 and (mw / mh) > 2.0 and mw > 60:
-                            collapsed = True
-                            collapse_confidence = round(
-                                min(0.72, 0.40 + (mw / mh) * 0.06), 2
-                            )
-                            break
-
-                yolo_ran = run_yolo_now and model is not None
-
-                if fire_detected:
-                    event, confidence = "Fire detected", fire_confidence
-                elif collapsed:
-                    event, confidence = (
-                        "Person collapsing",
-                        max(collapse_confidence, yolo_confidence),
-                    )
-                else:
-                    event, event_confidence = classify_event(
-                        score, objects, moving_regions, yolo_ran
-                    )
-                    confidence = max(event_confidence, yolo_confidence)
-
-                frame_id = f"FRM_{frame_index:03d}"
-                timestamp = format_timestamp(frame_index / fps)
-                objects_str = format_objects(objects, moving_regions)
-
-                save_annotated_frame(
-                    filtered_boxes,
-                    motion_boxes,
-                    enhanced,
-                    event,
-                    round(float(confidence), 2),
-                    annotated_frames_dir,
-                    path.stem,
-                    frame_id,
-                )
-
-                extractor_rows.append(
-                    {
-                        "Timestamp": timestamp,
-                        "Frame_ID": frame_id,
-                        "Event_Detected": event,
-                        "Objects": objects_str,
-                        "Confidence": round(float(confidence), 2),
-                    }
-                )
-
-            frame_index += 1
-    finally:
-        cap.release()
+    extractor_rows = [
+        row
+        for row, _frame_path in _iter_processed_video_frames(
+            video_path, annotated_frames_dir
+        )
+    ]
     return pd.DataFrame(extractor_rows, columns=DRAFT_COLUMNS)
 
 
@@ -463,127 +574,7 @@ def process_video_stream(
     processed, so callers can update the UI progressively without waiting for
     the full video to finish.
     """
-    path = Path(video_path)
-    model = load_yolo_model()
-
-    cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        return
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    if not fps or math.isnan(fps) or fps <= 0:
-        fps = 25.0
-
-    total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    if total_frames / fps > _MAX_DURATION_SECONDS:
-        cap.release()
-        raise ValueError("Video exceeds the five-minute MVP limit.")
-
-    sample_every_frames = max(1, int(round(fps * _SAMPLE_SECONDS)))
-    yolo_sample_stride = _yolo_sample_stride()
-    yolo_imgsz = _yolo_image_size()
-    yolo_device = _yolo_device()
-    mog2 = cv2.createBackgroundSubtractorMOG2(
-        history=100, varThreshold=25, detectShadows=False
-    )
-    frame_index = 0
-    yolo_candidate_index = 0
-
-    try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
-
-            resized = cv2.resize(frame, (640, 360))
-            fgmask = mog2.apply(resized)
-
-            if frame_index % sample_every_frames == 0:
-                score, moving_regions, motion_boxes = apply_mog2(fgmask)
-                fire_detected, fire_confidence = detect_fire(resized)
-                qualifies_for_detection = moving_regions > 0 and score >= 0.02
-                if not qualifies_for_detection and not fire_detected:
-                    frame_index += 1
-                    continue
-
-                enhanced = enhance_frame(resized)
-                yolo_eligible = qualifies_for_detection and not fire_detected
-                run_yolo_now = _should_run_yolo(
-                    yolo_eligible, yolo_candidate_index, yolo_sample_stride
-                )
-                if yolo_eligible:
-                    yolo_candidate_index += 1
-                if run_yolo_now:
-                    (
-                        objects,
-                        yolo_confidence,
-                        collapsed,
-                        collapse_confidence,
-                        filtered_boxes,
-                    ) = run_yolo(model, enhanced, imgsz=yolo_imgsz, device=yolo_device)
-                else:
-                    (
-                        objects,
-                        yolo_confidence,
-                        collapsed,
-                        collapse_confidence,
-                        filtered_boxes,
-                    ) = [], 0.0, False, 0.0, []
-
-                if not collapsed and "person" not in objects:
-                    for mx1, my1, mx2, my2 in motion_boxes:
-                        mw, mh = mx2 - mx1, my2 - my1
-                        if mh > 0 and (mw / mh) > 2.0 and mw > 60:
-                            collapsed = True
-                            collapse_confidence = round(
-                                min(0.72, 0.40 + (mw / mh) * 0.06), 2
-                            )
-                            break
-
-                yolo_ran = run_yolo_now and model is not None
-
-                if fire_detected:
-                    event, confidence = "Fire detected", fire_confidence
-                elif collapsed:
-                    event, confidence = (
-                        "Person collapsing",
-                        max(collapse_confidence, yolo_confidence),
-                    )
-                else:
-                    event, event_confidence = classify_event(
-                        score, objects, moving_regions, yolo_ran
-                    )
-                    confidence = max(event_confidence, yolo_confidence)
-
-                frame_id = f"FRM_{frame_index:03d}"
-                timestamp = format_timestamp(frame_index / fps)
-                objects_str = format_objects(objects, moving_regions)
-
-                frame_path = save_annotated_frame(
-                    filtered_boxes,
-                    motion_boxes,
-                    enhanced,
-                    event,
-                    round(float(confidence), 2),
-                    annotated_frames_dir,
-                    path.stem,
-                    frame_id,
-                )
-
-                yield (
-                    {
-                        "Timestamp": timestamp,
-                        "Frame_ID": frame_id,
-                        "Event_Detected": event,
-                        "Objects": objects_str,
-                        "Confidence": round(float(confidence), 2),
-                    },
-                    frame_path,
-                )
-
-            frame_index += 1
-    finally:
-        cap.release()
+    yield from _iter_processed_video_frames(video_path, annotated_frames_dir)
 
 
 def process_video(

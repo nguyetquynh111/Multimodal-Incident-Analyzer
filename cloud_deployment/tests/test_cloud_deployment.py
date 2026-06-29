@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from cloud_deployment import supabase_client, upload_service
 from cloud_deployment.validators import INCIDENT_COLUMNS, validate_incidents_df
 
-# Load project-root env before pytest evaluates skip markers.
+# Load project-root env before live-test credential checks.
 load_dotenv(supabase_client.PROJECT_ROOT / ".env", override=False)
 
 
@@ -324,17 +324,15 @@ def test_crud_rejects_invalid_identifiers_and_filters() -> None:
         supabase_client.query_incidents(limit=0)
 
 
-@pytest.mark.skipif(
-    os.getenv("RUN_SUPABASE_LIVE_TESTS", "1") != "1",
-    reason="RUN_SUPABASE_LIVE_TESTS=0 disables the live Supabase round trip.",
-)
 def test_supabase_insert_exists_then_delete() -> None:
     """Create, read, update, and delete one row, then confirm cleanup.
 
     The configured key must have permission to insert, select, update, and
     delete test rows so cleanup can be verified.
     """
-    if not any(
+    if supabase_client.create_client is None:
+        pytest.skip("Live CRUD test requires the supabase package.")
+    if not os.getenv("SUPABASE_URL") or not any(
         os.getenv(name)
         for name in (
             "SUPABASE_SERVICE_ROLE_KEY",

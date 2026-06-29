@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 import shutil
 import sys
@@ -256,7 +257,7 @@ def test_roboflow_bbox_coordinates_convert_to_box_corners() -> None:
     ],
 )
 def test_ocr_cleanup_preserves_generic_readable_text(readings, expected) -> None:
-    """Exercise OCR text cleanup without requiring OpenCV/Tesseract in CI."""
+    """Exercise OCR text cleanup without requiring network calls in CI."""
 
     cleaned = [
         processor._clean_ocr_candidate(reading)
@@ -278,43 +279,62 @@ def test_ocr_cleanup_preserves_generic_readable_text(readings, expected) -> None
     assert actual == expected
 
 
-def test_ocr_text_uses_generic_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FakeCV2:
-        COLOR_BGR2GRAY = 1
+def test_ocr_text_uses_roboflow_glm_ocr_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "example.jpg"
+    image_path.write_bytes(b"image-bytes")
+    captured: dict[str, object] = {}
 
-        @staticmethod
-        def imread(img_path: str) -> object:
-            return object()
+    def fake_post(
+        endpoint: str,
+        payload: dict[str, object],
+        *,
+        timeout: float,
+    ) -> dict[str, str]:
+        captured["endpoint"] = endpoint
+        captured["payload"] = payload
+        captured["timeout"] = timeout
+        return {"response": "  | Main Street\n!!!\n"}
 
-        @staticmethod
-        def cvtColor(img: object, color: int) -> object:
-            return img
+    monkeypatch.setenv("ROBOFLOW_API_KEY", "test-key")
+    monkeypatch.delenv("ROBOFLOW_OCR_MODEL_ID", raising=False)
+    monkeypatch.delenv("ROBOFLOW_OCR_PROMPT", raising=False)
+    monkeypatch.delenv("ROBOFLOW_OCR_MAX_NEW_TOKENS", raising=False)
+    monkeypatch.delenv("ROBOFLOW_LMM_API_URL", raising=False)
+    monkeypatch.setattr(processor, "_post_roboflow_lmm", fake_post)
 
-    fake_tesseract = SimpleNamespace(
-        image_to_string=lambda image: "  | Main Street\n!!!\n"
-    )
+    assert processor._ocr_text(str(image_path)) == "Main Street"
+    assert captured["endpoint"] == processor.DEFAULT_LMM_API_URL
+    assert captured["timeout"] == processor.DEFAULT_OCR_TIMEOUT_SECONDS
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["api_key"] == "test-key"
+    assert payload["model_id"] == processor.DEFAULT_OCR_MODEL_ID
+    assert payload["prompt"] == processor.DEFAULT_OCR_PROMPT
+    assert payload["max_new_tokens"] == processor.DEFAULT_OCR_MAX_NEW_TOKENS
+    image_payload = payload["image"]
+    assert isinstance(image_payload, dict)
+    assert image_payload["type"] == "base64"
+    assert base64.b64decode(image_payload["value"]) == b"image-bytes"
 
-    monkeypatch.setitem(sys.modules, "cv2", FakeCV2)
-    monkeypatch.setitem(sys.modules, "pytesseract", fake_tesseract)
 
-    assert processor._ocr_text("example.jpg") == "Main Street"
-
-
-def test_ocr_text_returns_no_text_when_image_cannot_be_read(
+def test_ocr_text_returns_no_text_when_roboflow_key_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class FakeCV2:
-        COLOR_BGR2GRAY = 1
+    def fail_post(*args, **kwargs) -> dict[str, str]:
+        raise AssertionError("OCR should not call Roboflow without an API key")
 
-        @staticmethod
-        def imread(img_path: str) -> None:
-            return None
+    monkeypatch.delenv("ROBOFLOW_API_KEY", raising=False)
+    monkeypatch.setattr(processor, "_post_roboflow_lmm", fail_post)
 
-        @staticmethod
-        def cvtColor(img: object, color: int) -> object:
-            return img
+    assert processor._ocr_text("example.jpg") == processor.NO_TEXT
 
-    monkeypatch.setitem(sys.modules, "cv2", FakeCV2)
-    monkeypatch.setitem(sys.modules, "pytesseract", SimpleNamespace())
+
+def test_ocr_text_returns_no_text_when_image_cannot_be_encoded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ROBOFLOW_API_KEY", "test-key")
 
     assert processor._ocr_text("example.jpg") == processor.NO_TEXT

@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import redirect_stderr, redirect_stdout
 from functools import lru_cache
 from io import StringIO
+import logging
 import os
 from pathlib import Path
 import re
@@ -12,6 +13,8 @@ import shutil
 from typing import Any
 
 from .config import WHISPER_MODEL
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_transcript(value: Any) -> str:
@@ -42,7 +45,8 @@ def _transcribe_options(device: str, language: str | None) -> dict[str, Any]:
 def _cuda_available() -> bool:
     try:
         import torch
-    except Exception:
+    except (ImportError, OSError) as exc:
+        logger.info("PyTorch unavailable for Whisper CUDA detection: %s", exc)
         return False
     return bool(torch.cuda.is_available())
 

@@ -1,5 +1,7 @@
 Image_ID,Scene_Type,Objects_Detected,Text_Extracted,Confidence_Score
-IMG_001,Fire and Person Scene,"fire, person",N/A,0.86
+IMG_001,Fire and Person Scene,"fire, person",FIRE,0.86
 IMG_002,Fire and Person Scene,"fire, person",N/A,0.94
 IMG_003,Fire Scene,fire,N/A,1.0
 IMG_004,Fire Scene,fire,ALABAMA BANKHEAD HIGHWAY,1.0
+IMG_005,Fire Scene,fire,RIVING PL HAMILTON ST STOP A-WAY STOP A-WAY,1.0
+IMG_006,General Scene,None,Bradford St 7 24 CITY OF MCHEN,0.5
