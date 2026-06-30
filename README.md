@@ -104,7 +104,6 @@ Missing values are represented as `Unknown`. Severity is `Low`, `Medium`,
 
 ```bash
 python -m pytest -q
-python -m ruff check .
 ```
 
 The live Supabase CRUD test is skipped automatically unless the Supabase package
