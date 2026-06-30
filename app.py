@@ -1,6 +1,7 @@
 """Streamlit UI for the incident workflow."""
-
 from __future__ import annotations
+from dotenv import load_dotenv
+load_dotenv()
 
 import logging
 from pathlib import Path
